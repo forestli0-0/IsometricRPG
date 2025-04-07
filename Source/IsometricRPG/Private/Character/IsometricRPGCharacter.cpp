@@ -32,3 +32,8 @@ void AIsometricRPGCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 
 }
 
+UAbilitySystemComponent* AIsometricRPGCharacter::GetAbilitySystemComponent() const
+{
+	return AbilitySystemComponent;
+}
+
