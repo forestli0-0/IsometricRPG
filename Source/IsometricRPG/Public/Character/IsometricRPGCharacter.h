@@ -5,13 +5,15 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "UObject/ObjectMacros.h"
-#include "AbilitySystemInterface.h" // Ensure this include is added
-#include "AbilitySystemComponent.h" // Ensure this include is after CoreMinimal.h and GameFramework/Character.h
+#include "AbilitySystemInterface.h" 
+#include "AbilitySystemComponent.h" 
+#include <IsometricComponents/IsometricInputComponent.h>
 #include "IsometricRPGCharacter.generated.h"
 
 UCLASS()
 class ISOMETRICRPG_API AIsometricRPGCharacter : public ACharacter, public IAbilitySystemInterface
 {
+
 	GENERATED_BODY()
 
 public:
@@ -38,4 +40,13 @@ public:
 	UAbilitySystemComponent* AbilitySystemComponent;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Character")
 	UAttributeSet* AttributeSet;
+
+public:
+	// 初始化技能系统
+	virtual void PossessedBy(AController* NewController) override;
+public:
+	// 输入组件
+    // Add this include to the top of the file
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Input")
+	UIsometricInputComponent* IRPGInputComponent;
 };
