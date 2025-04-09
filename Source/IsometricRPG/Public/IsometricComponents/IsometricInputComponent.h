@@ -28,7 +28,7 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 public:
 	void SetupInput(class UEnhancedInputComponent* InputComponent, class APlayerController* PlayerController);
-
+	// 处理点击事件
 	void HandleClick();
 protected:
 	void Move(const FInputActionValue& Value);
@@ -38,16 +38,5 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	UInputAction* MoveAction;
 	
-private:
-	void MoveToLocation(ACharacter* Character, const FVector& Destination)
-	{
-		if (!Character) return;
-		if (APlayerController* PC = Cast<APlayerController>(Character->GetController()))
-		{
-			// 方法1：直接调用移动输入（推荐）
-			FVector Direction = (Destination - Character->GetActorLocation()).GetSafeNormal();
-			PC->GetPawn()->AddMovementInput(Direction, 1.0f);
-		}
-		
-	}
+
 };

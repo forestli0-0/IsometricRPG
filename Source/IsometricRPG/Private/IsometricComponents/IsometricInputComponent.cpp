@@ -9,7 +9,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Character/IsometricRPGCharacter.h" // Add this include to define AIsometricRPGCharacter
 #include "AIController.h"
-#include <NavigationSystem.h>
+#include "Blueprint/AIBlueprintHelperLibrary.h"
+
 // Sets default values for this component's properties
 UIsometricInputComponent::UIsometricInputComponent()
 {
@@ -77,36 +78,38 @@ void UIsometricInputComponent::Move(const FInputActionValue& Value)
 }
 
 
+ // Add this include to resolve the AIBlueprintHelperLibrary reference
+
 void UIsometricInputComponent::HandleClick()
 {
-    FHitResult Hit;
-    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
-    if (!OwnerCharacter) return;
+   FHitResult Hit;
+   ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+   if (!OwnerCharacter) return;
 
-    APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
-    if (!PC) return;
+   APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
+   if (!PC) return;
 
-    // 使用明确的碰撞通道并检查返回值
-    if (!PC->GetHitResultUnderCursorByChannel(ETraceTypeQuery::TraceTypeQuery1, true, Hit)) return;
-
-    if (Hit.bBlockingHit)
-    {
-        AActor* HitActor = Hit.GetActor();
-        if (!HitActor) return;
-
-        UE_LOG(LogTemp, Warning, TEXT("Hit Actor: %s"), *HitActor->GetName());
-
-        if (HitActor->ActorHasTag("Enemy"))
-        {
-            if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetOwner()))
-            {
-                // MyChar->GetAbilitySystemComponent()->TryActivateAbilityByClass(URPGGameplayAbility_Attack::StaticClass());
-            }
-        }
-        else
-        {
-            MoveToLocation(OwnerCharacter, Hit.ImpactPoint);
-        }
-    }
+   PC->GetHitResultUnderCursor(ECC_Visibility, true, Hit);
+   if (Hit.bBlockingHit)
+   {
+       // 检查是否点击了敌人
+       AActor* HitActor = Hit.GetActor();
+       if (HitActor && HitActor->ActorHasTag("Enemy"))
+       {
+           // TODO: 攻击逻辑
+                    // GAS 攻击逻辑
+           //if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetOwner()))
+           //{
+           //    MyChar->GetAbilitySystemComponent()->TryActivateAbilityByClass(URPGGameplayAbility_Attack::StaticClass());
+           //}
+       }
+       else
+       {
+           // 移动逻辑
+           UAIBlueprintHelperLibrary::SimpleMoveToLocation(PC, Hit.ImpactPoint); // Corrected namespace and class name
+           
+       }
+   }
 }
+
 
