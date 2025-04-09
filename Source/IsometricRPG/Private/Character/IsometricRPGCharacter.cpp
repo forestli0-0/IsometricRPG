@@ -18,9 +18,14 @@ AIsometricRPGCharacter::AIsometricRPGCharacter()
 
 	// 创建输入组件
 	IRPGInputComponent = CreateDefaultSubobject<UIsometricInputComponent>(TEXT("IRPGInputComponent"));
-	// 设置角色的AI移动组件
-	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
-	AIControllerClass = AAIController::StaticClass();
+	// 不要让角色面朝摄像机方向
+	bUseControllerRotationPitch = false;
+	bUseControllerRotationYaw = false;
+	bUseControllerRotationRoll = false;
+	GetCharacterMovement()->bOrientRotationToMovement = true; // Rotate character to moving direction
+	GetCharacterMovement()->RotationRate = FRotator(0.f, 640.f, 0.f);
+	GetCharacterMovement()->bConstrainToPlane = true;
+	GetCharacterMovement()->bSnapToPlaneAtStart = true;
 }
 
 // Called when the game starts or when spawned
@@ -35,7 +40,6 @@ void AIsometricRPGCharacter::BeginPlay()
 void AIsometricRPGCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
 }
 
 // Called to bind functionality to input
