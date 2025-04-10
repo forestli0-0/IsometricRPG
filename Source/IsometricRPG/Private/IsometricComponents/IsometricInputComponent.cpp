@@ -10,6 +10,7 @@
 #include "Character/IsometricRPGCharacter.h" // Add this include to define AIsometricRPGCharacter
 #include "AIController.h"
 #include "Blueprint/AIBlueprintHelperLibrary.h"
+#include "IsometricAbilities/RPGGameplayAbility_Attack.h"
 
 // Sets default values for this component's properties
 UIsometricInputComponent::UIsometricInputComponent()
@@ -80,36 +81,42 @@ void UIsometricInputComponent::Move(const FInputActionValue& Value)
 
  // Add this include to resolve the AIBlueprintHelperLibrary reference
 
+
+
 void UIsometricInputComponent::HandleClick()
 {
-   FHitResult Hit;
-   ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
-   if (!OwnerCharacter) return;
+  FHitResult Hit;
+  ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+  if (!OwnerCharacter) return;
 
-   APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
-   if (!PC) return;
+  APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
+  if (!PC) return;
 
-   PC->GetHitResultUnderCursor(ECC_Visibility, true, Hit);
-   if (Hit.bBlockingHit)
-   {
-       // 检查是否点击了敌人
-       AActor* HitActor = Hit.GetActor();
-       if (HitActor && HitActor->ActorHasTag("Enemy"))
-       {
-           // TODO: 攻击逻辑
-                    // GAS 攻击逻辑
-           //if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetOwner()))
-           //{
-           //    MyChar->GetAbilitySystemComponent()->TryActivateAbilityByClass(URPGGameplayAbility_Attack::StaticClass());
-           //}
-       }
-       else
-       {
-           // 移动逻辑
-           UAIBlueprintHelperLibrary::SimpleMoveToLocation(PC, Hit.ImpactPoint); // Corrected namespace and class name
-           
-       }
-   }
+  PC->GetHitResultUnderCursor(ECC_Visibility, true, Hit);
+  if (Hit.bBlockingHit)
+  {
+
+      AActor* HitActor = Hit.GetActor();
+
+      if (HitActor && HitActor->ActorHasTag("Enemy"))
+      {
+          // 攻击逻辑
+          if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetOwner()))
+          {
+              GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Black, TEXT(" Attack"));
+              bool bActivated = MyChar->GetAbilitySystemComponent()->TryActivateAbilityByClass(URPGGameplayAbility_Attack::StaticClass());
+              if (!bActivated)
+              {
+                  GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Red, TEXT("激活攻击技能失败"));
+              }
+          }
+      }
+      else
+      {
+          // 移动逻辑
+          UAIBlueprintHelperLibrary::SimpleMoveToLocation(PC, Hit.ImpactPoint);
+      }
+  }
 }
 
 
