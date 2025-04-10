@@ -44,6 +44,8 @@ public:
 public:
 	// 初始化技能系统
 	virtual void PossessedBy(AController* NewController) override;
+	UPROPERTY(EditDefaultsOnly, Category = "GAS")
+	TSubclassOf<UGameplayEffect> DefaultAttributes;
 public:
 	// 输入组件
     // Add this include to the top of the file
