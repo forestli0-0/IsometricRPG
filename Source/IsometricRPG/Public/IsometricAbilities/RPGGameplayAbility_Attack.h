@@ -20,8 +20,22 @@ public:
 		const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayAbilityActivationInfo ActivationInfo,
 		const FGameplayEventData* TriggerEventData) override;
-
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Attack")
 	TSubclassOf<class UGameplayEffect> DamageEffect;
+	UPROPERTY(EditDefaultsOnly, Category = "Animation")
+	UAnimMontage* AttackMontage;
+
+protected:
+	// 蒙太奇完成回调
+	UFUNCTION()
+	void OnMontageCompleted();
+
+	// 蒙太奇中断回调
+	UFUNCTION()
+	void OnMontageInterrupted();
+
+	// 蒙太奇取消回调
+	UFUNCTION()
+	void OnMontageCancelled();
 };

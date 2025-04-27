@@ -11,7 +11,10 @@
 #include "AIController.h"
 #include "Blueprint/AIBlueprintHelperLibrary.h"
 #include "IsometricAbilities/RPGGameplayAbility_Attack.h"
-
+#include <Player/IsometricPlayerController.h>
+#include <AbilitySystemBlueprintLibrary.h>
+#include "GameplayTagContainer.h"
+#include "IsometricComponents/ActionQueueComponent.h"
 // Sets default values for this component's properties
 UIsometricInputComponent::UIsometricInputComponent()
 {
@@ -93,6 +96,7 @@ void UIsometricInputComponent::HandleClick()
   if (!PC) return;
 
   PC->GetHitResultUnderCursor(ECC_Visibility, true, Hit);
+  
   if (Hit.bBlockingHit)
   {
 
@@ -100,21 +104,38 @@ void UIsometricInputComponent::HandleClick()
 
       if (HitActor && HitActor->ActorHasTag("Enemy"))
       {
-          // 攻击逻辑
-          if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetOwner()))
-          {
-              GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Black, TEXT(" Attack"));
-              bool bActivated = MyChar->GetAbilitySystemComponent()->TryActivateAbilityByClass(URPGGameplayAbility_Attack::StaticClass());
-              if (!bActivated)
-              {
-                  GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Red, TEXT("激活攻击技能失败"));
-              }
-          }
+		  // 注释掉的代码是为了使用ActionQueueComponent来处理攻击逻辑
+		  //auto IPC = Cast<AIsometricPlayerController>(PC);
+		  //// 设置目标Actor, 在攻击时使用
+		  //IPC->SetTargetActor(HitActor);
+    //      // 攻击逻辑
+    //      if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(OwnerCharacter))
+    //      {
+    //          GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Black, TEXT(" Attack"));
+    //          //使用SendGameplayEventToActor
+    //          FGameplayEventData EventData;
+    //          EventData.Target = HitActor;
+    //          EventData.Instigator = MyChar;
+    //          EventData.EventTag = FGameplayTag::RequestGameplayTag(FName("Ability.MeleeAttack"));
+    //          // TODO: 检查这里到底是HitActor还是MyChar
+    //          UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(HitActor, EventData.EventTag, EventData);
+    //      }
+		  //else
+		  //{
+			 // GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Red, TEXT("Not a valid character"));
+    //          
+    //      }
+
+              OwnerCharacter->FindComponentByClass<UActionQueueComponent>()->SetCommand_AttackTarget(HitActor);
+
+
+
       }
       else
       {
           // 移动逻辑
-          UAIBlueprintHelperLibrary::SimpleMoveToLocation(PC, Hit.ImpactPoint);
+          //UAIBlueprintHelperLibrary::SimpleMoveToLocation(PC, Hit.ImpactPoint);
+          OwnerCharacter->FindComponentByClass<UActionQueueComponent>()->SetCommand_MoveTo(Hit.ImpactPoint);
       }
   }
 }

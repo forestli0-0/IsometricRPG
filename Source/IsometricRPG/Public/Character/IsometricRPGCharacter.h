@@ -51,4 +51,6 @@ public:
     // Add this include to the top of the file
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Input")
 	UIsometricInputComponent* IRPGInputComponent;
+
+
 };

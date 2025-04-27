@@ -6,6 +6,8 @@
 #include "AIController.h"
 #include "GameFramework/CharacterMovementComponent.h" // Add this include to resolve the identifier
 #include "IsometricAbilities/RPGGameplayAbility_Attack.h"
+#include "IsometricComponents/ActionQueueComponent.h"
+#include "AnimationBlueprintLibrary.h"
 // Sets default values
 AIsometricRPGCharacter::AIsometricRPGCharacter()
 {
@@ -15,6 +17,9 @@ AIsometricRPGCharacter::AIsometricRPGCharacter()
 	AbilitySystemComponent = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 
 	AttributeSet = CreateDefaultSubobject<UIsometricRPGAttributeSetBase>(TEXT("AttributeSet"));
+
+	// 初始化动作队列组件
+	UActionQueueComponent* ActionQueue = CreateDefaultSubobject<UActionQueueComponent>(TEXT("ActionQueue"));
 
 	// 创建输入组件
 	IRPGInputComponent = CreateDefaultSubobject<UIsometricInputComponent>(TEXT("IRPGInputComponent"));
@@ -92,4 +97,6 @@ void AIsometricRPGCharacter::PossessedBy(AController* NewController)
 
         
 	}
+
 }
+
