@@ -27,4 +27,12 @@ protected:
 
 	UFUNCTION()
 	void HandleClickInput(const FInputActionValue& Value);
+
+public:
+	UPROPERTY(EditDefaultsOnly)
+	AActor* TargetActor;
+
+	UFUNCTION(BlueprintCallable)
+	void SetTargetActor(AActor* NewTargetActor);
+
 };

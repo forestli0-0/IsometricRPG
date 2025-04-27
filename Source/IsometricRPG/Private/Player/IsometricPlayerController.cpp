@@ -41,3 +41,8 @@ void AIsometricPlayerController::HandleClickInput(const FInputActionValue& Value
 		}
 	}
 }
+
+void AIsometricPlayerController::SetTargetActor(AActor* NewTargetActor)
+{
+	TargetActor = NewTargetActor;
+}
