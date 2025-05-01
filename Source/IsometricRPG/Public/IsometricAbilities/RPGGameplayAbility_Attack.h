@@ -25,7 +25,13 @@ protected:
 	TSubclassOf<class UGameplayEffect> DamageEffect;
 	UPROPERTY(EditDefaultsOnly, Category = "Animation")
 	UAnimMontage* AttackMontage;
-
+	
+	// 保存攻击目标
+	UPROPERTY()
+	AActor* AttackTarget;
+	// 攻击者自己
+	UPROPERTY()
+	AActor* Attacker;
 protected:
 	// 蒙太奇完成回调
 	UFUNCTION()

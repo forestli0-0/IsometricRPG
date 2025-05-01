@@ -104,32 +104,31 @@ void UIsometricInputComponent::HandleClick()
 
       if (HitActor && HitActor->ActorHasTag("Enemy"))
       {
-		  // 注释掉的代码是为了使用ActionQueueComponent来处理攻击逻辑
-		  //auto IPC = Cast<AIsometricPlayerController>(PC);
-		  //// 设置目标Actor, 在攻击时使用
-		  //IPC->SetTargetActor(HitActor);
-    //      // 攻击逻辑
-    //      if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(OwnerCharacter))
-    //      {
-    //          GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Black, TEXT(" Attack"));
-    //          //使用SendGameplayEventToActor
-    //          FGameplayEventData EventData;
-    //          EventData.Target = HitActor;
-    //          EventData.Instigator = MyChar;
-    //          EventData.EventTag = FGameplayTag::RequestGameplayTag(FName("Ability.MeleeAttack"));
-    //          // TODO: 检查这里到底是HitActor还是MyChar
-    //          UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(HitActor, EventData.EventTag, EventData);
-    //      }
-		  //else
-		  //{
-			 // GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Red, TEXT("Not a valid character"));
-    //          
-    //      }
-
-              OwnerCharacter->FindComponentByClass<UActionQueueComponent>()->SetCommand_AttackTarget(HitActor);
-
-
-
+          OwnerCharacter->FindComponentByClass<UActionQueueComponent>()->SetCommand_AttackTarget(HitActor);
+      }
+      else if (HitActor && HitActor->ActorHasTag("Player"))
+      {
+	        // 处理点击玩家的逻辑
+	        // 例如：选择玩家、显示信息等
+      }
+      else if (HitActor && HitActor->ActorHasTag("Interactable"))
+      {
+	        // 处理点击可交互物体的逻辑
+	        // 例如：打开菜单、显示信息等
+      }
+      else if (HitActor && HitActor->ActorHasTag("Item"))
+      {
+	        // 处理点击物品的逻辑
+	        // 例如：拾取物品、显示信息等
+      }
+      else if (HitActor && HitActor->ActorHasTag("NPC"))
+      {
+	        // 处理点击NPC的逻辑
+	        // 例如：对话、交易等
+      }
+      else if (HitActor == OwnerCharacter)
+      {
+	        // 点击角色本身，可能是取消选中或其他操作
       }
       else
       {

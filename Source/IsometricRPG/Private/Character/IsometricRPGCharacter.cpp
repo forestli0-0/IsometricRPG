@@ -6,6 +6,7 @@
 #include "AIController.h"
 #include "GameFramework/CharacterMovementComponent.h" // Add this include to resolve the identifier
 #include "IsometricAbilities/RPGGameplayAbility_Attack.h"
+#include "IsometricAbilities/GA_Death.h"
 #include "IsometricComponents/ActionQueueComponent.h"
 #include "AnimationBlueprintLibrary.h"
 // Sets default values
@@ -32,7 +33,6 @@ AIsometricRPGCharacter::AIsometricRPGCharacter()
 	GetCharacterMovement()->bConstrainToPlane = true;
 	GetCharacterMovement()->bSnapToPlaneAtStart = true;
 }
-
 // Called when the game starts or when spawned
 
 void AIsometricRPGCharacter::BeginPlay()
@@ -40,6 +40,7 @@ void AIsometricRPGCharacter::BeginPlay()
 	Super::BeginPlay();
 	// 给角色添加默认技能
 	AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(URPGGameplayAbility_Attack::StaticClass(), 1, 0));
+	AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(UGA_Death::StaticClass(), 1, INDEX_NONE, this));
 
 }
 
@@ -68,11 +69,14 @@ void AIsometricRPGCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
 	AbilitySystemComponent->InitAbilityActorInfo(this, this);
+	TSubclassOf<UGameplayEffect> DefaultAttributes = StaticLoadClass(
+		UGameplayEffect::StaticClass(),
+		nullptr,
+		TEXT("/Game/Blueprint/GameEffects/GE_InitializeAttributes.GE_InitializeAttributes_C")
+	);
 	// 利用GE初始化属性
 	if (DefaultAttributes)
 	{
-		// 打印默认属性的类名
-		UE_LOG(LogTemp, Warning, TEXT("DefaultAttributes class name: %s"), *DefaultAttributes->GetName());
 		FGameplayEffectContextHandle ContextHandle = AbilitySystemComponent->MakeEffectContext();
 		FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(DefaultAttributes, 1.f, ContextHandle);
 
@@ -86,16 +90,10 @@ void AIsometricRPGCharacter::PossessedBy(AController* NewController)
     if (AttributeSet)  
     {  
 		UIsometricRPGAttributeSetBase* TempAttributeSet = Cast<UIsometricRPGAttributeSetBase>(AttributeSet);
-        // 检查参数问题的代码片段
         GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow,
             FString::Printf(TEXT("%s 的控制器是 %s"), *this->GetName(), *NewController->GetName()));
 		float CurrentHealth = TempAttributeSet->GetHealth();
 		float MaxHealth = TempAttributeSet->GetMaxHealth();
-
-		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green,
-			FString::Printf(TEXT("Health: %f / %f"), CurrentHealth, MaxHealth));
-
-        
 	}
 
 }

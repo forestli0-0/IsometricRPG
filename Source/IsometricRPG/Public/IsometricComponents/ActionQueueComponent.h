@@ -47,23 +47,29 @@ protected:
 	class ACharacter* OwnerCharacter;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Combat")
-	float AttackRange = 200.f;
+	float AttackRange = 100.f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Combat")
 	FGameplayTag AttackEventTag;
 
 	bool bIsExecuting = false;
+
 public:	
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
+	UFUNCTION()
+	FQueuedCommand GetCommand();
 
 	// 命令
 	void SetCommand_MoveTo(const FVector& Location);
 	void SetCommand_AttackTarget(AActor* Target);
 	void ClearCommand();
 	// 攻击冷却
-	float AttackInterval = 1.0f; // 每次攻击间隔（秒）
+	float AttackInterval = 0.8f; // 每次攻击间隔（秒）
 
 	double LastAttackTime = -100.0; // 上一次攻击的时间
-		
+public:
+	UPROPERTY(EditDefaultsOnly, Category = "Combat")
+	bool bAttackInProgress = false;
 };

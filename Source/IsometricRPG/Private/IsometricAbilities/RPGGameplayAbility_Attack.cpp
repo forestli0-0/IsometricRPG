@@ -10,6 +10,7 @@
 #include "GameFramework/Character.h" // Add this include to define PlayAnimMontage
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h" 
 #include "Character/IsometricRPGCharacter.h"
+#include "IsometricComponents/ActionQueueComponent.h"
 URPGGameplayAbility_Attack::URPGGameplayAbility_Attack()
 {
 	// 设定为立即生效的技能
@@ -46,14 +47,18 @@ void URPGGameplayAbility_Attack::ActivateAbility(
     const FGameplayAbilityActivationInfo ActivationInfo,
     const FGameplayEventData* TriggerEventData)
 {
-    GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Blue, FString::Printf(TEXT("普通攻击")));
     if (!CommitAbility(Handle, ActorInfo, ActivationInfo)) return;
+    // 保存真正的攻击目标
+    if (TriggerEventData && TriggerEventData->Target && TriggerEventData->Instigator)
+    {
+        // Modify the assignment to cast the const AActor* to AActor*  
+        AttackTarget = const_cast<AActor*>(TriggerEventData->Target.Get());
+        Attacker = const_cast<AActor*>(TriggerEventData->Instigator.Get());
+    }
 
     // 播放攻击动画
     if (AttackMontage)
     {
-        UE_LOG(LogTemp, Warning, TEXT("准备播放蒙太奇: %s"), *GetNameSafe(AttackMontage));
-
         UAbilityTask_PlayMontageAndWait* Task = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
             this,
             NAME_None,
@@ -73,7 +78,6 @@ void URPGGameplayAbility_Attack::ActivateAbility(
             // 激活任务
             Task->ReadyForActivation();
 
-            GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, FString::Printf(TEXT("播放攻击动画")));
         }
     }
 }
@@ -82,75 +86,17 @@ void URPGGameplayAbility_Attack::ActivateAbility(
 // 在 OnMontageCompleted 回调中添加
 void URPGGameplayAbility_Attack::OnMontageCompleted()
 {
-    GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, FString::Printf(TEXT("攻击动画完成")));
-
-    if (DamageEffect)
-    {
-        GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Yellow, FString::Printf(TEXT("准备应用伤害效果: %s"), *GetNameSafe(DamageEffect)));
-
-        // 创建 GameplayEffectSpec
-        FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(DamageEffect, GetAbilityLevel());
-
-        if (SpecHandle.IsValid())
-        {
-            GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Yellow, FString::Printf(TEXT("伤害效果Spec创建成功，等级: %d"), GetAbilityLevel()));
-        }
-        else
-        {
-            GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Red, FString::Printf(TEXT("伤害效果Spec创建失败")));
-        }
-
-        // 获取目标的 AbilitySystemComponent
-        if (CurrentActorInfo)
-        {
-            UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(const_cast<AActor*>(CurrentActorInfo->AvatarActor.Get()));
-            if (TargetASC)
-            {
-                // 应用伤害效果
-                FActiveGameplayEffectHandle AppliedHandle = GetAbilitySystemComponentFromActorInfo()->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
-
-                if (AppliedHandle.WasSuccessfullyApplied())
-                {
-                    GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, FString::Printf(TEXT("伤害效果应用成功!")));
-                }
-                else
-                {
-                    GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Red, FString::Printf(TEXT("伤害效果应用失败")));
-                }
-            }
-            else
-            {
-                GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Red, FString::Printf(TEXT("无法获取目标的AbilitySystemComponent")));
-            }
-        }
-        else
-        {
-            GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Red, FString::Printf(TEXT("CurrentActorInfo为空，无法应用伤害效果")));
-        }
-    }
-    else
-    {
-        GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Red, FString::Printf(TEXT("DamageEffect未设置，无法应用伤害")));
-    }
-
     // 结束能力
     if (CurrentSpecHandle.IsValid() && CurrentActorInfo)
     {
-        GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, FString::Printf(TEXT("攻击技能完成，结束能力")));
         EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
     }
-    else
-    {
-        GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Red, FString::Printf(TEXT("无法正常结束能力: SpecHandle有效: %d, ActorInfo有效: %d"),
-            CurrentSpecHandle.IsValid(), CurrentActorInfo != nullptr));
-    }
+
 }
 
 
 void URPGGameplayAbility_Attack::OnMontageInterrupted()
 {
-    GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Red, FString::Printf(TEXT("攻击动画被中断")));
-
     // 在动画被中断时结束能力
     if (CurrentSpecHandle.IsValid() && CurrentActorInfo)
     {
@@ -160,8 +106,6 @@ void URPGGameplayAbility_Attack::OnMontageInterrupted()
 
 void URPGGameplayAbility_Attack::OnMontageCancelled()
 {
-    GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Red, FString::Printf(TEXT("攻击动画被取消")));
-
     // 在动画被取消时结束能力
     if (CurrentSpecHandle.IsValid() && CurrentActorInfo)
     {
