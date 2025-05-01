@@ -39,7 +39,9 @@ void AIsometricPlayerController::HandleClickInput(const FInputActionValue& Value
 		{
 			InputComp->HandleClick(); // 交给组件做
 		}
+
 	}
+
 }
 
 void AIsometricPlayerController::SetTargetActor(AActor* NewTargetActor)
