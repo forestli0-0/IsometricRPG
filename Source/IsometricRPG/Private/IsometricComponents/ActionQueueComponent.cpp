@@ -7,6 +7,8 @@
 #include "Engine/World.h"
 #include "Blueprint/AIBlueprintHelperLibrary.h"
 #include "Engine/Engine.h"
+#include "AbilitySystemComponent.h"
+#include "Character/IsometricRPGAttributeSetBase.h"
 
 UActionQueueComponent::UActionQueueComponent()
 {
@@ -41,12 +43,28 @@ void UActionQueueComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 	}
 	case EQueuedCommandType::AttackTarget:
 	{
-		if (!CurrentCommand.TargetActor.IsValid()) {
+		if (!CurrentCommand.TargetActor.IsValid())
+		{
 			ClearCommand();
 			break;
 		}
-
+		auto TargetCharacter = Cast<ACharacter>(CurrentCommand.TargetActor);
+		if (TargetCharacter)
+		{
+			auto TargetASC = TargetCharacter->FindComponentByClass<UAbilitySystemComponent>();
+			if (TargetASC)
+			{
+				// 目标角色的生命值
+				float TargetHealth = TargetASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetHealthAttribute());
+				if (TargetHealth <= 0.f)
+				{
+					ClearCommand();
+					break;
+				}
+			}
+		}
         const float Distance = FVector::Dist(OwnerCharacter->GetActorLocation(), CurrentCommand.TargetActor->GetActorLocation());
+		
 		if (Distance <= AttackRange)
 		{
 				// 检查目标是否有效

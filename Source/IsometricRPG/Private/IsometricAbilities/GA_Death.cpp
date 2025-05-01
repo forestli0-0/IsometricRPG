@@ -4,6 +4,7 @@
 #include "IsometricAbilities/GA_Death.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Animation/ABP_MyCharacterAnimInstance.h"
 UGA_Death::UGA_Death()
 {
     // 设定为立即生效的技能
@@ -19,63 +20,68 @@ UGA_Death::UGA_Death()
 
 
 // Add the missing OnMontageEnded method to the UGA_Death class  
-void UGA_Death::OnMontageEnded(UAnimMontage* Montage, bool bInterrupted)  
-{  
-   AActor* AvatarActor = GetAvatarActorFromActorInfo();  
-   if (AvatarActor)  
-   {  
-       ACharacter* Character = Cast<ACharacter>(AvatarActor);  
-       if (Character)  
-       {  
-           // Destroy the character after the montage ends  
-           Character->Destroy();  
-       }  
-   }  
-}  
+void UGA_Death::OnMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+    AActor* AvatarActor = GetAvatarActorFromActorInfo();
+    if (AvatarActor)
+    {
+        ACharacter* Character = Cast<ACharacter>(AvatarActor);
+        if (Character)
+        {
+            // 不要暂停动画，而是冻结当前帧
+            UAnimInstance* AnimInstance = Character->GetMesh()->GetAnimInstance();
+            if (AnimInstance)
+            {
+                AnimInstance->Montage_Pause();
+            }
 
-void UGA_Death::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)  
-{  
-   if (!CommitAbility(Handle, ActorInfo, ActivationInfo))  
-   {  
-       EndAbility(Handle, ActorInfo, ActivationInfo, true, false);  
-       return;  
-   }  
-   Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
-   AActor* AvatarActor = GetAvatarActorFromActorInfo();  
-   if (AvatarActor)  
-   {  
-       ACharacter* Character = Cast<ACharacter>(AvatarActor);  
-       if (Character)  
-       {  
-           Character->DisableInput(nullptr);  
-           Character->GetCharacterMovement()->DisableMovement();
-           Character->SetActorEnableCollision(false);  
+             Character->Destroy();
+        }
+    }
+}
 
-           UAnimMontage* MontageToPlay = DeathMontage;  
-           if (MontageToPlay)  
-           {  
-               UAnimInstance* AnimInstance = Character->GetMesh()->GetAnimInstance();  
-               if (AnimInstance)  
-               {  
-                   float MontagePlayResult = AnimInstance->Montage_Play(MontageToPlay);
-                   if (MontagePlayResult == 0.0f)
-                   {
-                       UE_LOG(LogTemp, Error, TEXT("Failed to play DeathMontage. Check if the montage is valid and compatible with the animation blueprint."));
-                       return;
-                   }
-                   FOnMontageEnded MontageEndDelegate = FOnMontageEnded::CreateUObject(this, &UGA_Death::OnMontageEnded);  
-                   AnimInstance->Montage_SetEndDelegate(MontageEndDelegate);  
-               }  
-           }  
 
-           if (!DeathMontage)  
-           {  
-               Character->Destroy();  
-           }  
-       }  
-       else  
-       {  
-           UE_LOG(LogTemp, Warning, TEXT("AvatarActor is not a character"));  
-       }  
-   }  
+void UGA_Death::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
+{
+    if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
+    {
+        EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+        return;
+    }
+    Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+    AActor* AvatarActor = GetAvatarActorFromActorInfo();
+    if (AvatarActor)
+    {
+        ACharacter* Character = Cast<ACharacter>(AvatarActor);
+        if (Character)
+        {
+            // ... disable input, movement, collision as before ...
+            Character->DisableInput(nullptr);
+            Character->GetCharacterMovement()->DisableMovement();
+            Character->SetActorEnableCollision(false);
+
+            // --- 在这里获取并设置动画蓝图变量 ---
+            UAnimInstance* AnimInstance = Character->GetMesh()->GetAnimInstance();
+            if (AnimInstance)
+            {
+                // 尝试将通用的 AnimInstance 转换为你的特定动画蓝图类
+                auto CharacterAnimBP = Cast<UABP_MyCharacterAnimInstance>(AnimInstance);
+                if (CharacterAnimBP)
+                {
+                    // 方式 2: 调用 BlueprintCallable 函数 (更推荐)
+                    CharacterAnimBP->SetIsDead(true); // 通过函数设置死亡标志
+
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Error, TEXT("Failed to cast AnimInstance to UMyCharacterAnimBP. Check character's AnimBP class."));
+                    // 处理转换失败的情况，可能角色没有使用正确的动画蓝图
+                }
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("Character has no AnimInstance."));
+            }
+        }
+    }
 }
