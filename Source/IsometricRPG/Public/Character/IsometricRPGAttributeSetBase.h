@@ -27,27 +27,98 @@ GENERATED_BODY()
 public:
 UIsometricRPGAttributeSetBase();
 
-UPROPERTY(EditDefaultsOnly, Category = "GAS")
-TSubclassOf<UGameplayEffect> DefaultAttributes; // 现在采用的是静态函数的方式来为Set初始化，这个是用不上了
+/** ----- 核心属性 ----- */
 
-UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attributes")
-FGameplayAttributeData Health;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Health);
-
+// 最大生命值
 UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attributes")
 FGameplayAttributeData MaxHealth;
 ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MaxHealth);
-
+// 当前生命值
+UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attributes")
+FGameplayAttributeData Health;
+ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Health);
+// 生命值恢复速率
 UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attributes")
 FGameplayAttributeData HealthRegenRate;
 ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, HealthRegenRate);
 
-UPROPERTY(BlueprintAssignable)
-FHealthChangedEvent OnHealthChanged;
+// 最大法力值
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
+FGameplayAttributeData MaxMana;
+ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MaxMana);
+
+// 当前法力值
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
+FGameplayAttributeData Mana;
+ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Mana);
+
+// 法力值恢复速率
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
+FGameplayAttributeData ManaRegenRate;
+ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, ManaRegenRate);
+
+/** ----- 攻击属性 ----- */
+
+// 攻击力
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
+FGameplayAttributeData AttackDamage;
+ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AttackDamage);
+// 攻击速度
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
+FGameplayAttributeData AttackSpeed;
+ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AttackSpeed);
+// 暴击几率
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
+FGameplayAttributeData CriticalChance;
+ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, CriticalChance);
+// 暴击伤害
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
+FGameplayAttributeData CriticalDamage;
+ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, CriticalDamage);
+// 物理穿透
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
+FGameplayAttributeData ArmorPenetration;
+ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, ArmorPenetration);
+// 魔法穿透
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
+FGameplayAttributeData MagicPenetration;
+ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MagicPenetration);
+
+// 移动速度
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
+FGameplayAttributeData MoveSpeed;
+
+/** ----- 防御属性 ----- */
+ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MoveSpeed);
+// 物理防御
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
+FGameplayAttributeData PhysicalDefense;
+ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, PhysicalDefense);
+// 魔法防御
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
+FGameplayAttributeData MagicDefense;
+ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MagicDefense);
+// 生命偷取
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
+FGameplayAttributeData LifeSteal;
+ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, LifeSteal);
+
+/** ----- 经验与等级 ----- */
+
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
+FGameplayAttributeData Experience;
+ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Experience);
+
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
+FGameplayAttributeData Level;
+ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Level);
 
 
 public:
     static TSubclassOf<UGameplayEffect> GetDefaultInitGE();
+
+    UPROPERTY(BlueprintAssignable)
+    FHealthChangedEvent OnHealthChanged;
 
     virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
 

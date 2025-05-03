@@ -20,7 +20,7 @@ AIsometricRPGCharacter::AIsometricRPGCharacter()
 	AttributeSet = CreateDefaultSubobject<UIsometricRPGAttributeSetBase>(TEXT("AttributeSet"));
 
 	// 初始化动作队列组件
-	UActionQueueComponent* ActionQueue = CreateDefaultSubobject<UActionQueueComponent>(TEXT("ActionQueue"));
+	ActionQueueComponent = CreateDefaultSubobject<UActionQueueComponent>(TEXT("ActionQueue"));
 
 	// 创建输入组件
 	IRPGInputComponent = CreateDefaultSubobject<UIsometricInputComponent>(TEXT("IRPGInputComponent"));
@@ -41,7 +41,7 @@ void AIsometricRPGCharacter::BeginPlay()
 	// 给角色添加默认技能
 	AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(URPGGameplayAbility_Attack::StaticClass(), 1, 0));
 	AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(UGA_Death::StaticClass(), 1, INDEX_NONE, this));
-
+	ActionQueueComponent->InitializeAbilitySlots();
 }
 
 // Called every frame

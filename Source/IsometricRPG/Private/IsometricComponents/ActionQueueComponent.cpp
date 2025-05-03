@@ -177,3 +177,19 @@ void UActionQueueComponent::ClearCommand()
 	bIsExecuting = false;
 	//LastAttackTime = -100.f;
 }
+
+void UActionQueueComponent::InitializeAbilitySlots()
+{
+	if (!OwnerCharacter) return;
+	UAbilitySystemComponent* AbilitySystemComponent = OwnerCharacter->FindComponentByClass<UAbilitySystemComponent>();
+	if (!AbilitySystemComponent) return;
+	for (const FHeroAbilitySlotData& SlotData : AbilitySlots)
+	{
+		if (*SlotData.AbilityClass)
+		{
+			AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(SlotData.AbilityClass, 1, static_cast<int32>(SlotData.Slot)));
+		}
+	}
+
+	//AbilitySystemComponent->InitAbilityActorInfo(OwnerCharacter, OwnerCharacter);
+}

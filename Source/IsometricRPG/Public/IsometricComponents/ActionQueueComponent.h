@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
+#include "IsometricAbilities/HeroAbilityTypes.h"
 #include "ActionQueueComponent.generated.h"
 
 UENUM(BlueprintType)
@@ -12,7 +13,8 @@ enum class EQueuedCommandType : uint8
 {
 	None,
 	MoveToLocation,
-	AttackTarget
+	AttackTarget,
+	UseSkill
 };
 
 
@@ -72,4 +74,9 @@ public:
 public:
 	UPROPERTY(EditDefaultsOnly, Category = "Combat")
 	bool bAttackInProgress = false;
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Abilities")
+	TArray<FHeroAbilitySlotData> AbilitySlots;
+
+	void InitializeAbilitySlots();
 };

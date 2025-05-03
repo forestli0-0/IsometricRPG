@@ -31,10 +31,13 @@ public:
 	// 处理点击事件
 	void HandleClick();
 protected:
+	// 第一次构建输入系统时，采用的WASD移动，暂时保留。
 	void Move(const FInputActionValue& Value);
+public:
+	// 输入映射上下文
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	UInputMappingContext* MappingContext;
-
+	// 输入动作
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	UInputAction* MoveAction;
 	
