@@ -7,7 +7,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "Character/IsometricRPGCharacter.h" // Add this include to define AIsometricRPGCharacter
+#include "Character/IsometricRPGCharacter.h"
 #include "AIController.h"
 #include "Blueprint/AIBlueprintHelperLibrary.h"
 #include "IsometricAbilities/RPGGameplayAbility_Attack.h"
@@ -106,55 +106,138 @@ void UIsometricInputComponent::Move(const FInputActionValue& Value)
 
 void UIsometricInputComponent::HandleClick()
 {
-  FHitResult Hit;
-  ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
-  if (!OwnerCharacter) return;
+    FHitResult Hit;
+    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+    if (!OwnerCharacter) return;
 
-  APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
-  if (!PC) return;
+    APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
+    if (!PC) return;
 
-  PC->GetHitResultUnderCursor(ECC_Visibility, true, Hit);
-  
-  if (Hit.bBlockingHit)
-  {
+    PC->GetHitResultUnderCursor(ECC_Visibility, true, Hit);
 
-      AActor* HitActor = Hit.GetActor();
+    if (Hit.bBlockingHit)
+    {
+        AActor* HitActor = Hit.GetActor();
+        FInputCommand Command;
 
-      if (HitActor && HitActor->ActorHasTag("Enemy"))
-      {
-          OwnerCharacter->FindComponentByClass<UActionQueueComponent>()->SetCommand_AttackTarget(HitActor);
-      }
-      else if (HitActor && HitActor->ActorHasTag("Player"))
-      {
-	        // 处理点击玩家的逻辑
-	        // 例如：选择玩家、显示信息等
-      }
-      else if (HitActor && HitActor->ActorHasTag("Interactable"))
-      {
-	        // 处理点击可交互物体的逻辑
-	        // 例如：打开菜单、显示信息等
-      }
-      else if (HitActor && HitActor->ActorHasTag("Item"))
-      {
-	        // 处理点击物品的逻辑
-	        // 例如：拾取物品、显示信息等
-      }
-      else if (HitActor && HitActor->ActorHasTag("NPC"))
-      {
-	        // 处理点击NPC的逻辑
-	        // 例如：对话、交易等
-      }
-      else if (HitActor == OwnerCharacter)
-      {
-	        // 点击角色本身，可能是取消选中或其他操作
-      }
-      else
-      {
-          // 移动逻辑
-          //UAIBlueprintHelperLibrary::SimpleMoveToLocation(PC, Hit.ImpactPoint);
-          OwnerCharacter->FindComponentByClass<UActionQueueComponent>()->SetCommand_MoveTo(Hit.ImpactPoint);
-      }
-  }
+        // 如果已选择了技能且点击了有效目标
+        if (CurrentSelectedSkillIndex >= 0)
+        {
+            // 设置为技能命令
+            Command.CommandType = EInputCommandType::UseSkill;
+            Command.SkillIndex = CurrentSelectedSkillIndex;
+            Command.TargetLocation = Hit.ImpactPoint;
+            Command.TargetActor = HitActor;
+
+            // 使用后清除当前选择的技能
+            CurrentSelectedSkillIndex = -1;
+
+            // 查找对应的技能标签
+            if (const FGameplayTag* FoundTag = SkillMappings.Find(Command.SkillIndex))
+            {
+                Command.AbilityTag = *FoundTag;
+            }
+        }
+        else if (HitActor && HitActor->ActorHasTag("Enemy"))
+        {
+            // 如果点击的是敌人，设置为普通攻击命令
+            Command.CommandType = EInputCommandType::BasicAttack;
+            Command.TargetActor = HitActor;
+        }
+        else
+        {
+            // 否则设置为移动命令
+            Command.CommandType = EInputCommandType::Movement;
+            Command.TargetLocation = Hit.ImpactPoint;
+        }
+
+        // 处理命令
+        ProcessInputCommand(Command);
+    }
+}
+
+void UIsometricInputComponent::HandleSkillInput(int32 SkillIndex)
+{
+    if (SkillIndex >= 0 && SkillMappings.Contains(SkillIndex))
+    {
+        // 选择技能，等待点击选择目标
+        CurrentSelectedSkillIndex = SkillIndex;
+
+        // 可以在这里显示一些UI提示，表明技能已选择
+        UE_LOG(LogTemp, Display, TEXT("技能 %d 已选择，等待选择目标"), SkillIndex);
+    }
+}
+
+void UIsometricInputComponent::ProcessInputCommand(const FInputCommand& Command)
+{
+    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+    if (!OwnerCharacter) return;
+
+    UActionQueueComponent* ActionQueue = OwnerCharacter->FindComponentByClass<UActionQueueComponent>();
+    if (!ActionQueue) return;
+
+    // 根据命令类型执行不同的操作
+    switch (Command.CommandType)
+    {
+    case EInputCommandType::BasicAttack:
+        if (Command.TargetActor.IsValid())
+        {
+            ActionQueue->SetCommand_AttackTarget(Command.TargetActor.Get());
+        }
+        break;
+
+    case EInputCommandType::UseSkill:
+    {
+        // 处理技能使用
+        FQueuedCommand QueuedCmd;
+        QueuedCmd.Type = EQueuedCommandType::UseSkill;
+        QueuedCmd.TargetLocation = Command.TargetLocation;
+        QueuedCmd.TargetActor = Command.TargetActor;
+        QueuedCmd.AbilityEventTag = Command.AbilityTag;
+
+        // 这里需要修改ActionQueueComponent以添加处理技能的方法
+        // 或者直接使用GAS来激活技能
+        if (UAbilitySystemComponent*ASC=OwnerCharacter->FindComponentByClass<UAbilitySystemComponent>())  
+        {  
+           FGameplayTagContainer AbilityTags;  
+           AbilityTags.AddTag(Command.AbilityTag);  
+           ASC->TryActivateAbilitiesByTag(AbilityTags);  
+        }
+    }
+    break;
+
+    case EInputCommandType::Movement:
+        ActionQueue->SetCommand_MoveTo(Command.TargetLocation);
+        break;
+    }
+}
+
+AActor* UIsometricInputComponent::GetTargetUnderCursor() const
+{
+    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+    if (!OwnerCharacter) return nullptr;
+
+    APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
+    if (!PC) return nullptr;
+
+    FHitResult Hit;
+    PC->GetHitResultUnderCursor(ECC_Visibility, true, Hit);
+
+    return Hit.GetActor();
+}
+
+FVector UIsometricInputComponent::GetLocationUnderCursor() const
+{
+    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+    if (!OwnerCharacter) return FVector::ZeroVector;
+
+    APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
+    if (!PC) return FVector::ZeroVector;
+
+    FHitResult Hit;
+    PC->GetHitResultUnderCursor(ECC_Visibility, true, Hit);
+
+    return Hit.ImpactPoint;
 }
 
 
