@@ -8,6 +8,7 @@
 #include "AbilitySystemInterface.h" 
 #include "AbilitySystemComponent.h" 
 #include <IsometricComponents/IsometricInputComponent.h>
+#include <IsometricComponents/ActionQueueComponent.h>
 #include "IsometricRPGCharacter.generated.h"
 
 
@@ -42,6 +43,7 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Character")
 	UAttributeSet* AttributeSet;
 
+
 public:
 	// 初始化技能系统
 	virtual void PossessedBy(AController* NewController) override;
@@ -52,4 +54,7 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Input")
 	UIsometricInputComponent* IRPGInputComponent;
 
+	// 动作队列组件
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "ActionQueue")
+	UActionQueueComponent* ActionQueueComponent;
 };

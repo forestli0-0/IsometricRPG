@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <Target Name="PlaySoundAfterBuild" AfterTargets="Build">
+
+    <Exec Command="powershell -c &quot;(New-Object Media.SoundPlayer 'F:/Unreal Projects/IsometricRPG/CompileSuccess.WAV').PlaySync()&quot;" />
+
+    <Message Text="--- Build successful! Playing sound. ---" Importance="high" />
+
+  </Target>
+
+</Project>

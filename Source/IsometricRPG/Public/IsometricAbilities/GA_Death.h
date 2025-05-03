@@ -26,7 +26,5 @@ class ISOMETRICRPG_API UGA_Death : public UGameplayAbility
 protected:
     UPROPERTY(EditDefaultsOnly, Category = "Ability")
     UAnimMontage* DeathMontage;
-protected:
-    UFUNCTION()
-    void OnMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+
 };

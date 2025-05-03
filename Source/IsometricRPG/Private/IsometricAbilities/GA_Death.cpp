@@ -19,28 +19,6 @@ UGA_Death::UGA_Death()
 }
 
 
-// Add the missing OnMontageEnded method to the UGA_Death class  
-void UGA_Death::OnMontageEnded(UAnimMontage* Montage, bool bInterrupted)
-{
-    AActor* AvatarActor = GetAvatarActorFromActorInfo();
-    if (AvatarActor)
-    {
-        ACharacter* Character = Cast<ACharacter>(AvatarActor);
-        if (Character)
-        {
-            // 不要暂停动画，而是冻结当前帧
-            UAnimInstance* AnimInstance = Character->GetMesh()->GetAnimInstance();
-            if (AnimInstance)
-            {
-                AnimInstance->Montage_Pause();
-            }
-
-             Character->Destroy();
-        }
-    }
-}
-
-
 void UGA_Death::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
     if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
@@ -68,9 +46,8 @@ void UGA_Death::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const F
                 auto CharacterAnimBP = Cast<UABP_MyCharacterAnimInstance>(AnimInstance);
                 if (CharacterAnimBP)
                 {
-                    // 方式 2: 调用 BlueprintCallable 函数 (更推荐)
                     CharacterAnimBP->SetIsDead(true); // 通过函数设置死亡标志
-
+                    Character->SetLifeSpan(3.f);
                 }
                 else
                 {

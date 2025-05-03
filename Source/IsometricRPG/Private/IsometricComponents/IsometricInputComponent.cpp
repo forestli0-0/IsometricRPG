@@ -57,13 +57,31 @@ void UIsometricInputComponent::SetupInput(UEnhancedInputComponent* InputComponen
 
 void UIsometricInputComponent::Move(const FInputActionValue& Value)
 {
+
     FVector2D Input = Value.Get<FVector2D>();
     if (Input.IsNearlyZero()) return;
 
     // 获取宿主角色
     ACharacter* OwnerChar = Cast<ACharacter>(GetOwner());
     if (!OwnerChar) return;
-
+    // 取消当前的鼠标命令
+    auto OwnerAQC = OwnerChar->FindComponentByClass<UActionQueueComponent>();
+	if (OwnerAQC)
+	{
+        OwnerAQC->ClearCommand();
+        AController* Controller = OwnerChar->GetController();
+        if (Controller)
+        {
+            Controller->StopMovement();
+        }
+        if (USkeletalMeshComponent* Mesh = OwnerChar->GetMesh())
+        {
+            if (UAnimInstance* AnimInstance = Mesh->GetAnimInstance())
+            {
+                AnimInstance->Montage_Stop(0.1f); // 0.2秒的混合时间，可以根据需要调整  
+            }
+        }
+	}
     // 设置控制器旋转而不是直接旋转角色
     // 这会间接触发CharacterMovement的bOrientRotationToMovement
     FRotator YawRotation(0, OwnerChar->GetControlRotation().Yaw, 0);
