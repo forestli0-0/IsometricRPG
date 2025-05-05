@@ -3,43 +3,97 @@
 
 #include "IsometricAbilities/GA_HeroBaseAbility.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h" 
+#include "AbilitySystemComponent.h"
+#include "Character/IsometricRPGAttributeSetBase.h"
+
 UGA_HeroBaseAbility::UGA_HeroBaseAbility()
 {
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 }
 
 void UGA_HeroBaseAbility::ActivateAbility(
-    const FGameplayAbilitySpecHandle Handle,
-    const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo,
-    const FGameplayEventData* TriggerEventData)
+  const FGameplayAbilitySpecHandle Handle,
+  const FGameplayAbilityActorInfo* ActorInfo,
+  const FGameplayAbilityActivationInfo ActivationInfo,
+  const FGameplayEventData* TriggerEventData)
 {
-    if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
-    {
-        EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
-        return;
-    }
+  AActor* SelfActor = GetAvatarActorFromActorInfo();
+  if (!SelfActor)
+  {
+      UE_LOG(LogTemp, Error, TEXT("SelfActor is null."));
+      return;
+  }
+// 从 AbilitySystemComponent 获取 AttributeSet
+  UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
+  if (!ASC)
+  {
+      CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+      UE_LOG(LogTemp, Error, TEXT("AbilitySystemComponent is null in ActivateAbility."));
+      return;
+  }
 
-    if (bFaceTarget && ActorInfo->AvatarActor.IsValid())
-    {
-        // 可以在此执行面向目标逻辑（略）
-    }
+  AttributeSet = const_cast<UIsometricRPGAttributeSetBase*>(ASC->GetSet<UIsometricRPGAttributeSetBase>());
+  if (!AttributeSet)
+  {
+      CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+      UE_LOG(LogTemp, Error, TEXT("AttributeSet is null in ActivateAbility."));
+      return;
+  }
+  AActor* Target = const_cast<AActor*>(TriggerEventData->Target.Get());
+  if (!Target)
+  {
+      UE_LOG(LogTemp, Error, TEXT("Target is null."));
+      return;
+  }
 
-    if (MontageToPlay && ActorInfo->GetAnimInstance())
-    {
-        MontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
-            this, NAME_None, MontageToPlay);
+  float Distance = FVector::Dist(Target->GetActorLocation(), SelfActor->GetActorLocation());
 
-        MontageTask->OnCompleted.AddDynamic(this, &UGA_HeroBaseAbility::K2_EndAbility);
-        MontageTask->OnInterrupted.AddDynamic(this, &UGA_HeroBaseAbility::K2_EndAbility);
-        MontageTask->OnCancelled.AddDynamic(this, &UGA_HeroBaseAbility::K2_EndAbility);
-        MontageTask->ReadyForActivation();
-    }
-    else
-    {
-        OnAbilityTriggered();
-        EndAbility(Handle, ActorInfo, ActivationInfo, false, false);
-    }
+  if (Distance > RangeToApply)
+  {
+      // 构造失败的 gameplay event
+      FGameplayEventData FailEventData;
+      FailEventData.EventTag = FGameplayTag::RequestGameplayTag(FName("Ability.Failure.OutOfRange"));
+      FailEventData.Instigator = SelfActor;
+      FailEventData.Target = Target;
+
+      // 通知自身 ASC
+      GetAbilitySystemComponentFromActorInfo()->HandleGameplayEvent(FailEventData.EventTag, &FailEventData);
+
+      CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+      GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Black, TEXT("距离太远"));
+      return;
+  }
+
+  if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
+  {
+      // 如果无法提交技能，则结束技能
+      EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+      return;
+  }
+
+  if (bFaceTarget && ActorInfo->AvatarActor.IsValid())
+  {
+      FVector Direction = (Target->GetActorLocation() - ActorInfo->AvatarActor->GetActorLocation()).GetSafeNormal();
+      FRotator NewRotation = FRotationMatrix::MakeFromX(Direction).Rotator();
+      SelfActor->SetActorRotation(NewRotation);
+  }
+
+  UAnimInstance* AnimInstance = ActorInfo->GetAnimInstance();
+  if (MontageToPlay && IsValid(AnimInstance))
+  {
+      float PlayRate = CooldownDuration > 0 ? MontageToPlay->GetPlayLength() / CooldownDuration : 1.0f;
+
+      MontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
+          this, NAME_None, MontageToPlay, PlayRate);
+
+      MontageTask->OnCompleted.AddDynamic(this, &UGA_HeroBaseAbility::K2_EndAbility);
+      MontageTask->OnInterrupted.AddDynamic(this, &UGA_HeroBaseAbility::K2_EndAbility);
+      MontageTask->OnCancelled.AddDynamic(this, &UGA_HeroBaseAbility::K2_EndAbility);
+      MontageTask->ReadyForActivation();
+  }
+
+  OnAbilityTriggered();
+  EndAbility(Handle, ActorInfo, ActivationInfo, false, false);
 }
 
 void UGA_HeroBaseAbility::OnAbilityTriggered_Implementation()

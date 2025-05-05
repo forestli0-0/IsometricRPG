@@ -27,6 +27,14 @@ void AIsometricPlayerController::SetupInputComponent()
 	if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(InputComponent))
 	{
 		EIC->BindAction(ClickAction, ETriggerEvent::Triggered, this, &AIsometricPlayerController::HandleClickInput);
+
+		// 绑定技能按键
+		EIC->BindAction(Action_Q, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 1);
+		EIC->BindAction(Action_E, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 2);
+		EIC->BindAction(Action_R, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 3);
+		EIC->BindAction(Action_C, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 4);
+		EIC->BindAction(Action_Summoner1, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 5);
+		EIC->BindAction(Action_Summoner2, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 6);
 	}
 }
 
@@ -47,4 +55,18 @@ void AIsometricPlayerController::HandleClickInput(const FInputActionValue& Value
 void AIsometricPlayerController::SetTargetActor(AActor* NewTargetActor)
 {
 	TargetActor = NewTargetActor;
+}
+
+void AIsometricPlayerController::HandleSkillInput(const FInputActionInstance& Instance, int SkillIndex)
+{
+	const UInputAction* TriggeredAction = Instance.GetSourceAction();
+
+   // 找到控制的角色  
+   if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))  
+   {  
+       if (UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>())  
+       {  
+           InputComp->HandleSkillInput(SkillIndex);
+       }  
+   }  
 }

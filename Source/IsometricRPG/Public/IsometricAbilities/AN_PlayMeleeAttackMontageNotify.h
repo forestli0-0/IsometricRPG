@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "AnimNotifies/AnimNotify_PlayMontageNotify.h"
 #include "Animation/AnimNotifies/AnimNotify.h"
+#include "GameplayEffect.h"
+#include "AbilitySystemComponent.h"
 #include "AN_PlayMeleeAttackMontageNotify.generated.h"
 
 /**
@@ -28,4 +30,11 @@ public:
     float EffectLevel = 1.0f;
 
     AActor* TargetActor;
+private:
+    void ApplyEffectToTarget(
+        UAbilitySystemComponent* SourceASC,
+        UAbilitySystemComponent* TargetASC,
+        TSubclassOf<UGameplayEffect> EffectClass,
+        float Level,
+        FGameplayEffectContextHandle& ContextHandle);
 };

@@ -121,7 +121,7 @@ void UIsometricInputComponent::HandleClick()
         FInputCommand Command;
 
         // 如果已选择了技能且点击了有效目标
-        if (CurrentSelectedSkillIndex >= 0)
+        if (CurrentSelectedSkillIndex > 0)
         {
             // 设置为技能命令
             Command.CommandType = EInputCommandType::UseSkill;
@@ -136,13 +136,26 @@ void UIsometricInputComponent::HandleClick()
             if (const FGameplayTag* FoundTag = SkillMappings.Find(Command.SkillIndex))
             {
                 Command.AbilityTag = *FoundTag;
+
+                UE_LOG(LogTemp, Warning, TEXT("使用技能 %d, %s"), Command.SkillIndex, *Command.AbilityTag.GetTagName().ToString());
             }
         }
         else if (HitActor && HitActor->ActorHasTag("Enemy"))
         {
             // 如果点击的是敌人，设置为普通攻击命令
+            CurrentSelectedSkillIndex = 0;
             Command.CommandType = EInputCommandType::BasicAttack;
             Command.TargetActor = HitActor;
+            Command.TargetLocation = Hit.ImpactPoint;
+            Command.SkillIndex = CurrentSelectedSkillIndex;
+            CurrentSelectedSkillIndex = -1;
+            // 查找对应的技能标签
+            if (const FGameplayTag* FoundTag = SkillMappings.Find(Command.SkillIndex))
+            {
+                Command.AbilityTag = *FoundTag;
+
+                UE_LOG(LogTemp, Warning, TEXT("使用普攻 %d, %s"), Command.SkillIndex, *Command.AbilityTag.GetTagName().ToString());
+            }
         }
         else
         {
@@ -163,7 +176,6 @@ void UIsometricInputComponent::HandleSkillInput(int32 SkillIndex)
         // 选择技能，等待点击选择目标
         CurrentSelectedSkillIndex = SkillIndex;
 
-        // 可以在这里显示一些UI提示，表明技能已选择
         UE_LOG(LogTemp, Display, TEXT("技能 %d 已选择，等待选择目标"), SkillIndex);
     }
 }
@@ -182,26 +194,15 @@ void UIsometricInputComponent::ProcessInputCommand(const FInputCommand& Command)
     case EInputCommandType::BasicAttack:
         if (Command.TargetActor.IsValid())
         {
-            ActionQueue->SetCommand_AttackTarget(Command.TargetActor.Get());
+            ActionQueue->SetCommand_AttackTarget(Command.AbilityTag, Command.TargetLocation, Command.TargetActor.Get());
         }
         break;
 
     case EInputCommandType::UseSkill:
     {
-        // 处理技能使用
-        FQueuedCommand QueuedCmd;
-        QueuedCmd.Type = EQueuedCommandType::UseSkill;
-        QueuedCmd.TargetLocation = Command.TargetLocation;
-        QueuedCmd.TargetActor = Command.TargetActor;
-        QueuedCmd.AbilityEventTag = Command.AbilityTag;
-
-        // 这里需要修改ActionQueueComponent以添加处理技能的方法
-        // 或者直接使用GAS来激活技能
-        if (UAbilitySystemComponent*ASC=OwnerCharacter->FindComponentByClass<UAbilitySystemComponent>())  
-        {  
-           FGameplayTagContainer AbilityTags;  
-           AbilityTags.AddTag(Command.AbilityTag);  
-           ASC->TryActivateAbilitiesByTag(AbilityTags);  
+        if (Command.TargetActor.IsValid())
+        {
+            ActionQueue->SetCommand_UseSkill(Command.AbilityTag, Command.TargetLocation, Command.TargetActor.Get());
         }
     }
     break;

@@ -7,6 +7,7 @@
 #include "GameFramework/CharacterMovementComponent.h" // Add this include to resolve the identifier
 #include "IsometricAbilities/RPGGameplayAbility_Attack.h"
 #include "IsometricAbilities/GA_Death.h"
+#include "IsometricAbilities/GA_HeroMeleeAttackAbility.h"
 #include "IsometricComponents/ActionQueueComponent.h"
 #include "AnimationBlueprintLibrary.h"
 // Sets default values
@@ -39,7 +40,8 @@ void AIsometricRPGCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 	// 给角色添加默认技能
-	AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(URPGGameplayAbility_Attack::StaticClass(), 1, 0));
+	//AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(URPGGameplayAbility_Attack::StaticClass(), 1, 0));
+	AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(UGA_HeroMeleeAttackAbility::StaticClass(), 1, 0));
 	AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(UGA_Death::StaticClass(), 1, INDEX_NONE, this));
 	ActionQueueComponent->InitializeAbilitySlots();
 }

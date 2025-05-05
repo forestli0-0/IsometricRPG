@@ -9,7 +9,6 @@
 #include "Engine/Engine.h"
 #include "AbilitySystemComponent.h"
 #include "Character/IsometricRPGAttributeSetBase.h"
-
 UActionQueueComponent::UActionQueueComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -20,8 +19,12 @@ UActionQueueComponent::UActionQueueComponent()
 void UActionQueueComponent::BeginPlay()
 {
 	Super::BeginPlay();
-
+	// 在技能系统上绑定一个回调，当技能超出距离时，给角色挂一个提示
 	OwnerCharacter = Cast<ACharacter>(GetOwner());
+	ASC = OwnerCharacter->FindComponentByClass<UAbilitySystemComponent>();
+	ASC->GenericGameplayEventCallbacks.FindOrAdd(
+		FGameplayTag::RequestGameplayTag(FName("Ability.Failure.OutOfRange"))
+	).AddUObject(this, &UActionQueueComponent::OnSkillOutOfRange);
 }
 
 void UActionQueueComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -39,91 +42,62 @@ void UActionQueueComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 		{
 			ClearCommand();
 		}
+		else
+		{
+			// 计算目标方向
+			FVector DirectionToTarget = CurrentCommand.TargetLocation - OwnerCharacter->GetActorLocation();
+			DirectionToTarget.Z = 0.0f;
+			// 计算目标旋转
+			FRotator TargetRotation = FRotationMatrix::MakeFromX(DirectionToTarget).Rotator();
+			// 使用插值平滑旋转
+			FRotator NewRotation = FMath::RInterpTo(
+				OwnerCharacter->GetActorRotation(),
+				TargetRotation,
+				DeltaTime,  // 使用 DeltaTime 实现平滑过渡
+				10.0f      // 旋转速度系数
+			);
+			OwnerCharacter->SetActorRotation(NewRotation);
+			UAIBlueprintHelperLibrary::SimpleMoveToLocation(OwnerCharacter->GetController(), CurrentCommand.TargetLocation);
+			ClearCommand();
+		}
 		break;
 	}
 	case EQueuedCommandType::AttackTarget:
 	{
-		if (!CurrentCommand.TargetActor.IsValid())
+		// 检查目标Health属性
+		auto TargetCharacter = Cast<ACharacter>(CurrentCommand.TargetActor);
+		if (!TargetCharacter) return;
+		auto TargetASC = TargetCharacter->FindComponentByClass<UAbilitySystemComponent>();
+		auto TargetHealth = TargetASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetHealthAttribute());
+
+		if (TargetHealth <= 0)
 		{
+			// 目标死亡，清除命令
 			ClearCommand();
 			break;
 		}
-		auto TargetCharacter = Cast<ACharacter>(CurrentCommand.TargetActor);
-		if (TargetCharacter)
+
+		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("当前命令：普通攻击"));
+		ASC = OwnerCharacter->FindComponentByClass<UAbilitySystemComponent>();
+		// 使用GameplayAbility系统激活技能
+		FGameplayEventData EventData;
+		EventData.Target = CurrentCommand.TargetActor.Get();
+		EventData.Instigator = OwnerCharacter;
+		FGameplayAbilityTargetDataHandle TargetDataHandle = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(FHitResult(CurrentCommand.TargetActor.Get(), nullptr, CurrentCommand.TargetLocation, FVector::ZeroVector));
+		EventData.TargetData = TargetDataHandle;
+		ASC->HandleGameplayEvent(CurrentCommand.AbilityEventTag, &EventData);
+		break;
+	}
+	case EQueuedCommandType::UseSkill:
+	{
+		if (CurrentCommand.TargetActor->IsActorBeingDestroyed())
 		{
-			auto TargetASC = TargetCharacter->FindComponentByClass<UAbilitySystemComponent>();
-			if (TargetASC)
-			{
-				// 目标角色的生命值
-				float TargetHealth = TargetASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetHealthAttribute());
-				if (TargetHealth <= 0.f)
-				{
-					ClearCommand();
-					break;
-				}
-			}
+			// 目标死亡，清除命令
+			ClearCommand();
+			break;
 		}
-        const float Distance = FVector::Dist(OwnerCharacter->GetActorLocation(), CurrentCommand.TargetActor->GetActorLocation());
-		
-		if (Distance <= AttackRange)
-		{
-				// 检查目标是否有效
-				if (CurrentCommand.TargetActor.IsValid())
-				{
-					// 计算目标方向
-					FVector DirectionToTarget = CurrentCommand.TargetActor->GetActorLocation() - OwnerCharacter->GetActorLocation();
-					DirectionToTarget.Z = 0.0f;
-
-					// 计算目标旋转
-					FRotator TargetRotation = FRotationMatrix::MakeFromX(DirectionToTarget).Rotator();
-					// 使用插值平滑旋转
-					FRotator NewRotation = FMath::RInterpTo(
-						OwnerCharacter->GetActorRotation(),
-						TargetRotation,
-						DeltaTime,  // 使用 DeltaTime 实现平滑过渡
-						10.0f      // 旋转速度系数
-					);
-					OwnerCharacter->SetActorRotation(NewRotation);
-
-				}
-
-			// ✅ 攻击冷却判定
-			double Now = FPlatformTime::Seconds();
-			if (Now - LastAttackTime >= AttackInterval) {
-				LastAttackTime = Now;
-				// 攻击一次
-				FGameplayEventData EventData;
-				EventData.Target = CurrentCommand.TargetActor.Get();
-				EventData.Instigator = OwnerCharacter;
-				EventData.EventTag = AttackEventTag;
-                // Modify the problematic line to explicitly cast TObjectPtr<const AActor> to AActor*
-
-                UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(OwnerCharacter, AttackEventTag, EventData);
-				// 检查目标是否死亡
-				if (CurrentCommand.TargetActor->IsActorBeingDestroyed())
-				{
-					// 目标死亡，清除命令
-					ClearCommand();
-				}
-			}
-
-		}
-		else
-		{
-			double Now = FPlatformTime::Seconds();
-			if (Now - LastAttackTime >= AttackInterval)
-			{
-				// 停止正在播放的蒙太奇  
-				if (USkeletalMeshComponent* Mesh = OwnerCharacter->GetMesh())
-				{
-					if (UAnimInstance* AnimInstance = Mesh->GetAnimInstance())
-					{
-						AnimInstance->Montage_Stop(0.1f); // 0.2秒的混合时间，可以根据需要调整  
-					}
-				}
-				UAIBlueprintHelperLibrary::SimpleMoveToActor(OwnerCharacter->GetController(), CurrentCommand.TargetActor.Get());
-			}
-		}
+		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Blue, TEXT("当前命令：使用技能"));
+		ExecuteSkill(CurrentCommand.AbilityEventTag, CurrentCommand.TargetLocation, CurrentCommand.TargetActor.Get());
 		break;
 	}
 	}
@@ -137,8 +111,7 @@ FQueuedCommand UActionQueueComponent::GetCommand()
 void UActionQueueComponent::SetCommand_MoveTo(const FVector& Location)  
 {  
    if (!OwnerCharacter) return;  
-   auto ActionQueueComponent = OwnerCharacter->FindComponentByClass<UActionQueueComponent>();  
-   if (ActionQueueComponent && ActionQueueComponent->bAttackInProgress)  
+   if (bAttackInProgress)  
    {  
        return; // 如果正在攻击，直接返回  
    }  
@@ -150,46 +123,72 @@ void UActionQueueComponent::SetCommand_MoveTo(const FVector& Location)
            AnimInstance->Montage_Stop(0.1f); // 0.2秒的混合时间，可以根据需要调整  
        }  
    }  
-
    ClearCommand();  
 
    CurrentCommand.Type = EQueuedCommandType::MoveToLocation;  
    CurrentCommand.TargetLocation = Location;  
 
-   UAIBlueprintHelperLibrary::SimpleMoveToLocation(OwnerCharacter->GetController(), Location);  
 }
 
-void UActionQueueComponent::SetCommand_AttackTarget(AActor* Target)
+void UActionQueueComponent::SetCommand_AttackTarget(const FGameplayTag& AbilityTag, const FVector& TargetLocation, AActor* TargetActor)
 {
-	if (!OwnerCharacter || !Target) return;
+	if (!OwnerCharacter || !TargetActor) return;
 
 	ClearCommand();
 
 	CurrentCommand.Type = EQueuedCommandType::AttackTarget;
-	CurrentCommand.TargetActor = Target;
-
-	UAIBlueprintHelperLibrary::SimpleMoveToActor(OwnerCharacter->GetController(), Target);
+	CurrentCommand.TargetActor = TargetActor;
+	CurrentCommand.TargetLocation = TargetLocation;
+	CurrentCommand.TargetActor = TargetActor;
+	CurrentCommand.AbilityEventTag = AbilityTag;
+	bIsExecuting = true;
 }
 
 void UActionQueueComponent::ClearCommand()
 {
 	CurrentCommand = FQueuedCommand(); // Reset to default
 	bIsExecuting = false;
-	//LastAttackTime = -100.f;
+}
+
+void UActionQueueComponent::OnSkillOutOfRange(const FGameplayEventData* EventData)
+{
+	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, TEXT("技能因距离失败，移动接近目标"));
+	UAIBlueprintHelperLibrary::SimpleMoveToActor(OwnerCharacter->GetController(), EventData->Target.Get());
 }
 
 void UActionQueueComponent::InitializeAbilitySlots()
 {
 	if (!OwnerCharacter) return;
-	UAbilitySystemComponent* AbilitySystemComponent = OwnerCharacter->FindComponentByClass<UAbilitySystemComponent>();
-	if (!AbilitySystemComponent) return;
 	for (const FHeroAbilitySlotData& SlotData : AbilitySlots)
 	{
 		if (*SlotData.AbilityClass)
 		{
-			AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(SlotData.AbilityClass, 1, static_cast<int32>(SlotData.Slot)));
+			UE_LOG(LogTemp, Warning, TEXT("初始化技能槽中, 技能：%s, 槽位：%d"), *SlotData.AbilityClass->GetName(), static_cast<uint8>(SlotData.Slot));
+
+			ASC->GiveAbility(FGameplayAbilitySpec(SlotData.AbilityClass, 1, static_cast<int32>(SlotData.Slot)));
 		}
 	}
-
-	//AbilitySystemComponent->InitAbilityActorInfo(OwnerCharacter, OwnerCharacter);
 }
+
+void UActionQueueComponent::SetCommand_UseSkill(const FGameplayTag& AbilityTag, const FVector& TargetLocation, AActor* TargetActor)
+{
+	CurrentCommand.Type = EQueuedCommandType::UseSkill;
+	CurrentCommand.TargetLocation = TargetLocation;
+	CurrentCommand.TargetActor = TargetActor;
+	CurrentCommand.AbilityEventTag = AbilityTag;
+	bIsExecuting = true;
+}
+void UActionQueueComponent::ExecuteSkill(const FGameplayTag& AbilityTag, const FVector& TargetLocation, AActor* TargetActor)
+{
+	if (!OwnerCharacter) return;
+
+	// 使用GameplayAbility系统激活技能
+	FGameplayEventData EventData;
+	EventData.Target = TargetActor;
+	EventData.Instigator = OwnerCharacter;
+    FGameplayAbilityTargetDataHandle TargetDataHandle = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(FHitResult(TargetActor, nullptr, TargetLocation, FVector::ZeroVector));  
+    EventData.TargetData = TargetDataHandle;
+	ASC->HandleGameplayEvent(CurrentCommand.AbilityEventTag, &EventData);
+}
+
+
