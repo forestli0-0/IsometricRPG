@@ -10,9 +10,9 @@ enum class EHeroAbilitySlot : uint8
 {
     None        UMETA(DisplayName = "None"),
     Q           UMETA(DisplayName = "Q"),
-    W           UMETA(DisplayName = "W"),
     E           UMETA(DisplayName = "E"),
     R           UMETA(DisplayName = "R"),
+	C           UMETA(DisplayName = "C"),
     Passive     UMETA(DisplayName = "Passive"),
     Summoner1   UMETA(DisplayName = "Summoner1"),
     Summoner2   UMETA(DisplayName = "Summoner2"),

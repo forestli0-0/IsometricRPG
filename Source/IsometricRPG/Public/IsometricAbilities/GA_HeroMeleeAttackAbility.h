@@ -6,6 +6,7 @@
 #include "IsometricAbilities/GA_HeroBaseAbility.h"
 #include "GA_HeroMeleeAttackAbility.generated.h"
 
+class UIsometricRPGAttributeSetBase;
 /**
  * 
  */
@@ -18,12 +19,4 @@ public:
 protected:
 	// 重写目标型攻击
 	virtual void ExecuteTargeted() override;
-
-    // 攻击命中后使用的 GE
-    UPROPERTY(EditDefaultsOnly, Category = "Ability")
-    TSubclassOf<class UGameplayEffect> DamageEffect;
-
-    // 命中范围（可选）
-    UPROPERTY(EditDefaultsOnly, Category = "Ability")
-    float AttackRange = 100.f;
 };

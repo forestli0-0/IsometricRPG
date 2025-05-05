@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Abilities/GameplayAbility.h"
+#include "Character/IsometricRPGAttributeSetBase.h"
 #include "GA_HeroBaseAbility.generated.h"
 
 UENUM(BlueprintType)
@@ -38,6 +39,16 @@ protected:
     // 技能是否朝向目标
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Animation")
     bool bFaceTarget = true;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Attribute")\
+    float RangeToApply = 100.f;
+
+    //技能都应该在激活前获取自身的属性集
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Attribute")
+	UIsometricRPGAttributeSetBase* AttributeSet;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooldown")
+    float CooldownDuration = 1.f;
 
     // 技能激活时调用
     virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle,
