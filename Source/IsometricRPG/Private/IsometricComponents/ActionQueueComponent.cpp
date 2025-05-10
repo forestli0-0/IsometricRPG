@@ -32,7 +32,7 @@ void UActionQueueComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	if (!OwnerCharacter || CurrentCommand.Type == EQueuedCommandType::None) return;
-
+    GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Magenta, FString::Printf(TEXT("当前命令：%s"), *UEnum::GetValueAsString(CurrentCommand.Type)));
 	switch (CurrentCommand.Type)
 	{
 	case EQueuedCommandType::MoveToLocation:
@@ -77,7 +77,7 @@ void UActionQueueComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 			break;
 		}
 
-		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("当前命令：普通攻击"));
+		//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("当前命令：普通攻击"));
 		ASC = OwnerCharacter->FindComponentByClass<UAbilitySystemComponent>();
 		// 使用GameplayAbility系统激活技能
 		FGameplayEventData EventData;
@@ -98,6 +98,7 @@ void UActionQueueComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 		}
 		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Blue, TEXT("当前命令：使用技能"));
 		ExecuteSkill(CurrentCommand.AbilityEventTag, CurrentCommand.TargetLocation, CurrentCommand.TargetActor.Get());
+
 		break;
 	}
 	}
@@ -152,7 +153,8 @@ void UActionQueueComponent::ClearCommand()
 
 void UActionQueueComponent::OnSkillOutOfRange(const FGameplayEventData* EventData)
 {
-	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, TEXT("技能因距离失败，移动接近目标"));
+	GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Yellow, TEXT("技能因距离失败，移动接近目标"));
+	//DrawDebugSphere(GetWorld(), EventData->Target.Get()->GetActorLocation(), 50.f, 12, FColor::Red, false, 19.0f, 0, 1.0f); // 可选：调试可视化);
 	UAIBlueprintHelperLibrary::SimpleMoveToActor(OwnerCharacter->GetController(), EventData->Target.Get());
 }
 

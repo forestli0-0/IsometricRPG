@@ -40,11 +40,18 @@ void UGA_HeroBaseAbility::ActivateAbility(
       return;
   }
   AActor* Target = const_cast<AActor*>(TriggerEventData->Target.Get());
-  if (!Target)
+
+  // 如果是指向型技能，没有目标，那就放弃
+  if (SkillType == EHeroSkillType::Targeted)
   {
-      UE_LOG(LogTemp, Error, TEXT("Target is null."));
-      return;
+      if (Cast<APawn>(Target) == nullptr)
+      {
+          CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+          UE_LOG(LogTemp, Error, TEXT("TriggerEventData is null in ActivateAbility."));
+          return;
+      }
   }
+
 
   float Distance = FVector::Dist(Target->GetActorLocation(), SelfActor->GetActorLocation());
 
@@ -60,7 +67,7 @@ void UGA_HeroBaseAbility::ActivateAbility(
       GetAbilitySystemComponentFromActorInfo()->HandleGameplayEvent(FailEventData.EventTag, &FailEventData);
 
       CancelAbility(Handle, ActorInfo, ActivationInfo, true);
-      GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Black, TEXT("距离太远"));
+      GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Black, TEXT("距离太远"));
       return;
   }
 
@@ -82,7 +89,7 @@ void UGA_HeroBaseAbility::ActivateAbility(
   if (MontageToPlay && IsValid(AnimInstance))
   {
       float PlayRate = CooldownDuration > 0 ? MontageToPlay->GetPlayLength() / CooldownDuration : 1.0f;
-
+	  PlayRate = FMath::Clamp(PlayRate, 1.f, 3.0f); // 限制播放速率在合理范围内
       MontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
           this, NAME_None, MontageToPlay, PlayRate);
 

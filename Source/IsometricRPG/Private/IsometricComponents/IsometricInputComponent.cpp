@@ -123,22 +123,40 @@ void UIsometricInputComponent::HandleClick()
         // 如果已选择了技能且点击了有效目标
         if (CurrentSelectedSkillIndex > 0)
         {
-            // 设置为技能命令
-            Command.CommandType = EInputCommandType::UseSkill;
-            Command.SkillIndex = CurrentSelectedSkillIndex;
-            Command.TargetLocation = Hit.ImpactPoint;
-            Command.TargetActor = HitActor;
-
-            // 使用后清除当前选择的技能
-            CurrentSelectedSkillIndex = -1;
-
-            // 查找对应的技能标签
-            if (const FGameplayTag* FoundTag = SkillMappings.Find(Command.SkillIndex))
-            {
-                Command.AbilityTag = *FoundTag;
-
-                UE_LOG(LogTemp, Warning, TEXT("使用技能 %d, %s"), Command.SkillIndex, *Command.AbilityTag.GetTagName().ToString());
-            }
+            // 如果选择了敌人作为目标
+			if (HitActor && HitActor->ActorHasTag("Enemy"))
+			{
+				// 设置为技能命令
+				Command.CommandType = EInputCommandType::UseSkill;
+				Command.SkillIndex = CurrentSelectedSkillIndex;
+				Command.TargetLocation = Hit.ImpactPoint;
+				Command.TargetActor = HitActor;
+				// 使用后清除当前选择的技能
+				CurrentSelectedSkillIndex = -1;
+				// 查找对应的技能标签
+				if (const FGameplayTag* FoundTag = SkillMappings.Find(Command.SkillIndex))
+				{
+					Command.AbilityTag = *FoundTag;
+					UE_LOG(LogTemp, Warning, TEXT("使用技能 %d, %s"), Command.SkillIndex, *Command.AbilityTag.GetTagName().ToString());
+				}
+			}
+			else
+			{
+				// 如果点击了地面或其他无效目标
+                // 向目标位置发射技能
+				Command.CommandType = EInputCommandType::UseSkill;
+				Command.SkillIndex = CurrentSelectedSkillIndex;
+				Command.TargetLocation = Hit.ImpactPoint;
+				Command.TargetActor = nullptr; // 没有目标Actor
+				// 使用后清除当前选择的技能
+				CurrentSelectedSkillIndex = -1;
+				// 查找对应的技能标签
+				if (const FGameplayTag* FoundTag = SkillMappings.Find(Command.SkillIndex))
+				{
+					Command.AbilityTag = *FoundTag;
+					UE_LOG(LogTemp, Warning, TEXT("使用技能 %d, %s"), Command.SkillIndex, *Command.AbilityTag.GetTagName().ToString());
+				}
+			}
         }
         else if (HitActor && HitActor->ActorHasTag("Enemy"))
         {

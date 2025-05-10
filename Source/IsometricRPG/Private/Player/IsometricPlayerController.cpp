@@ -26,7 +26,7 @@ void AIsometricPlayerController::SetupInputComponent()
 
 	if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(InputComponent))
 	{
-		EIC->BindAction(ClickAction, ETriggerEvent::Triggered, this, &AIsometricPlayerController::HandleClickInput);
+		EIC->BindAction(ClickAction, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleClickInput);
 
 		// 绑定技能按键
 		EIC->BindAction(Action_Q, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 1);
