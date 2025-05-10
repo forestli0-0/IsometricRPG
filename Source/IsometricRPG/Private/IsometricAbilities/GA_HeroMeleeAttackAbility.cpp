@@ -56,7 +56,6 @@ void UGA_HeroMeleeAttackAbility::ExecuteTargeted()
 {
   // 打印调试信息
   UE_LOG(LogTemp, Warning, TEXT("使用普攻技能"));
-  // 获取目标位置
 
   AActor* OwnerActor = GetAvatarActorFromActorInfo();
   if (!OwnerActor) return;

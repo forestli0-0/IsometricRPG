@@ -154,7 +154,7 @@ void UActionQueueComponent::ClearCommand()
 void UActionQueueComponent::OnSkillOutOfRange(const FGameplayEventData* EventData)
 {
 	GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Yellow, TEXT("技能因距离失败，移动接近目标"));
-	//DrawDebugSphere(GetWorld(), EventData->Target.Get()->GetActorLocation(), 50.f, 12, FColor::Red, false, 19.0f, 0, 1.0f); // 可选：调试可视化);
+	DrawDebugSphere(GetWorld(), EventData->Target.Get()->GetActorLocation(), 50.f, 12, FColor::Red, false, 19.0f, 0, 1.0f); // 可选：调试可视化);
 	UAIBlueprintHelperLibrary::SimpleMoveToActor(OwnerCharacter->GetController(), EventData->Target.Get());
 }
 
