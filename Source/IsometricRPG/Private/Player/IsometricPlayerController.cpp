@@ -2,10 +2,16 @@
 
 
 #include "Player/IsometricPlayerController.h"
+#include "Player/IsometricCameraManager.h"
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
 #include <Character/IsometricRPGCharacter.h>
 
+AIsometricPlayerController::AIsometricPlayerController()
+{
+    // 设置使用自定义的PlayerCameraManager
+    PlayerCameraManagerClass = AIsometricCameraManager::StaticClass();
+}
 void AIsometricPlayerController::BeginPlay()
 {
 	Super::BeginPlay();

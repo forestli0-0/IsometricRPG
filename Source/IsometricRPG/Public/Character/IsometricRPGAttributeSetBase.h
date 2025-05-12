@@ -15,7 +15,7 @@ GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
 
 // Fix: Correct the type of the first parameter in the delegate declaration
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FHealthChangedEvent, UIsometricRPGAttributeSetBase*, AttributeSet, float, NewHealth);
-
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FManaChangedEvent, UIsometricRPGAttributeSetBase*, AttributeSet, float, NewMana);
 /**
 * 
 */
@@ -119,7 +119,8 @@ public:
 
     UPROPERTY(BlueprintAssignable)
     FHealthChangedEvent OnHealthChanged;
-
+    UPROPERTY(BlueprintAssignable)
+    FManaChangedEvent OnManaChanged;
     virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
 
 };
