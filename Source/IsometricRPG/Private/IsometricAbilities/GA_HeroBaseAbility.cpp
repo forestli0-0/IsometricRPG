@@ -51,25 +51,30 @@ void UGA_HeroBaseAbility::ActivateAbility(
           return;
       }
   }
-
-
-  float Distance = FVector::Dist(Target->GetActorLocation(), SelfActor->GetActorLocation());
-
-  if (Distance > RangeToApply)
+  auto TargetLocation = TriggerEventData->TargetData.Data[0].Get()->GetHitResult()->Location;
+  // 如果是投射物类技能，不用判断距离，因为直接从自身发射
+  if (SkillType == EHeroSkillType::Area || SkillType == EHeroSkillType::Targeted)
   {
-      // 构造失败的 gameplay event
-      FGameplayEventData FailEventData;
-      FailEventData.EventTag = FGameplayTag::RequestGameplayTag(FName("Ability.Failure.OutOfRange"));
-      FailEventData.Instigator = SelfActor;
-      FailEventData.Target = Target;
+      float Distance = FVector::Dist(TargetLocation, SelfActor->GetActorLocation());
 
-      // 通知自身 ASC
-      GetAbilitySystemComponentFromActorInfo()->HandleGameplayEvent(FailEventData.EventTag, &FailEventData);
+      if (Distance > RangeToApply)
+      {
+          // 构造失败的 gameplay event
+          FGameplayEventData FailEventData;
+          FailEventData.EventTag = FGameplayTag::RequestGameplayTag(FName("Ability.Failure.OutOfRange"));
+          FailEventData.Instigator = SelfActor;
+          FailEventData.Target = Target;
+          FailEventData.TargetData = TriggerEventData->TargetData;
 
-      CancelAbility(Handle, ActorInfo, ActivationInfo, true);
-      GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Black, TEXT("距离太远"));
-      return;
+          // 通知自身 ASC
+          GetAbilitySystemComponentFromActorInfo()->HandleGameplayEvent(FailEventData.EventTag, &FailEventData);
+
+          CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+          GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Black, TEXT("距离太远"));
+          return;
+      }
   }
+
 
   if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
   {
@@ -80,7 +85,7 @@ void UGA_HeroBaseAbility::ActivateAbility(
 
   if (bFaceTarget && ActorInfo->AvatarActor.IsValid())
   {
-      FVector Direction = (Target->GetActorLocation() - ActorInfo->AvatarActor->GetActorLocation()).GetSafeNormal();
+      FVector Direction = (TargetLocation - ActorInfo->AvatarActor->GetActorLocation()).GetSafeNormal();
       FRotator NewRotation = FRotationMatrix::MakeFromX(Direction).Rotator();
       SelfActor->SetActorRotation(NewRotation);
   }

@@ -90,15 +90,8 @@ void UActionQueueComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 	}
 	case EQueuedCommandType::UseSkill:
 	{
-		if (CurrentCommand.TargetActor->IsActorBeingDestroyed())
-		{
-			// 目标死亡，清除命令
-			ClearCommand();
-			break;
-		}
 		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Blue, TEXT("当前命令：使用技能"));
 		ExecuteSkill(CurrentCommand.AbilityEventTag, CurrentCommand.TargetLocation, CurrentCommand.TargetActor.Get());
-
 		break;
 	}
 	}
@@ -156,6 +149,7 @@ void UActionQueueComponent::OnSkillOutOfRange(const FGameplayEventData* EventDat
 	GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Yellow, TEXT("技能因距离失败，移动接近目标"));
 	//DrawDebugSphere(GetWorld(), EventData->Target.Get()->GetActorLocation(), 50.f, 12, FColor::Red, false, 19.0f, 0, 1.0f); // 可选：调试可视化);
 	UAIBlueprintHelperLibrary::SimpleMoveToActor(OwnerCharacter->GetController(), EventData->Target.Get());
+	UAIBlueprintHelperLibrary::SimpleMoveToLocation(OwnerCharacter->GetController(), EventData->TargetData.Data[0].Get()->GetHitResult()->Location);
 }
 
 void UActionQueueComponent::InitializeAbilitySlots()

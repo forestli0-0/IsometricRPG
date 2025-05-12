@@ -43,6 +43,15 @@ void UIsometricRPGAttributeSetBase::PostGameplayEffectExecute(const FGameplayEff
        // 触发生命值变化事件
        OnHealthChanged.Broadcast(this, GetHealth());
    }
+    // 处理法力值变化
+    if (Data.EvaluatedData.Attribute == GetManaAttribute())
+    {
+        float NewMana = GetMana();
+        // Clamp Mana 在 0 到 MaxMana 之间
+        SetMana(FMath::Clamp(NewMana, 0.0f, GetMaxMana()));
+        // 触发法力值变化事件
+        OnManaChanged.Broadcast(this, GetMana());
+    }
 }
 
 

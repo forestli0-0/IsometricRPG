@@ -22,10 +22,20 @@ public:
 
     // 对单个目标应用伤害的方法
     void ApplyDamageToTarget(AActor* TargetActor, float DamageMultiplier);
+
+    // 火球法力消耗值
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Cost")
+    float ManaCost = 10.f;
+
 protected:
     // 重写投射物攻击方法
     virtual void ExecuteProjectile() override;
     FGameplayAbilityTargetData* GetCurrentAbilityTargetData() const;
+    // 技能冷却
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Cooldown")
+	float ThisCooldownDuration = 1.0f;
+    // 技能消耗
+    
     // 火球投射物类
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Projectile")
     TSubclassOf<class AProjectile_Fireball> ProjectileClass;
@@ -50,9 +60,9 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Projectile")
     float ProjectileSpeed = 1000.0f;
 
-    // 火球特效
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Effects")
-    UParticleSystem* FireballEffect;
+    // 火球飞行距离
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Projectile")
+    float ProjectileFlyDistance = 2000.0f;
 
     // 火球爆炸特效
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Effects")
@@ -65,4 +75,10 @@ protected:
     // 火球爆炸音效
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Sound")
     USoundBase* ExplosionSound;
+
+    // 覆盖以应用自定义法力消耗
+    virtual void ApplyCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const override;
+
+    // 覆盖以实现自定义消耗检查
+    virtual bool CheckCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, OUT FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;
 };

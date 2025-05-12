@@ -15,6 +15,8 @@ UCLASS()
 class ISOMETRICRPG_API AIsometricPlayerController : public APlayerController
 {
 	GENERATED_BODY()
+public:
+	AIsometricPlayerController();
 
 protected:
 	virtual void BeginPlay() override;

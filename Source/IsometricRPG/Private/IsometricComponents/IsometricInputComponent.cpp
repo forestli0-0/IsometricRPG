@@ -218,10 +218,7 @@ void UIsometricInputComponent::ProcessInputCommand(const FInputCommand& Command)
 
     case EInputCommandType::UseSkill:
     {
-        if (Command.TargetActor.IsValid())
-        {
             ActionQueue->SetCommand_UseSkill(Command.AbilityTag, Command.TargetLocation, Command.TargetActor.Get());
-        }
     }
     break;
 

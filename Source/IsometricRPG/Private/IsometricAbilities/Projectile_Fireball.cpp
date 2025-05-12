@@ -56,7 +56,7 @@ AProjectile_Fireball::AProjectile_Fireball()
     ProjectileMovement->ProjectileGravityScale = 0.0f;
 
     // 3秒后自动销毁
-    InitialLifeSpan = 3.0f;
+    //InitialLifeSpan = 10.0f;
 
     // 默认值
     SplashRadius = 200.0f;
@@ -81,6 +81,13 @@ void AProjectile_Fireball::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	//DrawDebugSphere(GetWorld(), GetActorLocation(), 15.f, 12, FColor::Red, false, -1.0f, 0, 1.0f); // 可选：调试可视化
+	UE_LOG(LogTemp, Warning, TEXT("Projectile_Fireball Tick: Actor %s, Current LifeSpan: %f, InitialLifeSpan set in C++ by Ability: %f"), *GetName(), GetLifeSpan(), InitialLifeSpan);
+}
+
+void AProjectile_Fireball::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+	UE_LOG(LogTemp, Warning, TEXT("Projectile_Fireball %s EndPlay called. Reason: %s"), *GetName(), *UEnum::GetValueAsString(EndPlayReason));
 }
 
 void AProjectile_Fireball::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
