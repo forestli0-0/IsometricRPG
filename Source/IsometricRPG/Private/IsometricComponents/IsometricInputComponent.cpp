@@ -43,146 +43,100 @@ void UIsometricInputComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 
 void UIsometricInputComponent::SetupInput(UEnhancedInputComponent* InputComponent, APlayerController* PlayerController)
 {
-	if (!MappingContext || !MoveAction) return;
+	if (!MappingContext) return;
 
 	// 添加映射上下文
 	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
 	{
 		Subsystem->AddMappingContext(MappingContext, 0);
 	}
-
-	// 绑定输入
-	InputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &UIsometricInputComponent::Move);
 }
 
-void UIsometricInputComponent::Move(const FInputActionValue& Value)
+void UIsometricInputComponent::HandleLeftClick()
 {
-
-    FVector2D Input = Value.Get<FVector2D>();
-    if (Input.IsNearlyZero()) return;
-
-    // 获取宿主角色
-    ACharacter* OwnerChar = Cast<ACharacter>(GetOwner());
-    if (!OwnerChar) return;
-    // 取消当前的鼠标命令
-    auto OwnerAQC = OwnerChar->FindComponentByClass<UActionQueueComponent>();
-	if (OwnerAQC)
-	{
-        OwnerAQC->ClearCommand();
-        AController* Controller = OwnerChar->GetController();
-        if (Controller)
-        {
-            Controller->StopMovement();
-        }
-        if (USkeletalMeshComponent* Mesh = OwnerChar->GetMesh())
-        {
-            if (UAnimInstance* AnimInstance = Mesh->GetAnimInstance())
-            {
-                AnimInstance->Montage_Stop(0.1f); // 0.2秒的混合时间，可以根据需要调整  
-            }
-        }
-	}
-    // 设置控制器旋转而不是直接旋转角色
-    // 这会间接触发CharacterMovement的bOrientRotationToMovement
-    FRotator YawRotation(0, OwnerChar->GetControlRotation().Yaw, 0);
-    const FVector Forward = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-    const FVector Right = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
-
-    // 计算移动方向
-    FVector MoveDirection = Forward * Input.Y + Right * Input.X;
-
-    // 正常化并应用移动输入
-    if (!MoveDirection.IsNearlyZero())
-    {
-        MoveDirection.Normalize();
-        OwnerChar->AddMovementInput(MoveDirection);
-    }
-}
-
-
- // Add this include to resolve the AIBlueprintHelperLibrary reference
-
-
-
-void UIsometricInputComponent::HandleClick()
-{
-    FHitResult Hit;
     ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
     if (!OwnerCharacter) return;
-
     APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
     if (!PC) return;
 
+    FHitResult Hit;
     PC->GetHitResultUnderCursor(ECC_Visibility, true, Hit);
+    AActor* HitActor = Hit.GetActor();
 
+    if (CurrentSelectedSkillIndex >= 0 && SkillMappings.Contains(CurrentSelectedSkillIndex))
+    {
+        // 已选择技能，左键释放技能
+        FInputCommand Command;
+        Command.CommandType = EInputCommandType::UseSkill;
+        Command.SkillIndex = CurrentSelectedSkillIndex;
+        Command.TargetLocation = Hit.ImpactPoint;
+        Command.TargetActor = HitActor;
+        if (const FGameplayTag* FoundTag = SkillMappings.Find(Command.SkillIndex))
+        {
+            Command.AbilityTag = *FoundTag;
+        }
+        CurrentSelectedSkillIndex = -1;
+        // 技能释放后清除目标选中
+        CurrentSelectedTarget = nullptr;
+        OnTargetCleared();
+        ProcessInputCommand(Command);
+        return;
+    }
+
+    // 未选择技能，左键只做目标选中
+    if (HitActor && HitActor != OwnerCharacter)
+    {
+        CurrentSelectedTarget = HitActor;
+        OnTargetSelected(HitActor); // 通知UI
+    }
+    else
+    {
+        // 没有选中目标，清除
+        CurrentSelectedTarget = nullptr;
+        OnTargetCleared();
+    }
+}
+
+void UIsometricInputComponent::HandleRightClick()
+{
+    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+    if (!OwnerCharacter) return;
+    APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
+    if (!PC) return;
+
+    FHitResult Hit;
+    PC->GetHitResultUnderCursor(ECC_Visibility, true, Hit);
+    AActor* HitActor = Hit.GetActor();
+
+    // 右键点敌人：普通攻击
+    if (HitActor && HitActor->ActorHasTag("Enemy"))
+    {
+        FInputCommand Command;
+        Command.CommandType = EInputCommandType::BasicAttack;
+        Command.TargetActor = HitActor;
+        Command.TargetLocation = Hit.ImpactPoint;
+        Command.SkillIndex = 0;
+        if (const FGameplayTag* FoundTag = SkillMappings.Find(Command.SkillIndex))
+        {
+            Command.AbilityTag = *FoundTag;
+        }
+        // 清除目标和技能选择
+        CurrentSelectedTarget = nullptr;
+        CurrentSelectedSkillIndex = -1;
+        OnTargetCleared();
+        ProcessInputCommand(Command);
+        return;
+    }
+    // 右键点地面：移动
     if (Hit.bBlockingHit)
     {
-        AActor* HitActor = Hit.GetActor();
         FInputCommand Command;
-
-        // 如果已选择了技能且点击了有效目标
-        if (CurrentSelectedSkillIndex > 0)
-        {
-            // 如果选择了敌人作为目标
-			if (HitActor && HitActor->ActorHasTag("Enemy"))
-			{
-				// 设置为技能命令
-				Command.CommandType = EInputCommandType::UseSkill;
-				Command.SkillIndex = CurrentSelectedSkillIndex;
-				Command.TargetLocation = Hit.ImpactPoint;
-				Command.TargetActor = HitActor;
-				// 使用后清除当前选择的技能
-				CurrentSelectedSkillIndex = -1;
-				// 查找对应的技能标签
-				if (const FGameplayTag* FoundTag = SkillMappings.Find(Command.SkillIndex))
-				{
-					Command.AbilityTag = *FoundTag;
-					UE_LOG(LogTemp, Warning, TEXT("使用技能 %d, %s"), Command.SkillIndex, *Command.AbilityTag.GetTagName().ToString());
-				}
-			}
-			else
-			{
-				// 如果点击了地面或其他无效目标
-                // 向目标位置发射技能
-				Command.CommandType = EInputCommandType::UseSkill;
-				Command.SkillIndex = CurrentSelectedSkillIndex;
-				Command.TargetLocation = Hit.ImpactPoint;
-				Command.TargetActor = nullptr; // 没有目标Actor
-				// 使用后清除当前选择的技能
-				CurrentSelectedSkillIndex = -1;
-				// 查找对应的技能标签
-				if (const FGameplayTag* FoundTag = SkillMappings.Find(Command.SkillIndex))
-				{
-					Command.AbilityTag = *FoundTag;
-					UE_LOG(LogTemp, Warning, TEXT("使用技能 %d, %s"), Command.SkillIndex, *Command.AbilityTag.GetTagName().ToString());
-				}
-			}
-        }
-        else if (HitActor && HitActor->ActorHasTag("Enemy"))
-        {
-            // 如果点击的是敌人，设置为普通攻击命令
-            CurrentSelectedSkillIndex = 0;
-            Command.CommandType = EInputCommandType::BasicAttack;
-            Command.TargetActor = HitActor;
-            Command.TargetLocation = Hit.ImpactPoint;
-            Command.SkillIndex = CurrentSelectedSkillIndex;
-            CurrentSelectedSkillIndex = -1;
-            // 查找对应的技能标签
-            if (const FGameplayTag* FoundTag = SkillMappings.Find(Command.SkillIndex))
-            {
-                Command.AbilityTag = *FoundTag;
-
-                UE_LOG(LogTemp, Warning, TEXT("使用普攻 %d, %s"), Command.SkillIndex, *Command.AbilityTag.GetTagName().ToString());
-            }
-        }
-        else
-        {
-            // 否则设置为移动命令
-            Command.CommandType = EInputCommandType::Movement;
-            Command.TargetLocation = Hit.ImpactPoint;
-        }
-
-        // 处理命令
+        Command.CommandType = EInputCommandType::Movement;
+        Command.TargetLocation = Hit.ImpactPoint;
+        // 清除目标和技能选择
+        CurrentSelectedTarget = nullptr;
+        CurrentSelectedSkillIndex = -1;
+        OnTargetCleared();
         ProcessInputCommand(Command);
     }
 }
@@ -255,5 +209,6 @@ FVector UIsometricInputComponent::GetLocationUnderCursor() const
 
     return Hit.ImpactPoint;
 }
+
 
 

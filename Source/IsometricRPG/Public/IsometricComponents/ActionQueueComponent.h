@@ -75,6 +75,7 @@ public:
 	void ClearCommand();
 
 	void OnSkillOutOfRange(const FGameplayEventData* EventData);
+    void OnSkillCostFailed(const struct FGameplayEventData* EventData);
 public:
 	UPROPERTY(EditDefaultsOnly, Category = "Combat")
 	bool bAttackInProgress = false;

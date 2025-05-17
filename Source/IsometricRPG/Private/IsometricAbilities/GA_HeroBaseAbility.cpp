@@ -2,6 +2,7 @@
 
 
 #include "IsometricAbilities/GA_HeroBaseAbility.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h" 
 #include "AbilitySystemComponent.h"
 #include "Character/IsometricRPGAttributeSetBase.h"
@@ -50,10 +51,41 @@ void UGA_HeroBaseAbility::ActivateAbility(
           UE_LOG(LogTemp, Error, TEXT("TriggerEventData is null in ActivateAbility."));
           return;
       }
+	  // 如果目标是pawn，需要判断是否在施法范围内
+	  float Distance = FVector::Dist(Target->GetActorLocation(), SelfActor->GetActorLocation());
+    //   DrawDebugSphere(GetWorld(), Target->GetActorLocation(), RangeToApply, 12, FColor::Red, false, 5.f);
+	  if (Distance > RangeToApply)
+	  {
+		  // 构造失败的 gameplay event
+		  FGameplayEventData FailEventData;
+		  FailEventData.EventTag = FGameplayTag::RequestGameplayTag(FName("Ability.Failure.OutOfRange"));
+		  FailEventData.Instigator = SelfActor;
+		  FailEventData.Target = Target;
+		  FailEventData.TargetData = TriggerEventData->TargetData;
+		  // 通知自身 ASC
+		  GetAbilitySystemComponentFromActorInfo()->HandleGameplayEvent(FailEventData.EventTag, &FailEventData);
+		  CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+		  GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Black, TEXT("目标距离太远----来自技能内部"));
+		  return;
+	  }
+      else
+      {
+          // 在范围内应该强制停止移动
+            APawn* SelfPawn = Cast<APawn>(SelfActor);
+            if (SelfPawn)
+            {
+                // 停止移动
+                UPawnMovementComponent* MovementComponent = SelfPawn->GetMovementComponent();
+                if (MovementComponent)
+                {
+                    /*MovementComponent->StopMovementImmediately();*/
+                }
+            }
+      }
   }
   auto TargetLocation = TriggerEventData->TargetData.Data[0].Get()->GetHitResult()->Location;
-  // 如果是投射物类技能，不用判断距离，因为直接从自身发射
-  if (SkillType == EHeroSkillType::Area || SkillType == EHeroSkillType::Targeted)
+  // 如果是范围技能，只需要目标位置即可，即使点击的是pawn，也不用pawn的位置
+  if (SkillType == EHeroSkillType::Area)
   {
       float Distance = FVector::Dist(TargetLocation, SelfActor->GetActorLocation());
 
@@ -70,11 +102,10 @@ void UGA_HeroBaseAbility::ActivateAbility(
           GetAbilitySystemComponentFromActorInfo()->HandleGameplayEvent(FailEventData.EventTag, &FailEventData);
 
           CancelAbility(Handle, ActorInfo, ActivationInfo, true);
-          GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Black, TEXT("距离太远"));
+          GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Black, TEXT("施放目的点距离太远"));
           return;
       }
   }
-
 
   if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
   {
@@ -85,6 +116,7 @@ void UGA_HeroBaseAbility::ActivateAbility(
 
   if (bFaceTarget && ActorInfo->AvatarActor.IsValid())
   {
+      // TODO：按照英雄联盟来说，每个技能都应该转身，且转身速度应该与施法速度一致
       FVector Direction = (TargetLocation - ActorInfo->AvatarActor->GetActorLocation()).GetSafeNormal();
       FRotator NewRotation = FRotationMatrix::MakeFromX(Direction).Rotator();
       SelfActor->SetActorRotation(NewRotation);
