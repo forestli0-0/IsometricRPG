@@ -24,7 +24,7 @@ public:
     float CameraDistance = 1200.0f; // 摄像机与目标的距离
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera")
-    FRotator CameraAngle = FRotator(-55.0f, 0.0f, 0.0f); // 摄像机的固定角度 (俯视)
+    FRotator CameraAngle = FRotator(-45.0f, 0.0f, 0.0f); // 摄像机的固定角度 (俯视)
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera")
     float CameraLagSpeed = 3.0f; // 摄像机跟随的平滑速度，降低可以减少抖动

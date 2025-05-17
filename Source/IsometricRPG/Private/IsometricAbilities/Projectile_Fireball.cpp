@@ -81,7 +81,7 @@ void AProjectile_Fireball::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	//DrawDebugSphere(GetWorld(), GetActorLocation(), 15.f, 12, FColor::Red, false, -1.0f, 0, 1.0f); // 可选：调试可视化
-	UE_LOG(LogTemp, Warning, TEXT("Projectile_Fireball Tick: Actor %s, Current LifeSpan: %f, InitialLifeSpan set in C++ by Ability: %f"), *GetName(), GetLifeSpan(), InitialLifeSpan);
+	//UE_LOG(LogTemp, Warning, TEXT("Projectile_Fireball Tick: Actor %s, Current LifeSpan: %f, InitialLifeSpan set in C++ by Ability: %f"), *GetName(), GetLifeSpan(), InitialLifeSpan);
 }
 
 void AProjectile_Fireball::EndPlay(const EEndPlayReason::Type EndPlayReason)

@@ -138,7 +138,13 @@ UGA_FireballAbility::UGA_FireballAbility()
 
 // 实现 ApplyCost 方法以应用自定义法力消耗
 void UGA_FireballAbility::ApplyCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const
-{
+{    // 检查蓝是否足够
+    if (AttributeSet && AttributeSet->GetMana() < ManaCost)
+    {
+        // 蓝不足时，不应用消耗GE，也不调用父类
+        UE_LOG(LogTemp, Warning, TEXT("UGA_FireballAbility::ApplyCost - Not enough mana, skipping cost application."));
+        return;
+    }
     if (CostGameplayEffectClass)
     {
         if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
@@ -192,8 +198,6 @@ bool UGA_FireballAbility::CheckCost(const FGameplayAbilitySpecHandle Handle, con
     const UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
     
     // 获取自定义属性集
-    // 注意：这是一个const方法，我们不能修改成员变量this->AttributeSet（如果它是通过其他方式设置的）
-    // 我们需要获取一个本地的const指针
     const UIsometricRPGAttributeSetBase* MyAttributeSet = Cast<const UIsometricRPGAttributeSetBase>(ASC->GetAttributeSet(UIsometricRPGAttributeSetBase::StaticClass()));
 
     if (!MyAttributeSet)
@@ -220,6 +224,16 @@ bool UGA_FireballAbility::CheckCost(const FGameplayAbilitySpecHandle Handle, con
             // 添加一个通用的消耗失败标签和更具体的法力不足标签
             OptionalRelevantTags->AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Failed.Cost")));
             OptionalRelevantTags->AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Failed.NotEnoughMana")));
+        }
+        // 主动触发事件，通知ASC和动作队列（ActionQueueComponent）
+        FGameplayEventData FailEventData;
+        FailEventData.EventTag = FGameplayTag::RequestGameplayTag(FName("Ability.Failed.Cost"));
+        FailEventData.Instigator = GetAvatarActorFromActorInfo();
+        FailEventData.Target = GetAvatarActorFromActorInfo();
+        UAbilitySystemComponent* MyASC = GetAbilitySystemComponentFromActorInfo();
+        if (MyASC)
+        {
+            MyASC->HandleGameplayEvent(FailEventData.EventTag, &FailEventData);
         }
         UE_LOG(LogTemp, Log, TEXT("%s CheckCost failed due to insufficient mana. Required: %.2f, Current: %.2f"), *GetName(), ManaCost, CurrentMana);
         return false;

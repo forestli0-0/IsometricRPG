@@ -32,32 +32,41 @@ void AIsometricPlayerController::SetupInputComponent()
 
 	if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(InputComponent))
 	{
-		EIC->BindAction(ClickAction, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleClickInput);
-
+		EIC->BindAction(Action_LeftClick, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleLeftClickInput);
+		EIC->BindAction(Action_RightClick, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleRightClickInput);
 		// 绑定技能按键
 		EIC->BindAction(Action_Q, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 1);
-		EIC->BindAction(Action_E, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 2);
-		EIC->BindAction(Action_R, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 3);
-		EIC->BindAction(Action_C, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 4);
+		EIC->BindAction(Action_W, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 2);
+		EIC->BindAction(Action_E, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 3);
+		EIC->BindAction(Action_R, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 4);
 		EIC->BindAction(Action_Summoner1, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 5);
 		EIC->BindAction(Action_Summoner2, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 6);
 	}
 }
 
-void AIsometricPlayerController::HandleClickInput(const FInputActionValue& Value)
+void AIsometricPlayerController::HandleRightClickInput(const FInputActionValue& Value)
 {
 	// 找到控制的角色
 	if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
 	{
 		if (UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>())
 		{
-			InputComp->HandleClick(); // 交给组件做
+			InputComp->HandleRightClick(); // 交给组件做
 		}
 
 	}
-
 }
-
+void AIsometricPlayerController::HandleLeftClickInput(const FInputActionValue& Value)
+{
+	// 找到控制的角色
+	if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
+	{
+		if (UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>())
+		{
+			InputComp->HandleLeftClick(); // 交给组件做
+		}
+	}
+}
 void AIsometricPlayerController::SetTargetActor(AActor* NewTargetActor)
 {
 	TargetActor = NewTargetActor;

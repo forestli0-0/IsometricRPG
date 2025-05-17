@@ -25,6 +25,13 @@ void UActionQueueComponent::BeginPlay()
 	ASC->GenericGameplayEventCallbacks.FindOrAdd(
 		FGameplayTag::RequestGameplayTag(FName("Ability.Failure.OutOfRange"))
 	).AddUObject(this, &UActionQueueComponent::OnSkillOutOfRange);
+    // 监听技能消耗失败（如蓝不足）
+    ASC->GenericGameplayEventCallbacks.FindOrAdd(
+        FGameplayTag::RequestGameplayTag(FName("Ability.Failed.Cost"))
+    ).AddUObject(this, &UActionQueueComponent::OnSkillCostFailed);
+    //ASC->GenericGameplayEventCallbacks.FindOrAdd(
+    //    FGameplayTag::RequestGameplayTag(FName("Ability.Failed.NotEnoughMana"))
+    //).AddUObject(this, &UActionQueueComponent::OnSkillCostFailed);
 }
 
 void UActionQueueComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -32,7 +39,7 @@ void UActionQueueComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	if (!OwnerCharacter || CurrentCommand.Type == EQueuedCommandType::None) return;
-    GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Magenta, FString::Printf(TEXT("当前命令：%s"), *UEnum::GetValueAsString(CurrentCommand.Type)));
+    GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Magenta, FString::Printf(TEXT("动作队列当前命令：%s"), *UEnum::GetValueAsString(CurrentCommand.Type)));
 	switch (CurrentCommand.Type)
 	{
 	case EQueuedCommandType::MoveToLocation:
@@ -90,7 +97,6 @@ void UActionQueueComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 	}
 	case EQueuedCommandType::UseSkill:
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Blue, TEXT("当前命令：使用技能"));
 		ExecuteSkill(CurrentCommand.AbilityEventTag, CurrentCommand.TargetLocation, CurrentCommand.TargetActor.Get());
 		break;
 	}
@@ -146,10 +152,15 @@ void UActionQueueComponent::ClearCommand()
 
 void UActionQueueComponent::OnSkillOutOfRange(const FGameplayEventData* EventData)
 {
-	GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Yellow, TEXT("技能因距离失败，移动接近目标"));
-	//DrawDebugSphere(GetWorld(), EventData->Target.Get()->GetActorLocation(), 50.f, 12, FColor::Red, false, 19.0f, 0, 1.0f); // 可选：调试可视化);
-	UAIBlueprintHelperLibrary::SimpleMoveToActor(OwnerCharacter->GetController(), EventData->Target.Get());
-	UAIBlueprintHelperLibrary::SimpleMoveToLocation(OwnerCharacter->GetController(), EventData->TargetData.Data[0].Get()->GetHitResult()->Location);
+	GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Yellow, TEXT("技能因距离失败，移动接近目标，来自动作组件"));
+	if (IsValid(EventData->Target.Get()))
+	{
+		UAIBlueprintHelperLibrary::SimpleMoveToActor(OwnerCharacter->GetController(), EventData->Target.Get());
+	}
+	else if (EventData->TargetData.Num() > 0 && EventData->TargetData.Data[0].IsValid())
+	{
+		UAIBlueprintHelperLibrary::SimpleMoveToLocation(OwnerCharacter->GetController(), EventData->TargetData.Data[0]->GetHitResult()->Location);
+	}
 }
 
 void UActionQueueComponent::InitializeAbilitySlots()
@@ -185,6 +196,13 @@ void UActionQueueComponent::ExecuteSkill(const FGameplayTag& AbilityTag, const F
     FGameplayAbilityTargetDataHandle TargetDataHandle = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(FHitResult(TargetActor, nullptr, TargetLocation, FVector::ZeroVector));  
     EventData.TargetData = TargetDataHandle;
 	ASC->HandleGameplayEvent(CurrentCommand.AbilityEventTag, &EventData);
+}
+
+void UActionQueueComponent::OnSkillCostFailed(const FGameplayEventData* EventData)
+{
+    GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Red, TEXT("技能释放失败：法力不足或消耗不足！"));
+	ClearCommand();
+	// 这里可以添加其他处理逻辑，比如播放提示音效、UI提示等
 }
 
 

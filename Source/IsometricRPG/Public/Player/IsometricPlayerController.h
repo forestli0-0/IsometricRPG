@@ -26,24 +26,29 @@ protected:
 	UInputMappingContext* ClickMappingContext;
 
 	UPROPERTY(EditDefaultsOnly)
-	UInputAction* ClickAction;
+	UInputAction* Action_LeftClick;
+	UPROPERTY(EditDefaultsOnly)
+	UInputAction* Action_RightClick;
 	UPROPERTY(EditDefaultsOnly)
 	UInputAction* Action_Q;
+	UPROPERTY(EditDefaultsOnly)
+	UInputAction* Action_W;
 	UPROPERTY(EditDefaultsOnly)
 	UInputAction* Action_E;
 	UPROPERTY(EditDefaultsOnly)
 	UInputAction* Action_R;
 	UPROPERTY(EditDefaultsOnly)
-	UInputAction* Action_C;
-	UPROPERTY(EditDefaultsOnly)
 	UInputAction* Action_Summoner1;
 	UPROPERTY(EditDefaultsOnly)
 	UInputAction* Action_Summoner2;
-
+	// 处理鼠标左键点击: 选择目标，可以是敌人也可以是友方
 	UFUNCTION()
-	void HandleClickInput(const FInputActionValue& Value);
-protected:
+	void HandleLeftClickInput(const FInputActionValue& Value);
+	// 处理鼠标右键点击: 移动或者攻击目标
+	UFUNCTION()
+	void HandleRightClickInput(const FInputActionValue& Value);
 
+protected:
 	// 处理技能输入
 	UFUNCTION()
 	void HandleSkillInput(const FInputActionInstance& Instance, int SkillIndex);

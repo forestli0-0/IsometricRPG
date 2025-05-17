@@ -58,8 +58,10 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 public:
 	void SetupInput(class UEnhancedInputComponent* InputComponent, class APlayerController* PlayerController);
-	// 处理点击事件
-	void HandleClick();
+	// 处理左键点击事件
+	void HandleLeftClick();
+	// 处理右键点击事件
+	void HandleRightClick();
 	// 处理技能输入事件(1-9号键)
 	void HandleSkillInput(int32 SkillIndex);
 
@@ -71,22 +73,26 @@ public:
 
 	// 获取鼠标下的位置
 	FVector GetLocationUnderCursor() const;
-protected:
-	// 第一次构建输入系统时，采用的WASD移动，暂时保留。
-	void Move(const FInputActionValue& Value);
+
 public:
 	// 输入映射上下文
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	UInputMappingContext* MappingContext;
-	// 输入动作
-	UPROPERTY(EditDefaultsOnly, Category = "Input")
-	UInputAction* MoveAction;
 	
 private:
 	// 当前选择的技能索引
 	int32 CurrentSelectedSkillIndex = -1;
 
+	// 当前选中目标（LOL式左键选中目标）
+	TWeakObjectPtr<AActor> CurrentSelectedTarget;
+
 	// 技能映射 - 可以在编辑器中设置
 	UPROPERTY(EditDefaultsOnly, Category = "Input|Skills")
 	TMap<int32, FGameplayTag> SkillMappings;
+public:
+	// 通知UI显示目标信息（可用事件或回调，具体实现可在蓝图或外部绑定）
+	UFUNCTION(BlueprintImplementableEvent, Category = "UI")
+	void OnTargetSelected(AActor* Target);
+	UFUNCTION(BlueprintImplementableEvent, Category = "UI")
+	void OnTargetCleared();
 };
