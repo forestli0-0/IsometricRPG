@@ -11,7 +11,6 @@
 #include "Character/IsometricRPGAttributeSetBase.h"
 UGA_HeroMeleeAttackAbility::UGA_HeroMeleeAttackAbility()
 {
-    SkillType = EHeroSkillType::Targeted;
     NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
     InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
     // 初始化攻击蒙太奇路径
@@ -52,18 +51,27 @@ UGA_HeroMeleeAttackAbility::UGA_HeroMeleeAttackAbility()
     }
 }
 
-void UGA_HeroMeleeAttackAbility::ExecuteTargeted()
+void UGA_HeroMeleeAttackAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
   // 打印调试信息
   UE_LOG(LogTemp, Warning, TEXT("使用普攻技能"));
 
+  // 必须先调用父类方法，确保角色正确朝向目标
+  Super::ExecuteSkill(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+
   AActor* OwnerActor = GetAvatarActorFromActorInfo();
   if (!OwnerActor) return;
 
-  // 定义 ActorInfo 和 ActivationInfo
-  const FGameplayAbilityActorInfo* ActorInfo = GetCurrentActorInfo();
-  const FGameplayAbilityActivationInfo ActivationInfo = GetCurrentActivationInfo();
-  FGameplayAbilitySpecHandle Handle = GetCurrentAbilitySpecHandle();
+  // 通过TriggerEventData获取目标，再次确认朝向正确
+  if (TriggerEventData && IsValid(TriggerEventData->Target))
+  {
+    AActor* TargetActor = const_cast<AActor*>(TriggerEventData->Target.Get());
+    
+    // 打印目标和自身位置，用于调试
+    UE_LOG(LogTemp, Verbose, TEXT("攻击目标位置: %s, 自身位置: %s"), 
+      *TargetActor->GetActorLocation().ToString(), 
+      *OwnerActor->GetActorLocation().ToString());
+  }
 
   // 应用冷却效果
   if (CooldownGameplayEffectClass)
@@ -87,6 +95,13 @@ void UGA_HeroMeleeAttackAbility::ExecuteTargeted()
           UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
           ASC->ApplyGameplayEffectSpecToSelf(GESpec);
       }
+  }
+  
+  // 注意：此处不需要自己结束技能，因为我们使用了蒙太奇，让蒙太奇完成时自动结束技能
+  // 如果这是一个即时技能(没有蒙太奇)，则需要手动结束
+  if (!MontageToPlay)
+  {
+    EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
   }
 }
 

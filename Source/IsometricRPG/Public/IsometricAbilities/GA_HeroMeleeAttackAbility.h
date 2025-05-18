@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "IsometricAbilities/GA_HeroBaseAbility.h"
+#include "IsometricAbilities/GA_TargetedAbility.h"
 #include "GA_HeroMeleeAttackAbility.generated.h"
 
 class UIsometricRPGAttributeSetBase;
@@ -11,12 +11,12 @@ class UIsometricRPGAttributeSetBase;
  * 
  */
 UCLASS()
-class ISOMETRICRPG_API UGA_HeroMeleeAttackAbility : public UGA_HeroBaseAbility
+class ISOMETRICRPG_API UGA_HeroMeleeAttackAbility : public UGA_TargetedAbility
 {
 	GENERATED_BODY()
 public:
 	UGA_HeroMeleeAttackAbility();
 protected:
 	// 重写目标型攻击
-	virtual void ExecuteTargeted() override;
+	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
 };

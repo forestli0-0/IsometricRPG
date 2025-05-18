@@ -29,7 +29,8 @@ public:
 
 protected:
     // 重写投射物攻击方法
-    virtual void ExecuteProjectile() override;
+    virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
+
     FGameplayAbilityTargetData* GetCurrentAbilityTargetData() const;
     // 技能冷却
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Cooldown")
