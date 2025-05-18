@@ -26,8 +26,6 @@
 
 UGA_FireballAbility::UGA_FireballAbility()
 {
-    // 设置技能类型为投射物
-    SkillType = EHeroSkillType::Projectile;
 
     // 设置技能CD
     CooldownDuration = 8.0f;
@@ -123,7 +121,7 @@ UGA_FireballAbility::UGA_FireballAbility()
     }
 	CooldownDuration = ThisCooldownDuration; // 设置冷却时间
 	// 设置技能消耗效果类
-    static ConstructorHelpers::FClassFinder<UGameplayEffect> CostEffectObj(TEXT("/Game/Blueprint/GameEffects/GE_FireballManaCost"));
+    static ConstructorHelpers::FClassFinder<UGameplayEffect> CostEffectObj(TEXT("/Game/Blueprint/GameEffects/GE_ManaCost"));
     if (CostEffectObj.Succeeded())
     {
         CostGameplayEffectClass = CostEffectObj.Class;
@@ -176,6 +174,24 @@ void UGA_FireballAbility::ApplyCost(const FGameplayAbilitySpecHandle Handle, con
     {
         UE_LOG(LogTemp, Warning, TEXT("UGA_FireballAbility::ApplyCost - CostGameplayEffectClass is not set. Calling Super::ApplyCost."));
         Super::ApplyCost(Handle, ActorInfo, ActivationInfo); // 如果没有指定消耗GE，则调用基类实现
+    }
+    // 应用冷却效果
+    if (CooldownGameplayEffectClass)
+    {
+        FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CooldownGameplayEffectClass, GetAbilityLevel());
+        if (SpecHandle.Data.IsValid())
+        {
+            FGameplayEffectSpec& GESpec = *SpecHandle.Data.Get();
+
+            // 获取你在 GE 中配置的 Data Tag
+            FGameplayTag CooldownDurationTag = FGameplayTag::RequestGameplayTag(TEXT("Data.Cooldown.Duration"));
+
+            // 设置 Set by Caller 的值
+            GESpec.SetSetByCallerMagnitude(CooldownDurationTag, CooldownDuration);
+
+            UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
+            ASC->ApplyGameplayEffectSpecToSelf(GESpec);
+        }
     }
 }
 
@@ -243,26 +259,9 @@ bool UGA_FireballAbility::CheckCost(const FGameplayAbilitySpecHandle Handle, con
     return true;
 }
 
-void UGA_FireballAbility::ExecuteProjectile()
+void UGA_FireballAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
-    // 应用冷却效果
-    if (CooldownGameplayEffectClass)
-    {
-        FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CooldownGameplayEffectClass, GetAbilityLevel());
-        if (SpecHandle.Data.IsValid())
-        {
-            FGameplayEffectSpec& GESpec = *SpecHandle.Data.Get();
 
-            // 获取你在 GE 中配置的 Data Tag
-            FGameplayTag CooldownDurationTag = FGameplayTag::RequestGameplayTag(TEXT("Data.Cooldown.Duration"));
-
-            // 设置 Set by Caller 的值
-            GESpec.SetSetByCallerMagnitude(CooldownDurationTag, CooldownDuration);
-
-            UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
-            ASC->ApplyGameplayEffectSpecToSelf(GESpec);
-        }
-    }
     // 获取施法者和目标位置
     AActor* SourceActor = GetAvatarActorFromActorInfo();
     if (!SourceActor)
@@ -279,7 +278,6 @@ void UGA_FireballAbility::ExecuteProjectile()
     FVector TargetLocation;
 
     // 从 TriggerEventData 中获取目标位置
-    const FGameplayAbilityActorInfo* ActorInfo = GetCurrentActorInfo();
     if (!ActorInfo)
         return;
 
