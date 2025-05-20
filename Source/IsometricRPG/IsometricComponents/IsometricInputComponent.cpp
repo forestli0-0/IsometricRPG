@@ -10,7 +10,7 @@
 #include "Character/IsometricRPGCharacter.h"
 #include "AIController.h"
 #include "Blueprint/AIBlueprintHelperLibrary.h"
-#include "IsometricAbilities/RPGGameplayAbility_Attack.h"
+#include "IsometricAbilities/GameplayAbilities/RPGGameplayAbility_Attack.h"
 #include <Player/IsometricPlayerController.h>
 #include <AbilitySystemBlueprintLibrary.h>
 #include "GameplayTagContainer.h"

@@ -3,7 +3,7 @@
 
 #include "Character/IsometricRPGAttributeSetBase.h"
 #include "GameplayEffectExtension.h"
-#include "IsometricAbilities/GA_Death.h"
+#include "IsometricAbilities/GameplayAbilities/GA_Death.h"
 UIsometricRPGAttributeSetBase::UIsometricRPGAttributeSetBase()
 {
     //Health.SetBaseValue(100.0f);  // 设置基础生命值为 100.0

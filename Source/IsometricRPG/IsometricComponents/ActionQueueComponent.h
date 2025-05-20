@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
-#include "IsometricAbilities/HeroAbilityTypes.h"
+#include "IsometricAbilities/Types/HeroAbilityTypes.h"
 #include "ActionQueueComponent.generated.h"
 
 UENUM(BlueprintType)
