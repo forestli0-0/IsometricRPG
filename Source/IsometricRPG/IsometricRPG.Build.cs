@@ -7,8 +7,13 @@ public class IsometricRPG : ModuleRules
 	public IsometricRPG(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "GameplayAbilities", "AIModule", "NavigationSystem", "GameplayTags", "AnimationBlueprintLibrary", "GameplayTasks" });
+
+        PublicIncludePaths.AddRange(
+        	new string[] {
+                "IsometricRPG"
+        	}
+    	);
+        PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "GameplayAbilities", "AIModule", "NavigationSystem", "GameplayTags", "AnimationBlueprintLibrary", "GameplayTasks", "AnimGraphRuntime" });
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
 
