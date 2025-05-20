@@ -5,9 +5,9 @@
 #include "Components/SceneComponent.h"
 #include "AIController.h"
 #include "GameFramework/CharacterMovementComponent.h" // Add this include to resolve the identifier
-#include "IsometricAbilities/RPGGameplayAbility_Attack.h"
-#include "IsometricAbilities/GA_Death.h"
-#include "IsometricAbilities/GA_HeroMeleeAttackAbility.h"
+#include "IsometricAbilities/GameplayAbilities/RPGGameplayAbility_Attack.h"
+#include "IsometricAbilities/GameplayAbilities/GA_Death.h"
+#include "IsometricAbilities/GameplayAbilities/Melee/GA_HeroMeleeAttackAbility.h"
 #include "IsometricComponents/ActionQueueComponent.h"
 #include "AnimationBlueprintLibrary.h"
 // Sets default values
