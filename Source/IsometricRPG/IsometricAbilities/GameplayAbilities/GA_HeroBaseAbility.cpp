@@ -1,15 +1,44 @@
-// filepath: f:\Unreal Projects\IsometricRPG\Source\IsometricRPG\IsometricAbilities\GA_HeroBaseAbility.cpp
-// 在项目设置的描述页面填写您的版权声明。
-
 #include "GA_HeroBaseAbility.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h" 
 #include "AbilitySystemComponent.h"
 #include "Character/IsometricRPGAttributeSetBase.h"
+#include "Abilities/Tasks/AbilityTask_WaitTargetData.h"
+#include "GameFramework/Character.h"
+#include "Player/IsometricPlayerController.h"
+#include "Abilities/GameplayAbilityTargetActor_GroundTrace.h"
+#include "Abilities/GameplayAbilityTargetActor_SingleLineTrace.h"
+#include "AbilitySystemGlobals.h" 
 
 UGA_HeroBaseAbility::UGA_HeroBaseAbility()
 {
     InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
+    TargetActorClass = nullptr;
+    // 默认为目标指向型技能
+    AbilityType = EHeroAbilityType::Targeted;
+}
+
+
+
+bool UGA_HeroBaseAbility::RequiresTargetData_Implementation() const
+{
+    return bRequiresTargetData;
+}
+
+void UGA_HeroBaseAbility::ExecuteSkill(
+    const FGameplayAbilitySpecHandle Handle, 
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo ActivationInfo, 
+    const FGameplayEventData* TriggerEventData)
+{
+    // 基类中的默认实现 - 子类应该重写这个方法
+    UE_LOG(LogTemp, Log, TEXT("%s：已调用基本ExecuteSkill。这应该被子类覆盖."), *GetName());
+    
+    // 如果没有动画蒙太奇，则直接结束技能
+    if (!MontageToPlay)
+    {
+        EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+    }
 }
 
 void UGA_HeroBaseAbility::ActivateAbility(
@@ -18,6 +47,17 @@ void UGA_HeroBaseAbility::ActivateAbility(
     const FGameplayAbilityActivationInfo ActivationInfo,
     const FGameplayEventData* TriggerEventData)
 {
+    // 保存当前技能信息以便子类访问
+    CurrentSpecHandle = Handle;
+    CurrentActorInfo = ActorInfo;
+    CurrentActivationInfo = ActivationInfo;
+
+    if (TriggerEventData)
+    {
+        CurrentTriggerEventData = TriggerEventData;
+    }
+
+    // 获取Avatar Actor
     AActor* SelfActor = GetAvatarActorFromActorInfo();
     if (!SelfActor)
     {
@@ -26,6 +66,7 @@ void UGA_HeroBaseAbility::ActivateAbility(
         return;
     }
 
+    // 获取AbilitySystemComponent
     UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
     if (!ASC)
     {
@@ -34,6 +75,7 @@ void UGA_HeroBaseAbility::ActivateAbility(
         return;
     }
 
+    // 获取属性集
     AttributeSet = const_cast<UIsometricRPGAttributeSetBase*>(ASC->GetSet<UIsometricRPGAttributeSetBase>());
     if (!AttributeSet)
     {
@@ -42,123 +84,298 @@ void UGA_HeroBaseAbility::ActivateAbility(
         return;
     }
 
-    FGameplayTag FailureTag;
-    if (!CanActivateSkill(Handle, ActorInfo, ActivationInfo, TriggerEventData, FailureTag))
+    // 根据技能是否需要目标选择来决定执行流程
+    if (RequiresTargetData())
     {
-        if (FailureTag.IsValid())
+        // 如果需要目标选择但没有设置TargetActorClass
+        if (!TargetActorClass)
         {
-            FGameplayEventData FailEventData;
-            FailEventData.EventTag = FailureTag;
-            FailEventData.Instigator = SelfActor;
-            if (TriggerEventData)
-            {
-                FailEventData.Target = TriggerEventData->Target.Get();
-                FailEventData.TargetData = TriggerEventData->TargetData;
-            }
-            ASC->HandleGameplayEvent(FailEventData.EventTag, &FailEventData);
-            UE_LOG(LogTemp, Warning, TEXT("%s: Failed CanActivateSkill check with tag %s."), *GetName(), *FailureTag.ToString());
+            UE_LOG(LogTemp, Error, TEXT("%s: TargetActorClass is not set but skill requires target data!"), *GetName());
+            CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+            return;
         }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("%s: Failed CanActivateSkill check with no specific failure tag."), *GetName());
-        }
+        
+        // 开始目标选择
+        StartTargetSelection(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+    }
+    else
+    {
+        // 不需要目标选择，直接执行技能
+        DirectExecuteAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+    }
+}
+
+void UGA_HeroBaseAbility::StartTargetSelection(
+    const FGameplayAbilitySpecHandle Handle,
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo ActivationInfo,
+    const FGameplayEventData* TriggerEventData)
+{
+
+    if (!TargetActorClass)
+    {
+        UE_LOG(LogTemp, Error, TEXT("'%s': TargetActorClass is NOT SET! Cancelling."), *GetName()); // <-- 添加
         CancelAbility(Handle, ActorInfo, ActivationInfo, true);
         return;
     }
 
-    if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
+
+    TargetDataTask = UAbilityTask_WaitTargetData::WaitTargetData(
+        this,
+        FName("TargetData"),
+        EGameplayTargetingConfirmation::UserConfirmed,
+        TargetActorClass
+    );
+
+    if (TargetDataTask)
     {
-        UE_LOG(LogTemp, Warning, TEXT("%s: Failed to commit ability."), *GetName());
-        EndAbility(Handle, ActorInfo, ActivationInfo, true, true); // 提交失败，取消技能
-        return;
-    }    // 面向目标的逻辑 - 如有需要，可在派生类中重写或扩展
-    if (bFaceTarget && ActorInfo->AvatarActor.IsValid())
-    {
-        // 优先使用Target数据，因为它包含实际的Actor引用
-        if (TriggerEventData && IsValid(TriggerEventData->Target))
-        {
-            AActor* TargetActor = const_cast<AActor*>(TriggerEventData->Target.Get());
-            if (TargetActor)
-            {
-                // 使用目标Actor的实时位置
-                FVector TargetLocation = TargetActor->GetActorLocation();
-                FVector SelfLocation = SelfActor->GetActorLocation();
-                
-                if (TargetLocation != FVector::ZeroVector) // 确保目标位置有效
-                {
-                    // 计算朝向目标的方向
-                    FVector Direction = (TargetLocation - SelfLocation).GetSafeNormal();
-                    if (!Direction.IsZero())
-                    {
-                        // 创建朝向目标的旋转
-                        FRotator NewRotation = FRotationMatrix::MakeFromX(Direction).Rotator();
-                        // 保持水平旋转，不改变俯仰和侧倾
-                        NewRotation.Pitch = 0.0f;
-                        NewRotation.Roll = 0.0f;
-                        // 设置角色旋转
-                        SelfActor->SetActorRotation(NewRotation);
-                        
-                        UE_LOG(LogTemp, Verbose, TEXT("%s: 面向目标位置: %s"), 
-                            *GetName(), *TargetLocation.ToString());
-                    }
-                }
-            }
-        }
-        // 如果没有Target数据，尝试使用TargetData
-        else if (TriggerEventData && TriggerEventData->TargetData.Num() > 0)
-        {
-            const FGameplayAbilityTargetData* TargetData = TriggerEventData->TargetData.Data[0].Get();
-            if (TargetData)
-            {
-                FVector TargetLocation = TargetData->GetHitResult() ? FVector(TargetData->GetHitResult()->Location) : FVector(TargetData->GetEndPoint());
-                
-                if (TargetLocation != FVector::ZeroVector) // 确保目标位置有效
-                {
-                    DrawDebugSphere(GetWorld(), TargetLocation, 20.f, 12, FColor::Blue, false, 5.f);
-                    FVector Direction = (TargetLocation - ActorInfo->AvatarActor->GetActorLocation()).GetSafeNormal();
-                    FRotator NewRotation = FRotationMatrix::MakeFromX(Direction).Rotator();
-                    // 保持水平旋转
-                    NewRotation.Pitch = 0.0f;
-                    NewRotation.Roll = 0.0f;
-                    SelfActor->SetActorRotation(NewRotation);
-                    
-                    UE_LOG(LogTemp, Verbose, TEXT("%s: 使用TargetData位置面向: %s"), 
-                        *GetName(), *TargetLocation.ToString());
-                }
-            }
-        }
+
+        TargetDataTask->ValidData.AddDynamic(this, &UGA_HeroBaseAbility::OnTargetDataReady);
+        TargetDataTask->Cancelled.AddDynamic(this, &UGA_HeroBaseAbility::OnTargetingCancelled);
+
+        AGameplayAbilityTargetActor* SpawnedActor = nullptr;
+
+        TargetDataTask->BeginSpawningActor(this, TargetActorClass, SpawnedActor);
+        TargetDataTask->FinishSpawningActor(this, SpawnedActor);
+
+        TargetDataTask->ReadyForActivation();
+
     }
-
-    UAnimInstance* AnimInstance = ActorInfo->GetAnimInstance();
-    if (MontageToPlay && IsValid(AnimInstance))
+    else
     {
-        float PlayRate = CooldownDuration > 0 && MontageToPlay->GetPlayLength() > 0 ? MontageToPlay->GetPlayLength() / CooldownDuration : 1.0f;
-        PlayRate = FMath::Clamp(PlayRate, 0.1f, 5.0f); // 调整Clamp以获得更大灵活性
-        MontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
-            this, NAME_None, MontageToPlay, PlayRate);
-
-        MontageTask->OnCompleted.AddDynamic(this, &UGA_HeroBaseAbility::K2_EndAbility);
-        MontageTask->OnInterrupted.AddDynamic(this, &UGA_HeroBaseAbility::K2_EndAbility);
-        MontageTask->OnCancelled.AddDynamic(this, &UGA_HeroBaseAbility::K2_EndAbility);
-        MontageTask->ReadyForActivation();
-        // 不要在这里调用EndAbility；让Montage的回调来处理。
+        UE_LOG(LogTemp, Error, TEXT("'%s': FAILED to create TargetDataTask!"), *GetName()); // <-- 添加
+        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
     }
-
-    ExecuteSkill(Handle, ActorInfo, ActivationInfo, TriggerEventData);
-
 }
 
-// CanActivateSkill的默认实现。派生类应提供具体检查。
-bool UGA_HeroBaseAbility::CanActivateSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData, FGameplayTag& OutFailureTag)
+void UGA_HeroBaseAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data)
 {
-    // 基类实现允许激活。派生类重写以进行具体检查。
-    // 例如: if (!Target) { OutFailureTag = FGameplayTag::RequestGameplayTag(FName("Ability.Failure.NoTarget")); return false; }
+    // 保存目标数据
+    CurrentTargetDataHandle = Data;
+    
+    if (TargetDataTask)
+    {
+        TargetDataTask->EndTask();
+    }
+    TargetDataTask = nullptr;
+
+    const FGameplayAbilityActorInfo* ActorInfo = GetCurrentActorInfo();
+    FGameplayAbilitySpecHandle Handle = GetCurrentAbilitySpecHandle();
+    FGameplayAbilityActivationInfo ActivationInfo = GetCurrentActivationInfo();
+
+    OtherCheckBeforeCommit(Data);
+    UE_LOG(LogTemp, Warning, TEXT("%s: 其他检查失败，与消耗和冷却无关。"), *GetName());
+	constexpr bool bReplicateEndAbility = true;
+    constexpr bool bWasCancelled = true;
+
+    return;
+}
+bool UGA_HeroBaseAbility::OtherCheckBeforeCommit(const FGameplayAbilityTargetDataHandle& Data) const
+{
+    // 这里可以添加其他检查逻辑，例如检查目标数据的有效性等
     return true;
 }
 
-// ExecuteSkill的默认实现。派生类必须重写此方法。
-void UGA_HeroBaseAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
+bool UGA_HeroBaseAbility::OtherCheckBeforeCommit(const FGameplayEventData* TriggerEventData) const
 {
+    return true;
+}
+
+void UGA_HeroBaseAbility::PlayAbilityMontage(
+    const FGameplayAbilitySpecHandle Handle,
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo ActivationInfo)
+{
+    UAnimInstance* AnimInstance = ActorInfo->GetAnimInstance();
+    if (MontageToPlay && IsValid(AnimInstance))
+    {
+        float PlayRate = CooldownDuration > 0 && MontageToPlay->GetPlayLength() > 0 ? 
+            MontageToPlay->GetPlayLength() / CooldownDuration : 1.0f;
+        PlayRate = FMath::Clamp(PlayRate, 1.f, 5.0f);
+
+        MontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
+            this, NAME_None, MontageToPlay, PlayRate);
+
+        if (MontageTask)
+        {
+            MontageTask->OnCompleted.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageCompleted);
+            MontageTask->OnBlendOut.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageCompleted);
+            MontageTask->OnInterrupted.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageInterruptedOrCancelled);
+            MontageTask->OnCancelled.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageInterruptedOrCancelled);
+            MontageTask->ReadyForActivation();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("%s: Failed to create MontageTask."), *GetName());
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Display, TEXT("%s: No montage to play or invalid anim instance."), *GetName());
+    }
+}
+
+void UGA_HeroBaseAbility::DirectExecuteAbility(
+    const FGameplayAbilitySpecHandle Handle,
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo ActivationInfo,
+    const FGameplayEventData* TriggerEventData)
+{
+    if (!OtherCheckBeforeCommit(TriggerEventData))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s: 其他检查失败，与消耗和冷却无关。"), *GetName());
+        constexpr bool bReplicateEndAbility = true;
+        return;
+    }
+    if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s: Failed to commit ability for direct execution."), *GetName());
+        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+        return;
+    }
+    
+    // 播放技能动画
+    PlayAbilityMontage(Handle, ActorInfo, ActivationInfo);
+    
+    // 执行技能逻辑
+    ExecuteSkill(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+}
+
+void UGA_HeroBaseAbility::OnTargetingCancelled(const FGameplayAbilityTargetDataHandle& Data)
+{
+    if (TargetDataTask)
+    {
+        TargetDataTask->EndTask();
+    }
+    TargetDataTask = nullptr;
+
+    UE_LOG(LogTemp, Display, TEXT("%s: Targeting cancelled."), *GetName());
+    CancelAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(), GetCurrentActivationInfo(), true);
+}
+
+void UGA_HeroBaseAbility::HandleMontageCompleted()
+{
+    UE_LOG(LogTemp, Display, TEXT("%s: Montage completed or blended out. Ending ability."), *GetName());
+    EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(), GetCurrentActivationInfo(), true, false);
+}
+
+void UGA_HeroBaseAbility::HandleMontageInterruptedOrCancelled()
+{
+    UE_LOG(LogTemp, Display, TEXT("%s: Montage interrupted or cancelled. Cancelling ability."), *GetName());
+    CancelAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(), GetCurrentActivationInfo(), true);
+}
+
+void UGA_HeroBaseAbility::ApplyCooldown(
+    const FGameplayAbilitySpecHandle Handle,
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo ActivationInfo) const
+{
+    // 使用自定义冷却效果类或退回到基类实现
+    if (CooldownGameplayEffectClass)
+    {
+        UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
+        if (ASC)
+        {
+            FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CooldownGameplayEffectClass, GetAbilityLevel());
+            if (SpecHandle.Data.IsValid())
+            {
+                FGameplayEffectSpec& GESpec = *SpecHandle.Data.Get();
+                
+                // 寻找冷却时间标签
+                FGameplayTag CooldownDurationTag = FGameplayTag::RequestGameplayTag(TEXT("Data.Cooldown.Duration"));
+                if (CooldownDurationTag.IsValid())
+                {
+                    // 设置冷却时间
+                    GESpec.SetSetByCallerMagnitude(CooldownDurationTag, CooldownDuration);
+                }
+                
+                ASC->ApplyGameplayEffectSpecToSelf(GESpec);
+                return;
+            }
+        }
+    }
+    
+    // 退回到基类实现
+    Super::ApplyCooldown(Handle, ActorInfo, ActivationInfo);
+}
+
+bool UGA_HeroBaseAbility::CheckCost(
+    const FGameplayAbilitySpecHandle Handle,
+    const FGameplayAbilityActorInfo* ActorInfo,
+    OUT FGameplayTagContainer* OptionalRelevantTags) const
+{
+    // 获取AbilitySystemComponent
+    UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
+    if (!ASC)
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: AbilitySystemComponent is null in ActivateAbility."), *GetName());
+        return false;
+    }
+
+    // 获取属性集
+    auto AttriSet = const_cast<UIsometricRPGAttributeSetBase*>(ASC->GetSet<UIsometricRPGAttributeSetBase>());
+    if (!AttriSet)
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: AttributeSet is null in ActivateAbility."), *GetName());
+        return false;
+    }
+    // 获取当前资源值（比如 Mana）
+    float CurrentMana = AttriSet->GetMana(); // 你需要有这个 Getter
+
+    // 假设我们从 Ability 属性里设定 CostMagnitude
+    if (CurrentMana < CostMagnitude)
+    {
+        if (OptionalRelevantTags)
+        {
+            OptionalRelevantTags->AddTag(UAbilitySystemGlobals::Get().ActivateFailCostTag);
+        }
+        return false;
+    }
+
+    return true;
+}
+
+
+void UGA_HeroBaseAbility::ApplyCost(
+    const FGameplayAbilitySpecHandle Handle, 
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo ActivationInfo) const
+{
+    // 使用自定义消耗效果类或退回到基类实现
+    if (CostGameplayEffectClass)
+    {
+        UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
+        if (ASC)
+        {
+            FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CostGameplayEffectClass, GetAbilityLevel());
+            if (SpecHandle.Data.IsValid())
+            {
+                FGameplayEffectSpec& GESpec = *SpecHandle.Data.Get();
+                
+                // 寻找消耗标签
+                FGameplayTag CostTag = FGameplayTag::RequestGameplayTag(TEXT("Data.Cost.Magnitude"));
+                if (CostTag.IsValid())
+                {
+                    // 设置消耗值
+                    GESpec.SetSetByCallerMagnitude(CostTag, CostMagnitude);
+                }
+                
+                // 应用消耗效果
+                ASC->ApplyGameplayEffectSpecToSelf(GESpec);
+                return;
+			}
+            if (SpecHandle.Data.IsValid())
+            {
+                ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+                return;
+            }
+        }
+    }
+    else
+    {
+        // 退回到基类实现
+        Super::ApplyCost(Handle, ActorInfo, ActivationInfo);
+    }
 }
 
 void UGA_HeroBaseAbility::EndAbility(
@@ -175,7 +392,16 @@ void UGA_HeroBaseAbility::EndAbility(
             MontageTask->EndTask();
         }
     }
-    MontageTask = nullptr; // 清除引用
+    MontageTask = nullptr;
+
+    if (TargetDataTask)
+    {
+        if (TargetDataTask->IsActive())
+        {
+            TargetDataTask->EndTask();
+        }
+    }
+    TargetDataTask = nullptr;
 
     Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }

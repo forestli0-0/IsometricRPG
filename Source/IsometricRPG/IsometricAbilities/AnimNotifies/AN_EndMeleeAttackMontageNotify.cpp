@@ -1,7 +1,6 @@
 // filepath: f:\Unreal Projects\IsometricRPG\Source\IsometricRPG\IsometricAbilities\AN_EndMeleeAttackMontageNotify.cpp
 #include "AN_EndMeleeAttackMontageNotify.h"
 #include "Character/IsometricRPGCharacter.h"
-#include "IsometricComponents/ActionQueueComponent.h"
 
 void UAN_EndMeleeAttackMontageNotify::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
 {
@@ -11,12 +10,7 @@ void UAN_EndMeleeAttackMontageNotify::Notify(USkeletalMeshComponent* MeshComp, U
 		auto IsoCharacter = Cast<AIsometricRPGCharacter>(owner);
 		if (IsoCharacter)
 		{
-			auto  ActionQueue = IsoCharacter->FindComponentByClass<UActionQueueComponent>();
-			// 攻击帧关闭
-			if (ActionQueue)
-			{
-				ActionQueue->bAttackInProgress = false;
-			}
+
 		}
 		else
 		{

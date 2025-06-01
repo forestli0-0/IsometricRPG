@@ -1,43 +1,29 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include <InputActionValue.h>
-#include "EnhancedInput/Public/InputMappingContext.h" // Add this include
-#include "GameFramework/Character.h"
-#include "GameplayTagContainer.h"
-#include "IsometricInputComponent.generated.h"
+#include "GameplayTagContainer.h" // For FGameplayTag
+#include "Engine/HitResult.h"    // For FHitResult
+
+// Forward declarations
+class UAbilitySystemComponent;
+class AIsometricRPGCharacter;
+class APlayerController;
+// struct FInputActionValue; // Removed as input actions are now handled by PlayerController
+
+#include "IsometricInputComponent.generated.h" // THIS MUST BE THE LAST INCLUDE
 
 UENUM(BlueprintType)
-enum class EInputCommandType : uint8
+enum class EAbilityInputID : uint8
 {
-	None,
-	BasicAttack,
-	UseSkill,
-	Movement
-};
-
-USTRUCT(BlueprintType)
-struct FInputCommand
-{
-	GENERATED_BODY()
-
-	// 命令类型
-	EInputCommandType CommandType = EInputCommandType::None;
-
-	// 目标位置
-	FVector TargetLocation;
-
-	// 目标角色
-	TWeakObjectPtr<AActor> TargetActor;
-
-	// 技能ID/索引
-	int32 SkillIndex = -1;
-
-	// 技能标签
-	FGameplayTag AbilityTag;
+	None            UMETA(DisplayName = "None"),
+	Confirm         UMETA(DisplayName = "Confirm"),
+	Cancel          UMETA(DisplayName = "Cancel"),
+	Ability1        UMETA(DisplayName = "Ability 1 (Primary)"),
+	Ability2        UMETA(DisplayName = "Ability 2 (Secondary)"),
+	Jump            UMETA(DisplayName = "Jump"),
+	Sprint          UMETA(DisplayName = "Sprint")
+	// ... 其他你需要的输入
 };
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
@@ -46,53 +32,52 @@ class ISOMETRICRPG_API UIsometricInputComponent : public UActorComponent
 	GENERATED_BODY()
 
 public:	
-	// Sets default values for this component's properties
 	UIsometricInputComponent();
 
 protected:
-	// Called when the game starts
 	virtual void BeginPlay() override;
 
-public:	
-	// Called every frame
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 public:
-	void SetupInput(class UEnhancedInputComponent* InputComponent, class APlayerController* PlayerController);
-	// 处理左键点击事件
-	void HandleLeftClick();
-	// 处理右键点击事件
-	void HandleRightClick();
-	// 处理技能输入事件(1-9号键)
-	void HandleSkillInput(int32 SkillIndex);
+	// These methods are called by AIsometricPlayerController (or an AI Controller)
+	void HandleLeftClick(const FHitResult& HitResult);
+	void HandleRightClick(const FHitResult& HitResult);
+	void HandleSkillInput(int32 SkillSlotID, const FHitResult& TargetData); // TargetData can be from cursor
+	void HandleBasicAttackInput(const FHitResult& HitResult); // For "A-Key" style attack command
 
-	// 统一的命令处理函数
-	void ProcessInputCommand(const FInputCommand& Command);
-
-	// 获取鼠标下的目标
-	AActor* GetTargetUnderCursor() const;
-
-	// 获取鼠标下的位置
-	FVector GetLocationUnderCursor() const;
+	// Game action requests, can be called by this component internally or by AI
+	void RequestMoveToLocation(const FVector& TargetLocation);
+	void RequestBasicAttack(AActor* TargetActor);
 
 public:
-	// 输入映射上下文
-	UPROPERTY(EditDefaultsOnly, Category = "Input")
-	UInputMappingContext* MappingContext;
-	
-private:
-	// 当前选择的技能索引
-	int32 CurrentSelectedSkillIndex = -1;
-
-	// 当前选中目标（LOL式左键选中目标）
-	TWeakObjectPtr<AActor> CurrentSelectedTarget;
-
-	// 技能映射 - 可以在编辑器中设置
 	UPROPERTY(EditDefaultsOnly, Category = "Input|Skills")
-	TMap<int32, FGameplayTag> SkillMappings;
+	TMap<int32, FGameplayTag> SkillSlotToAbilityTagMap;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input|GAS", meta = (ToolTip = "Input ID for confirming target in GAS. Typically 0."))
+	int32 ConfirmInputID = 1; 
+	UPROPERTY(EditDefaultsOnly, Category = "Input|GAS", meta = (ToolTip = "Input ID for canceling target in GAS. Typically 1."))
+	int32 CancelInputID = 2;
+
+
+private:
+	UPROPERTY()
+	AIsometricRPGCharacter* OwnerCharacter;
+
+	UPROPERTY()
+	APlayerController* CachedPlayerController; // Retained for convenience, e.g. if component needs to get cursor info directly for some reason, though PC should pass it.
+
+	UPROPERTY()
+	UAbilitySystemComponent* OwnerASC;
+
+	TWeakObjectPtr<AActor> CurrentSelectedTargetForUI;
+
 public:
-	// 通知UI显示目标信息（可用事件或回调，具体实现可在蓝图或外部绑定）
 	UFUNCTION(BlueprintImplementableEvent, Category = "UI")
-	void OnTargetSelected(AActor* Target);
+	void OnTargetSelectedForUI(AActor* Target);
 	UFUNCTION(BlueprintImplementableEvent, Category = "UI")
-	void OnTargetCleared();
+	void OnTargetClearedForUI();
+
+private:
+	// Helper methods to send GAS input confirmations/cancellations
+	void SendConfirmTargetInput();
+	void SendCancelTargetInput();
 };

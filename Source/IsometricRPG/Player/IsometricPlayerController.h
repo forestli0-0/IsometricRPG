@@ -1,5 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
@@ -22,25 +20,28 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
 
-	UPROPERTY(EditDefaultsOnly)
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	UInputMappingContext* ClickMappingContext;
 
-	UPROPERTY(EditDefaultsOnly)
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Actions")
 	UInputAction* Action_LeftClick;
-	UPROPERTY(EditDefaultsOnly)
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Actions")
 	UInputAction* Action_RightClick;
-	UPROPERTY(EditDefaultsOnly)
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Actions")
+	UInputAction* Action_A;
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Actions")
 	UInputAction* Action_Q;
-	UPROPERTY(EditDefaultsOnly)
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Actions")
 	UInputAction* Action_W;
-	UPROPERTY(EditDefaultsOnly)
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Actions")
 	UInputAction* Action_E;
-	UPROPERTY(EditDefaultsOnly)
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Actions")
 	UInputAction* Action_R;
-	UPROPERTY(EditDefaultsOnly)
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Actions")
 	UInputAction* Action_Summoner1;
-	UPROPERTY(EditDefaultsOnly)
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Actions")
 	UInputAction* Action_Summoner2;
+
 	// 处理鼠标左键点击: 选择目标，可以是敌人也可以是友方
 	UFUNCTION()
 	void HandleLeftClickInput(const FInputActionValue& Value);
@@ -51,12 +52,6 @@ protected:
 protected:
 	// 处理技能输入
 	UFUNCTION()
-	void HandleSkillInput(const FInputActionInstance& Instance, int SkillIndex);
-public:
-	UPROPERTY(EditDefaultsOnly)
-	AActor* TargetActor;
-
-	UFUNCTION(BlueprintCallable)
-	void SetTargetActor(AActor* NewTargetActor);
+	void HandleSkillInput(int32 SkillIndex);
 
 };

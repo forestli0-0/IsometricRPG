@@ -4,151 +4,203 @@
 #include "GA_ProjectileAbility.h"
 #include "AbilitySystemComponent.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/Actor.h" // Added for AActor
 #include "Kismet/KismetMathLibrary.h"
-#include "GameplayTagContainer.h" // Required for FGameplayTag
-#include "IsometricAbilities/Projectiles/Projectile_Fireball.h" // Make sure this path is correct
+#include "GameplayTagContainer.h"
+#include "GameFramework/ProjectileMovementComponent.h"
+#include "IsometricAbilities/Projectiles/AProjectileBase.h" // 引用新的投射物基类
+#include "Abilities/GameplayAbilityTypes.h" // Added for FGameplayAbilityTargetDataHandle
+#include "Engine/World.h" // Added for GetWorld()
 
 UGA_ProjectileAbility::UGA_ProjectileAbility()
 {
-	// Constructor logic if needed
-	ProjectileClass = AProjectile_Fireball::StaticClass(); // Default, can be changed in BP
-	MuzzleSocketName = FName("Muzzle"); // Example socket name, adjust as needed
+    // 设置技能类型为投射物
+    AbilityType = EHeroAbilityType::Projectile;
+    
+    // 默认需要目标选择
+    bRequiresTargetData = true;
+    
+    // 投射物类默认值
+    ProjectileClass = AProjectileBase::StaticClass(); // 默认为基类，具体技能应覆盖此项
+    MuzzleSocketName = FName("Muzzle");
 }
 
-bool UGA_ProjectileAbility::CanActivateSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData, FGameplayTag& OutFailureTag)
+
+void UGA_ProjectileAbility::ExecuteSkill(
+    const FGameplayAbilitySpecHandle Handle, 
+    const FGameplayAbilityActorInfo* ActorInfo, 
+    const FGameplayAbilityActivationInfo ActivationInfo, 
+    const FGameplayEventData* TriggerEventData)
 {
-	if (!Super::CanActivateSkill(Handle, ActorInfo, ActivationInfo, TriggerEventData, OutFailureTag))
-	{
-		return false;
-	}
+    // 先调用基类的执行方法
+    Super::ExecuteSkill(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
-	if (!ProjectileClass)
-	{
-		OutFailureTag = FGameplayTag::RequestGameplayTag(FName("Ability.Failure.InvalidProjectileClass"));
-		UE_LOG(LogTemp, Error, TEXT("%s: Failed CanActivateSkill - ProjectileClass is not set."), *GetName());
-		return false;
-	}
-
-	// For projectile abilities, a target location might still be relevant for aiming
-	// but not strictly required for activation in the same way as a targeted ability.
-	// Range checks might be against the target point if provided, or a general max range.
-	AActor* SelfActor = ActorInfo->AvatarActor.Get();
-	if (!SelfActor)
-	{
-		OutFailureTag = FGameplayTag::RequestGameplayTag(FName("Ability.Failure.InvalidSelf"));
-		return false;
-	}
-
-	if (TriggerEventData && TriggerEventData->TargetData.Num() > 0)
+    // 获取施法者
+    AActor* SelfActor = ActorInfo->AvatarActor.Get();
+    if (!SelfActor || !ProjectileClass)
     {
-        const FGameplayAbilityTargetData* TargetData = TriggerEventData->TargetData.Data[0].Get();
-        if (TargetData)
-        {
-			FVector TargetLocation = TargetData->GetHitResult() ? FVector(TargetData->GetHitResult()->Location) : FVector(TargetData->GetEndPoint());
+        UE_LOG(LogTemp, Error, TEXT("%s: Cannot execute skill - SelfActor or ProjectileClass is invalid."), *GetName());
+        EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+        return;
+    }
+    
+    APawn* SelfPawn = Cast<APawn>(SelfActor);
+    UAbilitySystemComponent* SourceASC = ActorInfo->AbilitySystemComponent.Get();
+    if (!SourceASC)
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: Cannot execute skill - SourceASC is invalid."), *GetName());
+        EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+        return;
+    }
 
-            if (TargetLocation != FVector::ZeroVector)
+    // 获取发射位置和旋转
+    FVector SpawnLocation;
+    FRotator SpawnRotation;
+    
+    // 使用目标数据确定旋转
+    GetLaunchTransform(CurrentTargetDataHandle, SelfActor, SpawnLocation, SpawnRotation);
+    
+    // 生成投射物
+    AProjectileBase* SpawnedProjectile = SpawnProjectile(SpawnLocation, SpawnRotation, SelfActor, SelfPawn, SourceASC);
+    
+    if (!SpawnedProjectile)
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: Failed to spawn projectile using class %s."), *GetName(), *ProjectileClass->GetName());
+        EndAbility(Handle, ActorInfo, ActivationInfo, true, true); // 确保在失败时结束技能
+        return;
+    }
+
+    // 投射物技能通常在发射后立即结束，除非有引导时间或其他机制
+    // 如果有发射动画，会由动画完成回调结束技能
+    if (!MontageToPlay) 
+    {
+        EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+    }
+}
+
+void UGA_ProjectileAbility::GetLaunchTransform(
+    const FGameplayAbilityTargetDataHandle& TargetData, 
+    const AActor* SourceActor, 
+    FVector& OutLocation, 
+    FRotator& OutRotation) const
+{
+    // 首先尝试找到指定的插槽
+    USceneComponent* MuzzleComponent = nullptr;
+    const APawn* SelfPawn = Cast<APawn>(SourceActor); // 使用 Cast 而不是 const_cast
+    if (SelfPawn && MuzzleSocketName != NAME_None)
+    {
+        // 查找具有指定插槽的组件
+        TArray<USceneComponent*> Components;
+        SelfPawn->GetComponents(Components);
+        for (USceneComponent* Component : Components)
+        {
+            if (Component->DoesSocketExist(MuzzleSocketName))
             {
-                float Distance = FVector::Dist(TargetLocation, SelfActor->GetActorLocation());
-                if (Distance > RangeToApply) // Using RangeToApply as a general max range for aiming
-                {
-                    OutFailureTag = FGameplayTag::RequestGameplayTag(FName("Ability.Failure.OutOfRange"));
-                    UE_LOG(LogTemp, Warning, TEXT("%s: Failed CanActivateSkill - Target aim point out of range (%.2f > %.2f)"), *GetName(), Distance, RangeToApply);
-                    return false;
-                }
+                MuzzleComponent = Component;
+                break;
             }
         }
     }
 
-	return true;
+    // 确定发射位置
+    if (MuzzleComponent)
+    {
+        // 使用插槽位置
+        OutLocation = MuzzleComponent->GetSocketLocation(MuzzleSocketName);
+    }
+    else if (SelfPawn) // 如果没有插槽，使用Actor位置加一个偏移
+    {
+        OutLocation = SelfPawn->GetActorLocation() + SelfPawn->GetActorForwardVector() * 100.0f; // 默认向前100单位
+    }
+    else if (SourceActor) // Fallback if SourceActor is not a Pawn but exists
+    {
+        OutLocation = SourceActor->GetActorLocation() + SourceActor->GetActorForwardVector() * 100.0f;
+    }
+    else // Absolute fallback, should ideally not happen
+    {
+        OutLocation = FVector::ZeroVector;
+        UE_LOG(LogTemp, Warning, TEXT("%s: GetLaunchTransform - SourceActor is null, defaulting OutLocation to ZeroVector."), *GetName());
+    }
+
+    // 确定旋转方向
+    FVector TargetLocation = FVector::ZeroVector;
+    bool bTargetFound = false;
+    if (TargetData.IsValid(0) && TargetData.Get(0)->HasHitResult()) // Check IsValid(index) before Get(index)
+    {
+        TargetLocation = TargetData.Get(0)->GetHitResult()->Location;
+        bTargetFound = true;
+    }
+    else if (TargetData.Num() > 0 && TargetData.Get(0) && TargetData.Get(0)->GetActors().Num() > 0 && TargetData.Get(0)->GetActors()[0].IsValid())
+    {
+        TargetLocation = TargetData.Get(0)->GetActors()[0]->GetActorLocation();
+        bTargetFound = true;
+    }
+
+    if (bTargetFound)
+    {
+        OutRotation = UKismetMathLibrary::FindLookAtRotation(OutLocation, TargetLocation);
+    }
+    else if (SelfPawn) // 没有有效目标数据，使用Pawn的朝向
+    {
+        OutRotation = SelfPawn->GetControlRotation(); // 或者 GetActorRotation()
+    }
+    else if (SourceActor)
+    {
+        OutRotation = SourceActor->GetActorRotation();
+    }
+    else // Absolute fallback
+    {
+        OutRotation = FRotator::ZeroRotator;
+        UE_LOG(LogTemp, Warning, TEXT("%s: GetLaunchTransform - No target data and SourceActor is null or not a Pawn, defaulting OutRotation to ZeroRotator."), *GetName());
+    }
 }
 
-void UGA_ProjectileAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
+AProjectileBase* UGA_ProjectileAbility::SpawnProjectile(
+    const FVector& SpawnLocation, 
+    const FRotator& SpawnRotation, 
+    AActor* SourceActor, 
+    APawn* SourcePawn,
+    UAbilitySystemComponent* SourceASC)
 {
-	Super::ExecuteSkill(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+    if (!ProjectileClass)
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: ProjectileClass is not set in SpawnProjectile."), *GetName());
+        return nullptr;
+    }
+    UWorld* World = GetWorld();
+    if(!World)
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: Cannot spawn projectile, GetWorld() returned null."), *GetName());
+        return nullptr;
+    }
 
-	AActor* SelfActor = ActorInfo->AvatarActor.Get();
-	if (!SelfActor || !ProjectileClass)
-	{
-		UE_LOG(LogTemp, Error, TEXT("%s: Cannot execute skill - SelfActor or ProjectileClass is invalid."), *GetName());
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, true); // Cancel if prerequisites are missing
-		return;
-	}
+    // 设置生成参数
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.Owner = SourceActor;       // 技能的拥有者，通常是施法者Actor
+    SpawnParams.Instigator = SourcePawn;   // 技能的发起者，通常是施法者Pawn
+    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-	FVector SpawnLocation;
-	FRotator SpawnRotation;
+    // 生成投射物
+    AProjectileBase* SpawnedProjectile = World->SpawnActor<AProjectileBase>(
+        ProjectileClass, 
+        SpawnLocation, 
+        SpawnRotation, 
+        SpawnParams);
 
-	USceneComponent* MuzzleComponent = nullptr;
-	APawn* SelfPawn = Cast<APawn>(SelfActor);
-	if (SelfPawn && MuzzleSocketName != NAME_None)
-	{
-		// Try to find the socket on the mesh
-		TArray<USceneComponent*> Components;
-		SelfPawn->GetComponents(Components);
-		for (USceneComponent* Component : Components)
-		{
-			if (Component->DoesSocketExist(MuzzleSocketName))
-			{
-				MuzzleComponent = Component;
-				break;
-			}
-		}
-	}
-
-	if (MuzzleComponent)
-	{
-		SpawnLocation = MuzzleComponent->GetSocketLocation(MuzzleSocketName);
-	}
-	else
-	{
-		// Fallback if socket not found or not specified
-		FTransform MuzzleTransform = SelfPawn ? SelfPawn->GetActorTransform() : FTransform::Identity;
-		SpawnLocation = MuzzleTransform.GetLocation() + SelfActor->GetActorForwardVector() * 100.0f; // Offset a bit forward
-	}
-
-	// Determine rotation
-	FVector TargetLocation = FVector::ZeroVector;
-	if (TriggerEventData && TriggerEventData->TargetData.Num() > 0)
-	{
-		const FGameplayAbilityTargetData* TargetData = TriggerEventData->TargetData.Data[0].Get();
-		if (TargetData)
-		{
-			TargetLocation = TargetData->GetHitResult() ? FVector(TargetData->GetHitResult()->Location) : FVector(TargetData->GetEndPoint());
-
-		}
-	}
-
-	if (TargetLocation != FVector::ZeroVector)
-	{
-		SpawnRotation = UKismetMathLibrary::FindLookAtRotation(SpawnLocation, TargetLocation);
-	}
-	else
-	{
-		SpawnRotation = SelfActor->GetActorRotation();
-	}
-
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.Owner = SelfActor;
-	SpawnParams.Instigator = SelfPawn;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	AProjectile_Fireball* SpawnedProjectile = GetWorld()->SpawnActor<AProjectile_Fireball>(ProjectileClass, SpawnLocation, SpawnRotation, SpawnParams);
-
-	if (SpawnedProjectile)
-	{
-		UE_LOG(LogTemp, Log, TEXT("%s: Spawned projectile %s"), *GetName(), *SpawnedProjectile->GetName());
-		// You might want to pass damage causer or other info to the projectile here
-		// SpawnedProjectile->SetOwner(SelfActor);
-		// SpawnedProjectile->DamageCauser = SelfActor; // If your projectile has such a property
-	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("%s: Failed to spawn projectile."), *GetName());
-	}
-
-	// Projectile abilities usually end after firing, unless they have a channel time or other mechanics.
-	// If there's a montage for firing animation, it will handle ending the ability.
-	if (!MontageToPlay) 
-	{
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
-	}
+    // 配置投射物
+    if (SpawnedProjectile)
+    {
+        // 使用ProjectileData初始化投射物
+        SpawnedProjectile->InitializeProjectile(ProjectileData, SourceActor, SourcePawn, SourceASC);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: Failed to spawn projectile of class %s at location %s with rotation %s."), 
+            *GetName(), 
+            *ProjectileClass->GetName(), 
+            *SpawnLocation.ToString(), 
+            *SpawnRotation.ToString());
+    }
+    
+    return SpawnedProjectile;
 }

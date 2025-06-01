@@ -3,7 +3,6 @@
 
 #include "AN_PlayMeleeAttackMontageNotify.h"
 #include "Character/IsometricRPGCharacter.h"
-#include "IsometricComponents/ActionQueueComponent.h"
 #include "AbilitySystemInterface.h"
 #include "Character/IsometricRPGAttributeSetBase.h"
 void UAN_PlayMeleeAttackMontageNotify::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
@@ -24,13 +23,6 @@ void UAN_PlayMeleeAttackMontageNotify::Notify(USkeletalMeshComponent* MeshComp, 
         return;
     }
 
-    // 设置攻击进行中标志
-    UActionQueueComponent* ActionQueue = IsoCharacter->FindComponentByClass<UActionQueueComponent>();
-    if (ActionQueue)
-    {
-        ActionQueue->bAttackInProgress = true;
-    }
-
     // 检查关键组件和资源是否有效
     if (!MeleeAttackEffectClass)
     {
@@ -46,28 +38,15 @@ void UAN_PlayMeleeAttackMontageNotify::Notify(USkeletalMeshComponent* MeshComp, 
         return;
     }
 
-    UActionQueueComponent* OwnerActionQueue = Owner->FindComponentByClass<UActionQueueComponent>();
-    if (OwnerActionQueue)
-    {
-        TWeakObjectPtr<AActor> WeakTargetActor = OwnerActionQueue->GetCommand().TargetActor;
-        if (WeakTargetActor.IsValid())
-        {
-            TargetActor = WeakTargetActor.Get();
-        }
-    }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("Notify: ActionQueueComponent not found for owner: %s"), *Owner->GetName());
-        GEngine->AddOnScreenDebugMessage(-1, 10.f, FColor::Red, TEXT("没有找到目标动作队列组件"));
-        return;
-    }
 
+    TargetActor = Cast<AActor>(IsoCharacter->CurrentAbilityTargets[0].Get());
     // 验证目标是否有效
     if (!TargetActor)
     {
         UE_LOG(LogTemp, Error, TEXT("Notify: TargetActor is null"));
         return;
     }
+
 
     // 获取目标的能力系统组件
     UAbilitySystemComponent* TargetASC = TargetActor->FindComponentByClass<UAbilitySystemComponent>();

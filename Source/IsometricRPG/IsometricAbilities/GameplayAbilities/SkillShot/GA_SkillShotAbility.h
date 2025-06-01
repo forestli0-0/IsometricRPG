@@ -23,6 +23,5 @@ protected:
 	// UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SkillShot")
 	// TSubclassOf<class AYourBaseProjectile> SkillShotProjectileClass;
 
-	virtual bool CanActivateSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData, FGameplayTag& OutFailureTag) override;
 	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
 };
