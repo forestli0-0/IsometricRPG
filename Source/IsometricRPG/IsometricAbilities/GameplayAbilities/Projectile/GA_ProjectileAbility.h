@@ -5,10 +5,12 @@
 
 #include "CoreMinimal.h"
 #include "IsometricAbilities/GameplayAbilities/GA_HeroBaseAbility.h"
+#include "IsometricAbilities/Projectiles/AProjectileBase.h" // 包含新的投射物基类
 #include "GA_ProjectileAbility.generated.h"
 
 /**
- * Ability that launches a projectile.
+ * 投射物类型技能基类
+ * 这种技能会生成并发射一个投射物，需要目标位置
  */
 UCLASS()
 class ISOMETRICRPG_API UGA_ProjectileAbility : public UGA_HeroBaseAbility
@@ -19,14 +21,29 @@ public:
 	UGA_ProjectileAbility();
 
 protected:
-	// Projectile class to spawn
+	// 要生成的投射物类，应该是 AProjectileBase 的子类
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile")
-	TSubclassOf<class AProjectile_Fireball> ProjectileClass; // Example, replace with a base projectile if you have one
+	TSubclassOf<class AProjectileBase> ProjectileClass;
 
-	// Socket or location from which to spawn the projectile
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile")
+	// 用于初始化投射物的数据，可以在每个技能蓝图中配置
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data", meta = (ExposeOnSpawn = true))
+	FProjectileInitializationData ProjectileData;
+
+	// 投射物生成的插槽/位置
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Projectile")
 	FName MuzzleSocketName = NAME_None;
 
-	virtual bool CanActivateSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData, FGameplayTag& OutFailureTag) override;
 	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
+    
+    // 获取发射位置和旋转
+    virtual void GetLaunchTransform(const FGameplayAbilityTargetDataHandle& TargetData, const AActor* SourceActor, FVector& OutLocation, FRotator& OutRotation) const;
+    
+    // 生成并初始化投射物
+    virtual class AProjectileBase* SpawnProjectile(
+        const FVector& SpawnLocation, 
+        const FRotator& SpawnRotation, 
+        AActor* SourceActor, 
+        APawn* SourcePawn,
+        UAbilitySystemComponent* SourceASC // 添加SourceASC参数
+		);
 };

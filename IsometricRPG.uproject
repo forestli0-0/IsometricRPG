@@ -1,13 +1,16 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "5.5",
+	"EngineAssociation": "{69F42E10-4614-93F1-7D56-16B344D32F1F}",
 	"Category": "",
 	"Description": "",
 	"Modules": [
 		{
 			"Name": "IsometricRPG",
 			"Type": "Runtime",
-			"LoadingPhase": "Default"
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"GameplayAbilities"
+			]
 		}
 	],
 	"Plugins": [

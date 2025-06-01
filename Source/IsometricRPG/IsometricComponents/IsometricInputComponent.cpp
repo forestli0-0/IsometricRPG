@@ -1,214 +1,254 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
+// IsometricInputComponent.cpp
 #include "IsometricInputComponent.h"
-#include "EnhancedInputComponent.h"
-#include "EnhancedInput/Public/InputMappingContext.h"
-#include "EnhancedInput/Public/InputAction.h"
-#include "EnhancedInputSubsystems.h"
+#include "EnhancedInputComponent.h" // Should be removed if not used for direct binding here
+#include "EnhancedInputSubsystems.h" // Should be removed if not used for direct binding here
 #include "GameFramework/Character.h"
-#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
+#include "AbilitySystemComponent.h"
 #include "Character/IsometricRPGCharacter.h"
-#include "AIController.h"
-#include "Blueprint/AIBlueprintHelperLibrary.h"
-#include "IsometricAbilities/GameplayAbilities/RPGGameplayAbility_Attack.h"
-#include <Player/IsometricPlayerController.h>
+#include "Blueprint/AIBlueprintHelperLibrary.h" 
 #include <AbilitySystemBlueprintLibrary.h>
-#include "GameplayTagContainer.h"
-#include "IsometricComponents/ActionQueueComponent.h"
-// Sets default values for this component's properties
+
+
 UIsometricInputComponent::UIsometricInputComponent()
 {
-	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
-	// off to improve performance if you don't need them.
-	PrimaryComponentTick.bCanEverTick = true;
-
-	// ...
+    PrimaryComponentTick.bCanEverTick = false; // 通常输入组件不需要Tick
 }
 
-// Called when the game starts
 void UIsometricInputComponent::BeginPlay()
 {
-	Super::BeginPlay();
-
-	// ...
-}
-
-// Called every frame
-void UIsometricInputComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
-{
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-	// ...
-}
-
-void UIsometricInputComponent::SetupInput(UEnhancedInputComponent* InputComponent, APlayerController* PlayerController)
-{
-	if (!MappingContext) return;
-
-	// 添加映射上下文
-	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
-	{
-		Subsystem->AddMappingContext(MappingContext, 0);
-	}
-}
-
-void UIsometricInputComponent::HandleLeftClick()
-{
-    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
-    if (!OwnerCharacter) return;
-    APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
-    if (!PC) return;
-
-    FHitResult Hit;
-    PC->GetHitResultUnderCursor(ECC_Visibility, true, Hit);
-    AActor* HitActor = Hit.GetActor();
-
-    if (CurrentSelectedSkillIndex >= 0 && SkillMappings.Contains(CurrentSelectedSkillIndex))
+    Super::BeginPlay();
+    OwnerCharacter = Cast<AIsometricRPGCharacter>(GetOwner());
+    if (OwnerCharacter)
     {
-        // 已选择技能，左键释放技能
-        FInputCommand Command;
-        Command.CommandType = EInputCommandType::UseSkill;
-        Command.SkillIndex = CurrentSelectedSkillIndex;
-        Command.TargetLocation = Hit.ImpactPoint;
-        Command.TargetActor = HitActor;
-        if (const FGameplayTag* FoundTag = SkillMappings.Find(Command.SkillIndex))
+        OwnerASC = OwnerCharacter->GetAbilitySystemComponent();
+        // CachedPlayerController should be set by the PlayerController itself when it initializes this component,
+        // or this component should get it when needed, if it's always owned by a pawn controlled by a PlayerController.
+        // For now, we assume PlayerController will pass HitResult, so direct caching might not be strictly needed for cursor traces.
+        CachedPlayerController = Cast<APlayerController>(OwnerCharacter->GetController()); 
+        if (!CachedPlayerController)
         {
-            Command.AbilityTag = *FoundTag;
+            UE_LOG(LogTemp, Warning, TEXT("UIsometricInputComponent: CachedPlayerController is null in BeginPlay. Input binding might fail or be delayed."));
+            return;
         }
-        CurrentSelectedSkillIndex = -1;
-        // 技能释放后清除目标选中
-        CurrentSelectedTarget = nullptr;
-        OnTargetCleared();
-        ProcessInputCommand(Command);
-        return;
-    }
-
-    // 未选择技能，左键只做目标选中
-    if (HitActor && HitActor != OwnerCharacter)
-    {
-        CurrentSelectedTarget = HitActor;
-        OnTargetSelected(HitActor); // 通知UI
+        UInputComponent* PCInputComponent = CachedPlayerController->InputComponent;
+        if (!PCInputComponent)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("UIsometricInputComponent: PlayerController's InputComponent is null in BeginPlay. GAS Input Binding cannot occur yet."));
+            // 你可能需要等待 InputComponent 被创建。
+            // 一种方法是让 PlayerController 在其 InputComponent 创建后调用一个此组件的函数。
+            // 或者，将绑定逻辑移到 Character 的 SetupPlayerInputComponent 中。
+            return;
+        }
+        // 获取 UEnum*
+        UEnum* EnumBinds = StaticEnum<EAbilityInputID>();
+        if (!EnumBinds)
+        {
+            UE_LOG(LogTemp, Error, TEXT("UIsometricInputComponent: StaticEnum<EAbilityInputID>() failed. Ensure EAbilityInputID is correctly defined in a header and UHT has run."));
+            return;
+        }
+        FTopLevelAssetPath EnumPath = FTopLevelAssetPath(TEXT("/Script/IsometricRPG.EAbilityInputID"));
+        FString ConfirmCommand = TEXT("");
+        FString CancelCommand = TEXT("");
+        FGameplayAbilityInputBinds BindInfo(
+            ConfirmCommand,      // 项目输入设置中用于“确认”的 Action Mapping 名称
+            CancelCommand,       // 项目输入设置中用于“取消”的 Action Mapping 名称
+            EnumPath,
+            (int32)EAbilityInputID::Confirm, // 对应枚举中的 Confirm
+            (int32)EAbilityInputID::Cancel   // 对应枚举中的 Cancel
+        );
+        OwnerASC->BindAbilityActivationToInputComponent(CachedPlayerController->InputComponent, BindInfo);
     }
     else
     {
-        // 没有选中目标，清除
-        CurrentSelectedTarget = nullptr;
-        OnTargetCleared();
+        UE_LOG(LogTemp, Error, TEXT("UIsometricInputComponent owned by non-AIsometricRPGCharacter or null owner."));
+    }
+
+}
+
+// SetupPlayerInputComponent is removed as PlayerController now handles input bindings.
+// void UIsometricInputComponent::SetupPlayerInputComponent(UEnhancedInputComponent* PlayerInputComponent, APlayerController* InPlayerController)
+// {
+//    ...
+// }
+
+void UIsometricInputComponent::HandleLeftClick(const FHitResult& HitResult)
+{
+    if (!OwnerCharacter || !OwnerASC) return; // CachedPlayerController no longer needed for HitResult
+
+    SendConfirmTargetInput();
+
+    AActor* HitActor = HitResult.GetActor();
+
+    if (HitActor && HitActor != OwnerCharacter)
+    {
+        CurrentSelectedTargetForUI = HitActor;
+        OnTargetSelectedForUI(HitActor); 
+    }
+    else
+    {
+        CurrentSelectedTargetForUI = nullptr;
+        OnTargetClearedForUI();
     }
 }
 
-void UIsometricInputComponent::HandleRightClick()
+void UIsometricInputComponent::HandleRightClick(const FHitResult& HitResult)
 {
-    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
-    if (!OwnerCharacter) return;
-    APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
-    if (!PC) return;
+    if (!OwnerCharacter || !OwnerASC) return; // CachedPlayerController no longer needed for HitResult
 
-    FHitResult Hit;
-    PC->GetHitResultUnderCursor(ECC_Visibility, true, Hit);
-    AActor* HitActor = Hit.GetActor();
+    SendCancelTargetInput(); 
 
-    // 右键点敌人：普通攻击
-    if (HitActor && HitActor->ActorHasTag("Enemy"))
+    AActor* HitActor = HitResult.GetActor();
+
+    if (HitActor && HitActor != OwnerCharacter && HitActor->ActorHasTag(FName("Enemy"))) 
     {
-        FInputCommand Command;
-        Command.CommandType = EInputCommandType::BasicAttack;
-        Command.TargetActor = HitActor;
-        Command.TargetLocation = Hit.ImpactPoint;
-        Command.SkillIndex = 0;
-        if (const FGameplayTag* FoundTag = SkillMappings.Find(Command.SkillIndex))
+        RequestBasicAttack(HitActor);
+    }
+    else if (HitResult.bBlockingHit)    
+	{
+        RequestMoveToLocation(HitResult.ImpactPoint);
+    }
+}
+
+void UIsometricInputComponent::HandleSkillInput(int32 SkillSlotID, const FHitResult& TargetData)
+{
+    if (!OwnerCharacter || !OwnerASC) return;
+
+    // Here, TargetData (FHitResult) is available if the skill needs it.
+    // The GameplayAbility itself will decide if and how to use this TargetData.
+    // For example, a targeted skill might use TargetData.GetActor() or TargetData.ImpactPoint.
+    // A self-cast skill might ignore it.
+
+    if (const FGameplayTag* AbilityTag = SkillSlotToAbilityTagMap.Find(SkillSlotID))
+    {
+        FGameplayAbilitySpec* Spec = OwnerASC->FindAbilitySpecFromInputID(SkillSlotID); //This is an example, actual activation might differ
+        // Or, more commonly, the ability is activated by tag, and it internally handles targeting.
+        
+        FGameplayTagContainer AbilityTags;
+        AbilityTags.AddTag(*AbilityTag);
+
+        // We might need to pass target data to the ability. 
+        // One way is to use a GameplayEvent with the target data payload, which the ability listens for.
+        // Or, if the ability uses WaitTargetData, SendConfirmTargetInput (called from HandleLeftClick) would provide it.
+        // For simplicity, let's assume abilities activated by tag handle their own targeting or use a target already set.
+        // If a skill *always* uses the cursor location/target from the moment it's pressed, 
+        // then the ability's ActivateAbility could use TargetData.
+        // This part highly depends on your GAS setup and ability design.
+
+        OwnerASC->TryActivateAbilitiesByTag(AbilityTags); 
+        UE_LOG(LogTemp, Display, TEXT("Attempting to activate ability with tag %s for slot %d. TargetData available."), *AbilityTag->ToString(), SkillSlotID);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("SkillSlotID: %d has no mapped AbilityTag."), SkillSlotID);
+    }
+}
+
+void UIsometricInputComponent::HandleBasicAttackInput(const FHitResult& HitResult)
+{
+    if (!OwnerCharacter || !OwnerASC) return;
+
+    // Similar to HandleSkillInput, the HitResult is available if the basic attack ability needs it.
+    // For an "A-Key" style attack, the typical flow is: press A (activates ability, waits for target), then left-click target.
+    // So, this function might just activate the ability, and HandleLeftClick would confirm the target.
+
+    FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.BasicAttack")); 
+    if (BasicAttackAbilityTag.IsValid())
+    {
+        FGameplayTagContainer AbilityTags;
+        AbilityTags.AddTag(BasicAttackAbilityTag);
+        OwnerASC->TryActivateAbilitiesByTag(AbilityTags);
+        UE_LOG(LogTemp, Display, TEXT("Basic Attack ability (A-Key) activated, HitResult was available if needed by the ability."));
+        // If the basic attack should immediately target what's under the cursor from the A-press:
+        // AActor* Target = HitResult.GetActor();
+        // if (Target) { RequestBasicAttack(Target); } 
+        // However, this might conflict with a WaitTargetData flow.
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Basic Attack ability tag ('Ability.Player.BasicAttack') is invalid."));
+    }
+}
+
+// ... rest of the file (RequestMoveToLocation, RequestBasicAttack, SendConfirmTargetInput, SendCancelTargetInput) remains largely the same
+// but ensure they don't rely on FInputActionValue or direct input bindings.
+
+void UIsometricInputComponent::RequestMoveToLocation(const FVector& TargetLocation)
+{
+    if (OwnerCharacter && OwnerCharacter->GetController() && OwnerASC) 
+    {
+        FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.BasicAttack"));
+        if (BasicAttackAbilityTag.IsValid())
         {
-            Command.AbilityTag = *FoundTag;
+            FGameplayTagContainer TagContainer(BasicAttackAbilityTag);  
+            OwnerASC->CancelAbilities(&TagContainer);
         }
-        // 清除目标和技能选择
-        CurrentSelectedTarget = nullptr;
-        CurrentSelectedSkillIndex = -1;
-        OnTargetCleared();
-        ProcessInputCommand(Command);
-        return;
-    }
-    // 右键点地面：移动
-    if (Hit.bBlockingHit)
-    {
-        FInputCommand Command;
-        Command.CommandType = EInputCommandType::Movement;
-        Command.TargetLocation = Hit.ImpactPoint;
-        // 清除目标和技能选择
-        CurrentSelectedTarget = nullptr;
-        CurrentSelectedSkillIndex = -1;
-        OnTargetCleared();
-        ProcessInputCommand(Command);
-    }
-}
 
-void UIsometricInputComponent::HandleSkillInput(int32 SkillIndex)
-{
-    if (SkillIndex >= 0 && SkillMappings.Contains(SkillIndex))
-    {
-        // 选择技能，等待点击选择目标
-        CurrentSelectedSkillIndex = SkillIndex;
-
-        UE_LOG(LogTemp, Display, TEXT("技能 %d 已选择，等待选择目标"), SkillIndex);
-    }
-}
-
-void UIsometricInputComponent::ProcessInputCommand(const FInputCommand& Command)
-{
-    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
-    if (!OwnerCharacter) return;
-
-    UActionQueueComponent* ActionQueue = OwnerCharacter->FindComponentByClass<UActionQueueComponent>();
-    if (!ActionQueue) return;
-
-    // 根据命令类型执行不同的操作
-    switch (Command.CommandType)
-    {
-    case EInputCommandType::BasicAttack:
-        if (Command.TargetActor.IsValid())
+        if (OwnerCharacter->GetMesh() && OwnerCharacter->GetMesh()->GetAnimInstance())
         {
-            ActionQueue->SetCommand_AttackTarget(Command.AbilityTag, Command.TargetLocation, Command.TargetActor.Get());
+            OwnerCharacter->GetMesh()->GetAnimInstance()->Montage_Stop(0.1f); // Stop any montage
         }
-        break;
 
-    case EInputCommandType::UseSkill:
+        UAIBlueprintHelperLibrary::SimpleMoveToLocation(OwnerCharacter->GetController(), TargetLocation);
+    }
+}
+
+void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor)
+{
+    if (!OwnerCharacter || !OwnerASC || !TargetActor) return;
+
+    FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.BasicAttack.Directly")); 
+    if (BasicAttackAbilityTag.IsValid())
     {
-            ActionQueue->SetCommand_UseSkill(Command.AbilityTag, Command.TargetLocation, Command.TargetActor.Get());
+        // Store target for the ability to pick up, or pass via event/payload
+        // This is a common pattern: set a target on ASC or Character, then activate.
+        if (!OwnerCharacter) return;
+        OwnerCharacter->CurrentAbilityTargets.Empty();
+        OwnerCharacter->CurrentAbilityTargets.Add(TargetActor);
+        // 使用GameplayAbility系统激活技能
+        FGameplayEventData EventData;
+        EventData.Target = TargetActor;
+        EventData.Instigator = OwnerCharacter;
+        FGameplayAbilityTargetDataHandle TargetDataHandle = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(FHitResult(TargetActor, nullptr, FVector::ZeroVector, FVector::ZeroVector));
+        EventData.TargetData = TargetDataHandle;
+        OwnerASC->HandleGameplayEvent(BasicAttackAbilityTag, &EventData);
+
+
+        //bool bActivated = OwnerASC->TryActivateAbilitiesByTag(AbilityTags);
+        //if (bActivated)
+        //{
+        //    // If the ability is a WaitTargetData style, this confirm might be redundant or handled by left click.
+        //    // If it's an instant attack on the provided target, this is fine.
+        //    // SendConfirmTargetInput(); // Potentially, if the ability expects it immediately after activation with a target.
+        //    UE_LOG(LogTemp, Display, TEXT("Requested Basic Attack on %s. Ability activated: %d"), *TargetActor->GetName(), bActivated);
+        //}
+        //else
+        //{
+        //    UE_LOG(LogTemp, Warning, TEXT("Failed to activate Basic Attack on %s."), *TargetActor->GetName());
+        //}
     }
-    break;
-
-    case EInputCommandType::Movement:
-        ActionQueue->SetCommand_MoveTo(Command.TargetLocation);
-        break;
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Basic Attack ability tag is invalid for RequestBasicAttack."));
     }
 }
 
-AActor* UIsometricInputComponent::GetTargetUnderCursor() const
+
+// GetTargetUnderCursor and GetLocationUnderCursor are removed as PlayerController handles this.
+
+void UIsometricInputComponent::SendConfirmTargetInput()
 {
-    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
-    if (!OwnerCharacter) return nullptr;
-
-    APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
-    if (!PC) return nullptr;
-
-    FHitResult Hit;
-    PC->GetHitResultUnderCursor(ECC_Visibility, true, Hit);
-
-    return Hit.GetActor();
+    if (OwnerASC)
+    {
+        OwnerASC->AbilityLocalInputPressed(ConfirmInputID); 
+    }
 }
 
-FVector UIsometricInputComponent::GetLocationUnderCursor() const
+void UIsometricInputComponent::SendCancelTargetInput()
 {
-    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
-    if (!OwnerCharacter) return FVector::ZeroVector;
-
-    APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
-    if (!PC) return FVector::ZeroVector;
-
-    FHitResult Hit;
-    PC->GetHitResultUnderCursor(ECC_Visibility, true, Hit);
-
-    return Hit.ImpactPoint;
+    if (OwnerASC)
+    {
+        OwnerASC->AbilityLocalInputPressed(CancelInputID); 
+    }
 }
-
-
 

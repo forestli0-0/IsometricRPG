@@ -1,16 +1,12 @@
-// filepath: f:\Unreal Projects\IsometricRPG\Source\IsometricRPG\IsometricAbilities\GA_HeroMeleeAttackAbility.cpp
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "GA_HeroMeleeAttackAbility.h"
-#include "AbilitySystemComponent.h"
-#include "GameplayEffect.h"
-#include "GameFramework/Character.h"
-#include "AbilitySystemGlobals.h"
-#include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h" 
-#include "Character/IsometricRPGAttributeSetBase.h"
-UGA_HeroMeleeAttackAbility::UGA_HeroMeleeAttackAbility()
+#include "IsometricAbilities/GameplayAbilities/Targeted/GA_NormalAttack_Click.h"
+#include "GA_NormalAttack_Click.h"
+
+UGA_NormalAttack_Click::UGA_NormalAttack_Click()
 {
+    bRequiresTargetData = false;
     NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
     InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
     // 初始化攻击蒙太奇路径
@@ -39,8 +35,7 @@ UGA_HeroMeleeAttackAbility::UGA_HeroMeleeAttackAbility()
     ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag("Cooldown.Ability.MeleeAttack"));
 
 }
-
-void UGA_HeroMeleeAttackAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
+void UGA_NormalAttack_Click::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
     // 打印调试信息
     UE_LOG(LogTemp, Warning, TEXT("使用普攻技能"));
@@ -84,15 +79,7 @@ void UGA_HeroMeleeAttackAbility::ExecuteSkill(const FGameplayAbilitySpecHandle H
         EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
     }
 }
-
-bool UGA_HeroMeleeAttackAbility::CheckCost(const FGameplayAbilitySpecHandle Handle,
-    const FGameplayAbilityActorInfo* ActorInfo,
-    OUT FGameplayTagContainer* OptionalRelevantTags) const
-{
-	return Super::CheckCost(Handle, ActorInfo, OptionalRelevantTags);
-}
-
-void UGA_HeroMeleeAttackAbility::ApplyCooldown(
+void UGA_NormalAttack_Click::ApplyCooldown(
     const FGameplayAbilitySpecHandle Handle,
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo ActivationInfo) const

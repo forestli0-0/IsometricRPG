@@ -1,11 +1,8 @@
-// filepath: f:\Unreal Projects\IsometricRPG\Source\IsometricRPG\IsometricAbilities\GA_AreaAbility.cpp
-// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "GA_AreaAbility.h"
 #include "AbilitySystemComponent.h"
-#include "GameplayTagContainer.h" // Required for FGameplayTag
-// #include "Kismet/GameplayStatics.h" // For OverlapActors if needed
-// #include "Engine/World.h" // For GetWorld()
+#include "GameplayTagContainer.h"
+#include "GameplayEffectTypes.h"
 
 UGA_AreaAbility::UGA_AreaAbility()
 {
@@ -13,49 +10,7 @@ UGA_AreaAbility::UGA_AreaAbility()
 	AreaRadius = 300.f;
 }
 
-bool UGA_AreaAbility::CanActivateSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData, FGameplayTag& OutFailureTag)
-{
-	if (!Super::CanActivateSkill(Handle, ActorInfo, ActivationInfo, TriggerEventData, OutFailureTag))
-	{
-		return false;
-	}
 
-	AActor* SelfActor = ActorInfo->AvatarActor.Get();
-	if (!SelfActor)
-	{
-		OutFailureTag = FGameplayTag::RequestGameplayTag(FName("Ability.Failure.InvalidSelf"));
-		return false;
-	}
-
-	// Area abilities often need a target location from TriggerEventData
-	if (!TriggerEventData || TriggerEventData->TargetData.Num() == 0 || !TriggerEventData->TargetData.Data[0].IsValid())
-	{
-		OutFailureTag = FGameplayTag::RequestGameplayTag(FName("Ability.Failure.InvalidTargetData"));
-		UE_LOG(LogTemp, Warning, TEXT("%s: Failed CanActivateSkill - Invalid target data for area ability."), *GetName());
-		return false;
-	}
-
-	const FGameplayAbilityTargetData* TargetData = TriggerEventData->TargetData.Data[0].Get();
-	FVector TargetLocation = TargetData->GetHitResult() ? FVector(TargetData->GetHitResult()->Location) : FVector(TargetData->GetEndPoint());
-
-
-	if (TargetLocation == FVector::ZeroVector)
-	{
-		OutFailureTag = FGameplayTag::RequestGameplayTag(FName("Ability.Failure.InvalidTargetLocation"));
-		UE_LOG(LogTemp, Warning, TEXT("%s: Failed CanActivateSkill - Invalid target location for area ability."), *GetName());
-		return false;
-	}
-
-	float Distance = FVector::Dist(TargetLocation, SelfActor->GetActorLocation());
-	if (Distance > RangeToApply) // RangeToApply is the cast range to the center of the AoE
-	{
-		OutFailureTag = FGameplayTag::RequestGameplayTag(FName("Ability.Failure.OutOfRange"));
-		UE_LOG(LogTemp, Warning, TEXT("%s: Failed CanActivateSkill - Target location for AoE out of range (%.2f > %.2f)"), *GetName(), Distance, RangeToApply);
-		return false;
-	}
-
-	return true;
-}
 
 void UGA_AreaAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {

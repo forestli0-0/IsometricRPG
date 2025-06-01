@@ -8,7 +8,8 @@
 #include "GA_SelfCastAbility.generated.h"
 
 /**
- * Ability that is cast on self.
+ * 自我施放型技能基类
+ * 这种技能直接作用于施放者自身，不需要选择目标
  */
 UCLASS()
 class ISOMETRICRPG_API UGA_SelfCastAbility : public UGA_HeroBaseAbility
@@ -19,10 +20,19 @@ public:
 	UGA_SelfCastAbility();
 
 protected:
-	// Optional: Gameplay Effect to apply to self
-	// UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SelfCast")
-	// TSubclassOf<class UGameplayEffect> SelfGameplayEffect;
+	// 自我增益效果
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SelfCast")
+	TSubclassOf<class UGameplayEffect> SelfGameplayEffect;
 
-	virtual bool CanActivateSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData, FGameplayTag& OutFailureTag) override;
+	// 效果持续时间
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SelfCast")
+	float EffectDuration = 5.0f;
+
 	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
+	
+	// 自我施放技能不需要目标数据
+	virtual bool RequiresTargetData_Implementation() const override;
+	
+	// 应用自我效果的辅助方法
+	virtual void ApplySelfEffect(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo);
 };
