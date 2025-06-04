@@ -38,7 +38,11 @@ void UAN_PlayMeleeAttackMontageNotify::Notify(USkeletalMeshComponent* MeshComp, 
         return;
     }
 
-
+    if (IsoCharacter->CurrentAbilityTargets.Num() == 0)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Notify: No targets available for melee attack"));
+        return;
+	}
     TargetActor = Cast<AActor>(IsoCharacter->CurrentAbilityTargets[0].Get());
     // 验证目标是否有效
     if (!TargetActor)

@@ -203,33 +203,18 @@ void UGA_HeroBaseAbility::PlayAbilityMontage(
             {
                 if (RequiresTargetData())
                 {
-                    auto TargetDataPtr = CurrentEventData.TargetData.Data[0].ToSharedRef();
-                    if (TargetDataPtr.Get().HasHitResult() && TargetDataPtr->GetHitResult())
+                    auto TargetLocation = CurrentEventData.Target->GetActorLocation();
+                    DrawDebugSphere(GetWorld(), TargetLocation, 10.f, 1, FColor::Red, true, 5.f);
+                    if (!TargetLocation.IsZero())
                     {
-                        FVector TargetLocation = TargetDataPtr->GetHitResult()->Location;
-                        //DrawDebugSphere(GetWorld(), TargetLocation, 10.f, 12, FColor::Red, true, 5.f); // Increased segments for a smoother sphere
-
-                        if (!TargetLocation.IsZero() && Character) // Added a check for Character validity
-                        {
-                            FVector CharacterLocation = Character->GetActorLocation();
-
-                            // Calculate direction vector in the XY plane (horizontal)
-                            FVector DirectionToTargetHorizontal = TargetLocation - CharacterLocation;
-                            DirectionToTargetHorizontal.Z = 0.0f; // Ignore the Z difference
-
-                            // Check if the direction is not zero to avoid issues with Rotation()
-                            if (!DirectionToTargetHorizontal.IsNearlyZero())
-                            {
-                                FRotator LookAtRotation = DirectionToTargetHorizontal.Rotation();
-                                //DrawDebugLine(GetWorld(), CharacterLocation, CharacterLocation + DirectionToTargetHorizontal.GetSafeNormal() * 100.f, FColor::Cyan, true, 5.f); // Draw line in the horizontal plane for clarity
-                                Character->SetActorRotation(LookAtRotation, ETeleportType::None);
-                            }
-                        }
+                        FRotator LookAtRotation = (TargetLocation - Character->GetActorLocation()).Rotation();
+                        DrawDebugLine(GetWorld(), Character->GetActorLocation(), TargetLocation, FColor::Cyan, true, 5.f);
+                        Character->SetActorRotation(LookAtRotation, ETeleportType::None);
                     }
                 }
                 else
                 {
-                    auto TargetLocation = CurrentEventData.Target->GetActorLocation();
+                    auto TargetLocation = CurrentEventData.TargetData.Data[0].ToSharedRef()->GetHitResult()->Location;
                     DrawDebugSphere(GetWorld(), TargetLocation, 10.f, 1, FColor::Red, true, 5.f);
                     if (!TargetLocation.IsZero())
                     {

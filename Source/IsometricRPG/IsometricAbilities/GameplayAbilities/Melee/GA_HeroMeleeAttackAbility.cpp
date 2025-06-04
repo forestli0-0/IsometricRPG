@@ -43,7 +43,7 @@ UGA_HeroMeleeAttackAbility::UGA_HeroMeleeAttackAbility()
 void UGA_HeroMeleeAttackAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
     // 打印调试信息
-    UE_LOG(LogTemp, Warning, TEXT("使用普攻技能"));
+    UE_LOG(LogTemp, Warning, TEXT("使用A键普攻"));
 
     AActor* OwnerActor = GetAvatarActorFromActorInfo();
 

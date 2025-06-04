@@ -22,13 +22,13 @@ UGA_NormalAttack_Click::UGA_NormalAttack_Click()
         checkNoEntry();
     }
     // 设置触发条件为接收 GameplayEvent，监听 Tag 为 Ability.MeleeAttack
-    AbilityTags.AddTag(FGameplayTag::RequestGameplayTag("Ability.Player.BasicAttack"));
+    AbilityTags.AddTag(FGameplayTag::RequestGameplayTag("Ability.Player.DirBasicAttack"));
 
-    ActivationOwnedTags.AddTag(FGameplayTag::RequestGameplayTag("Ability.Player.BasicAttack"));
+    ActivationOwnedTags.AddTag(FGameplayTag::RequestGameplayTag("Ability.Player.DirBasicAttack"));
 
     // 设置触发事件
     FAbilityTriggerData TriggerData;
-    TriggerData.TriggerTag = FGameplayTag::RequestGameplayTag("Ability.Player.BasicAttack");
+    TriggerData.TriggerTag = FGameplayTag::RequestGameplayTag("Ability.Player.DirBasicAttack");
     TriggerData.TriggerSource = EGameplayAbilityTriggerSource::GameplayEvent;
     AbilityTriggers.Add(TriggerData);
     // 设定冷却阻断标签
@@ -38,7 +38,7 @@ UGA_NormalAttack_Click::UGA_NormalAttack_Click()
 void UGA_NormalAttack_Click::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
     // 打印调试信息
-    UE_LOG(LogTemp, Warning, TEXT("使用普攻技能"));
+    UE_LOG(LogTemp, Warning, TEXT("使用右键普攻"));
 
     AActor* OwnerActor = GetAvatarActorFromActorInfo();
 
@@ -52,7 +52,6 @@ void UGA_NormalAttack_Click::ExecuteSkill(const FGameplayAbilitySpecHandle Handl
 
         if (TargetData)
         {
-
             const FHitResult* HitResult = TargetData->GetHitResult();
             if (HitResult)
             {
