@@ -131,7 +131,23 @@ void UGA_ProjectileAbility::GetLaunchTransform(
 
     if (bTargetFound)
     {
-        OutRotation = UKismetMathLibrary::FindLookAtRotation(OutLocation, TargetLocation);
+        // OutLocation 是起始点 (例如，角色的当前位置)
+        // TargetLocation 是目标点
+        // OutRotation 应该是一个 FRotator 类型的变量
+
+        // 1. 计算从起始点到目标点的方向向量
+        FVector DirectionToTarget = TargetLocation - OutLocation;
+
+        // 2. 通过将Z分量置零，使该方向向量变为水平方向
+        DirectionToTarget.Z = 0.0f;
+
+        // 3. (重要) 检查向量长度是否接近于零，避免方向向量为零时 Rotation() 出错
+        //    如果起始点和目标点在XY平面上重合，则没有明确的水平方向。
+        if (!DirectionToTarget.IsNearlyZero())
+        {
+            // 4. 从水平方向向量获取旋转。这个旋转的 Pitch 和 Roll 会自动为0。
+            OutRotation = DirectionToTarget.Rotation();
+        }
     }
     else if (SelfPawn) // 没有有效目标数据，使用Pawn的朝向
     {
