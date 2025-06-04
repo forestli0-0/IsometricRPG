@@ -38,19 +38,37 @@ AProjectileBase::AProjectileBase()
     SourceAbilitySystemComponent = nullptr;
 }
 
-void AProjectileBase::InitializeProjectile(const FProjectileInitializationData& Data, AActor* InOwner, APawn* InInstigator, UAbilitySystemComponent* InSourceASC)
+void AProjectileBase::InitializeProjectile(const UGameplayAbility* InSourceAbility, const FProjectileInitializationData& Data, AActor* InOwner, APawn* InInstigator, UAbilitySystemComponent* InSourceASC)
 {
     InitData = Data;
     ProjectileOwner = InOwner;
     ProjectileInstigator = InInstigator;
     SourceAbilitySystemComponent = InSourceASC;
-
+    SourceAbility = const_cast<UGameplayAbility*>(InSourceAbility);
     if (ProjectileMovement)
     {
         ProjectileMovement->InitialSpeed = InitData.InitialSpeed;
         ProjectileMovement->MaxSpeed = InitData.MaxSpeed > 0 ? InitData.MaxSpeed : InitData.InitialSpeed; // MaxSpeed为0则使用InitialSpeed
         ProjectileMovement->ProjectileGravityScale = InitData.GravityScale;
         ProjectileMovement->bShouldBounce = InitData.bShouldBounce;
+        if (ProjectileMovement->Velocity.IsZero() && ProjectileMovement->InitialSpeed > 0.f)
+        {
+            // GetActorRotation() 应该能拿到生成时设置的 SpawnRotation
+            FRotator CurrentActorRotation = GetActorRotation();
+            ProjectileMovement->Velocity = CurrentActorRotation.Vector() * ProjectileMovement->InitialSpeed;
+            UE_LOG(LogTemp, Warning, TEXT("AProjectileBase::InitializeProjectile - Manually set Velocity to: %s (Speed: %f) using ActorRotation: %s"),
+                *ProjectileMovement->Velocity.ToString(),
+                ProjectileMovement->Velocity.Size(),
+                *CurrentActorRotation.ToString()
+            );
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("AProjectileBase::InitializeProjectile - Velocity was NOT zero (%s) or InitialSpeed was not positive (%f). Not setting velocity manually."),
+                *ProjectileMovement->Velocity.ToString(),
+                ProjectileMovement->InitialSpeed
+            );
+        }
     }
 
     if (VisualEffectComp && InitData.VisualEffect)
@@ -97,6 +115,7 @@ void AProjectileBase::Tick(float DeltaTime)
         TravelDistance += ProjectileMovement->Velocity.Size() * DeltaTime;
         CheckMaxFlyDistance();
     }
+
 }
 
 void AProjectileBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -150,6 +169,7 @@ void AProjectileBase::ApplyDamageEffects(AActor* TargetActor, const FHitResult& 
             EffectContext.AddHitResult(HitResult);
 
             FGameplayEffectSpecHandle SpecHandle = SourceAbilitySystemComponent->MakeOutgoingSpec(InitData.DamageEffect, 1.0f, EffectContext);
+			SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.Damage")), -InitData.DamageAmount); // 设置伤害量
             if (SpecHandle.IsValid())
             {
                 SourceAbilitySystemComponent->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
@@ -190,6 +210,8 @@ void AProjectileBase::HandleSplashDamage(const FVector& ImpactLocation, AActor* 
                     // 对于溅射，HitResult可能不直接相关，或者可以创建一个新的HitResult指向溅射中心
 
                     FGameplayEffectSpecHandle SpecHandle = SourceAbilitySystemComponent->MakeOutgoingSpec(InitData.SplashDamageEffect, 1.0f, EffectContext);
+                    float SplashDamage = -InitData.DamageAmount * 0.3;
+                    SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.Damage")), SplashDamage);
                     if (SpecHandle.IsValid())
                     {
                         SourceAbilitySystemComponent->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);

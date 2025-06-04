@@ -121,11 +121,6 @@ void UIsometricInputComponent::HandleSkillInput(int32 SkillSlotID, const FHitRes
 
     if (const FGameplayTag* AbilityTag = SkillSlotToAbilityTagMap.Find(SkillSlotID))
     {
-        FGameplayAbilitySpec* Spec = OwnerASC->FindAbilitySpecFromInputID(SkillSlotID); //This is an example, actual activation might differ
-        // Or, more commonly, the ability is activated by tag, and it internally handles targeting.
-        
-        FGameplayTagContainer AbilityTags;
-        AbilityTags.AddTag(*AbilityTag);
 
         // We might need to pass target data to the ability. 
         // One way is to use a GameplayEvent with the target data payload, which the ability listens for.
@@ -135,7 +130,13 @@ void UIsometricInputComponent::HandleSkillInput(int32 SkillSlotID, const FHitRes
         // then the ability's ActivateAbility could use TargetData.
         // This part highly depends on your GAS setup and ability design.
 
-        OwnerASC->TryActivateAbilitiesByTag(AbilityTags); 
+        //OwnerASC->TryActivateAbilitiesByTag(AbilityTags); 
+		FGameplayEventData EventData;
+        EventData.Instigator = OwnerCharacter;
+        EventData.Target = TargetData.GetActor(); // If the ability needs a target actor
+        EventData.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(TargetData); // Convert HitResult to TargetData
+		// HandleGameplayEvent is a common way to pass data to abilities.
+		OwnerASC->HandleGameplayEvent(*AbilityTag, &EventData);
         UE_LOG(LogTemp, Display, TEXT("Attempting to activate ability with tag %s for slot %d. TargetData available."), *AbilityTag->ToString(), SkillSlotID);
     }
     else
@@ -144,31 +145,7 @@ void UIsometricInputComponent::HandleSkillInput(int32 SkillSlotID, const FHitRes
     }
 }
 
-void UIsometricInputComponent::HandleBasicAttackInput(const FHitResult& HitResult)
-{
-    if (!OwnerCharacter || !OwnerASC) return;
 
-    // Similar to HandleSkillInput, the HitResult is available if the basic attack ability needs it.
-    // For an "A-Key" style attack, the typical flow is: press A (activates ability, waits for target), then left-click target.
-    // So, this function might just activate the ability, and HandleLeftClick would confirm the target.
-
-    FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.BasicAttack")); 
-    if (BasicAttackAbilityTag.IsValid())
-    {
-        FGameplayTagContainer AbilityTags;
-        AbilityTags.AddTag(BasicAttackAbilityTag);
-        OwnerASC->TryActivateAbilitiesByTag(AbilityTags);
-        UE_LOG(LogTemp, Display, TEXT("Basic Attack ability (A-Key) activated, HitResult was available if needed by the ability."));
-        // If the basic attack should immediately target what's under the cursor from the A-press:
-        // AActor* Target = HitResult.GetActor();
-        // if (Target) { RequestBasicAttack(Target); } 
-        // However, this might conflict with a WaitTargetData flow.
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Basic Attack ability tag ('Ability.Player.BasicAttack') is invalid."));
-    }
-}
 
 // ... rest of the file (RequestMoveToLocation, RequestBasicAttack, SendConfirmTargetInput, SendCancelTargetInput) remains largely the same
 // but ensure they don't rely on FInputActionValue or direct input bindings.
@@ -178,9 +155,11 @@ void UIsometricInputComponent::RequestMoveToLocation(const FVector& TargetLocati
     if (OwnerCharacter && OwnerCharacter->GetController() && OwnerASC) 
     {
         FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.BasicAttack"));
+        FGameplayTag DirBasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.DirBasicAttack"));
         if (BasicAttackAbilityTag.IsValid())
         {
-            FGameplayTagContainer TagContainer(BasicAttackAbilityTag);  
+            FGameplayTagContainer TagContainer(BasicAttackAbilityTag);
+            TagContainer.AddTag(DirBasicAttackAbilityTag);
             OwnerASC->CancelAbilities(&TagContainer);
         }
 
@@ -197,7 +176,7 @@ void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor)
 {
     if (!OwnerCharacter || !OwnerASC || !TargetActor) return;
 
-    FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.BasicAttack.Directly")); 
+    FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.DirBasicAttack")); 
     if (BasicAttackAbilityTag.IsValid())
     {
         // Store target for the ability to pick up, or pass via event/payload
@@ -211,21 +190,8 @@ void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor)
         EventData.Instigator = OwnerCharacter;
         FGameplayAbilityTargetDataHandle TargetDataHandle = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(FHitResult(TargetActor, nullptr, FVector::ZeroVector, FVector::ZeroVector));
         EventData.TargetData = TargetDataHandle;
-        OwnerASC->HandleGameplayEvent(BasicAttackAbilityTag, &EventData);
-
-
-        //bool bActivated = OwnerASC->TryActivateAbilitiesByTag(AbilityTags);
-        //if (bActivated)
-        //{
-        //    // If the ability is a WaitTargetData style, this confirm might be redundant or handled by left click.
-        //    // If it's an instant attack on the provided target, this is fine.
-        //    // SendConfirmTargetInput(); // Potentially, if the ability expects it immediately after activation with a target.
-        //    UE_LOG(LogTemp, Display, TEXT("Requested Basic Attack on %s. Ability activated: %d"), *TargetActor->GetName(), bActivated);
-        //}
-        //else
-        //{
-        //    UE_LOG(LogTemp, Warning, TEXT("Failed to activate Basic Attack on %s."), *TargetActor->GetName());
-        //}
+        auto count = OwnerASC->HandleGameplayEvent(BasicAttackAbilityTag, &EventData);
+		UE_LOG(LogTemp, Display, TEXT("RequestBasicAttack: Attempting to activate Basic Attack ability with tag %s. TargetActor: %s, Count: %d"), *BasicAttackAbilityTag.ToString(), *TargetActor->GetName(), count);
     }
     else
     {

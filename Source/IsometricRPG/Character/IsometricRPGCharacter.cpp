@@ -54,6 +54,10 @@ void AIsometricRPGCharacter::BeginPlay()
     if (GetLocalRole() == ROLE_Authority)
     {
 	    InitializeAttributes();
+        // 启动被动技能，生命和法力回复
+        FGameplayTagContainer thisTags;
+        thisTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Regen.Basic")));
+        GetAbilitySystemComponent()->TryActivateAbilitiesByTag(thisTags);
     }
 }
 
@@ -142,9 +146,7 @@ void AIsometricRPGCharacter::InitAbilities()
     {
         OnRep_EquippedAbilities(); // 手动调用服务器以广播初始状态（如果需要）（尽管复制会处理它）
     }
-	AbilitySystemComponent->GenericGameplayEventCallbacks.FindOrAdd(
-        FGameplayTag::RequestGameplayTag(FName("Ability.Failure.OutOfRange"))
-    ).AddUObject(this, &AIsometricRPGCharacter::OnSkillOutOfRange); // 绑定事件处理器
+
     bAbilitiesInitialized = true;
 }
 

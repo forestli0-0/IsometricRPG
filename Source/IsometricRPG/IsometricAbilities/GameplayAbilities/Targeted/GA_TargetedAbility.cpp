@@ -60,7 +60,8 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit(const FGameplayEventData* Trigg
         return false;
     }
     // 检查是否在施法范围内
-    auto TargetActor = TriggerEventData->Target;
+    auto TargetActor = TriggerEventData->Target; 
+    if (!TargetActor) return false;
     auto TargetActorLocation = TargetActor->GetActorLocation();
     auto SelfActorLocation = GetCurrentActorInfo()->AvatarActor->GetActorLocation();
     auto Distance = FVector::Distance(TargetActorLocation, SelfActorLocation);
@@ -96,14 +97,14 @@ void UGA_TargetedAbility::OnReachedTarget()
     PlayAbilityMontage(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo);
 
     // 创建 GameplayEventData 并填充目标信息
-    FGameplayEventData EventData;
-    if (CurrentTargetDataHandle.Num() > 0 && CurrentTargetDataHandle.Get(0) != nullptr)
-    {
-        EventData.TargetData = CurrentTargetDataHandle;
-    }
+    //FGameplayEventData EventData;
+    //if (CurrentTargetDataHandle.Num() > 0 && CurrentTargetDataHandle.Get(0) != nullptr)
+    //{
+    //    EventData.TargetData = CurrentTargetDataHandle;
+    //}
 
     // 执行技能逻辑
-    ExecuteSkill(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, &EventData);
+    ExecuteSkill(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, &CurrentEventData);
 }
 void UGA_TargetedAbility::OnFailedToTarget()
 {

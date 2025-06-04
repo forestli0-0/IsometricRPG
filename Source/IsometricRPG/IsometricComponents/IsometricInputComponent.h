@@ -41,8 +41,8 @@ public:
 	// These methods are called by AIsometricPlayerController (or an AI Controller)
 	void HandleLeftClick(const FHitResult& HitResult);
 	void HandleRightClick(const FHitResult& HitResult);
-	void HandleSkillInput(int32 SkillSlotID, const FHitResult& TargetData); // TargetData can be from cursor
-	void HandleBasicAttackInput(const FHitResult& HitResult); // For "A-Key" style attack command
+	void HandleSkillInput(int32 SkillSlotID, const FHitResult& TargetData);
+
 
 	// Game action requests, can be called by this component internally or by AI
 	void RequestMoveToLocation(const FVector& TargetLocation);

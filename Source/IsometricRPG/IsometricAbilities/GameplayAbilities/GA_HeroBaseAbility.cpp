@@ -189,13 +189,62 @@ void UGA_HeroBaseAbility::PlayAbilityMontage(
     UAnimInstance* AnimInstance = ActorInfo->GetAnimInstance();
     if (MontageToPlay && IsValid(AnimInstance))
     {
+		// 设置动画蒙太奇的播放速率，对于普攻这类冷却较短的技能，可以根据冷却时间来调整播放速率，防止动画还没播完就结束了
         float PlayRate = CooldownDuration > 0 && MontageToPlay->GetPlayLength() > 0 ? 
             MontageToPlay->GetPlayLength() / CooldownDuration : 1.0f;
         PlayRate = FMath::Clamp(PlayRate, 1.f, 5.0f);
 
+		// 播放动画的时候，如果是需要面向目标的技能，可以在这里设置角色的朝向
+		TObjectPtr<ACharacter> Character = Cast<ACharacter>(ActorInfo->AvatarActor.Get());
+		// TODO:将Pawn按照目标方向旋转，且旋转时间和动画播放时间保持线性关系
+        if (bFaceTarget)
+        {
+            if (Character != nullptr)
+            {
+                if (RequiresTargetData())
+                {
+                    auto TargetDataPtr = CurrentEventData.TargetData.Data[0].ToSharedRef();
+                    if (TargetDataPtr.Get().HasHitResult() && TargetDataPtr->GetHitResult())
+                    {
+                        FVector TargetLocation = TargetDataPtr->GetHitResult()->Location;
+                        //DrawDebugSphere(GetWorld(), TargetLocation, 10.f, 12, FColor::Red, true, 5.f); // Increased segments for a smoother sphere
+
+                        if (!TargetLocation.IsZero() && Character) // Added a check for Character validity
+                        {
+                            FVector CharacterLocation = Character->GetActorLocation();
+
+                            // Calculate direction vector in the XY plane (horizontal)
+                            FVector DirectionToTargetHorizontal = TargetLocation - CharacterLocation;
+                            DirectionToTargetHorizontal.Z = 0.0f; // Ignore the Z difference
+
+                            // Check if the direction is not zero to avoid issues with Rotation()
+                            if (!DirectionToTargetHorizontal.IsNearlyZero())
+                            {
+                                FRotator LookAtRotation = DirectionToTargetHorizontal.Rotation();
+                                //DrawDebugLine(GetWorld(), CharacterLocation, CharacterLocation + DirectionToTargetHorizontal.GetSafeNormal() * 100.f, FColor::Cyan, true, 5.f); // Draw line in the horizontal plane for clarity
+                                Character->SetActorRotation(LookAtRotation, ETeleportType::None);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    auto TargetLocation = CurrentEventData.Target->GetActorLocation();
+                    DrawDebugSphere(GetWorld(), TargetLocation, 10.f, 1, FColor::Red, true, 5.f);
+                    if (!TargetLocation.IsZero())
+                    {
+                        FRotator LookAtRotation = (TargetLocation - Character->GetActorLocation()).Rotation();
+                        DrawDebugLine(GetWorld(), Character->GetActorLocation(), TargetLocation, FColor::Cyan, true, 5.f);
+                        Character->SetActorRotation(LookAtRotation, ETeleportType::None);
+                    }
+                }
+
+			}
+        }
+
+		// 创建并配置蒙太奇任务
         MontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
             this, NAME_None, MontageToPlay, PlayRate);
-
         if (MontageTask)
         {
             MontageTask->OnCompleted.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageCompleted);
@@ -320,7 +369,7 @@ bool UGA_HeroBaseAbility::CheckCost(
         return false;
     }
     // 获取当前资源值（比如 Mana）
-    float CurrentMana = AttriSet->GetMana(); // 你需要有这个 Getter
+    float CurrentMana = AttriSet->GetMana();
 
     // 假设我们从 Ability 属性里设定 CostMagnitude
     if (CurrentMana < CostMagnitude)
@@ -357,7 +406,7 @@ void UGA_HeroBaseAbility::ApplyCost(
                 if (CostTag.IsValid())
                 {
                     // 设置消耗值
-                    GESpec.SetSetByCallerMagnitude(CostTag, CostMagnitude);
+                    GESpec.SetSetByCallerMagnitude(CostTag, -CostMagnitude);
                 }
                 
                 // 应用消耗效果

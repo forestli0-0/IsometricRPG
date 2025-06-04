@@ -34,6 +34,9 @@ struct FProjectileInitializationData
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
     TSubclassOf<UGameplayEffect> DamageEffect;
 
+	// 投射物碰撞后应用的主要伤害数值 (可选)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
+	float DamageAmount = 10.0f;
     // 投射物视觉特效 (可选)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
     UParticleSystem* VisualEffect;
@@ -52,7 +55,7 @@ struct FProjectileInitializationData
 
     // 溅射半径 (0 表示无溅射)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
-    float SplashRadius = 0.0f;
+    float SplashRadius = 50.0f;
 
     // 溅射伤害效果 (可选, 仅当SplashRadius > 0时有效)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
@@ -81,7 +84,7 @@ public:
 
     // 用于从Ability初始化投射物
     UFUNCTION(BlueprintCallable, Category = "Projectile")
-    virtual void InitializeProjectile(const FProjectileInitializationData& Data, AActor* InOwner, APawn* InInstigator, UAbilitySystemComponent* InSourceASC);
+    virtual void InitializeProjectile(const UGameplayAbility* SourceAbility, const FProjectileInitializationData& Data, AActor* InOwner, APawn* InInstigator, UAbilitySystemComponent* InSourceASC);
 
 protected:
     // 组件
@@ -109,6 +112,9 @@ protected:
     
     UPROPERTY(BlueprintReadOnly, Category = "Projectile")
     TObjectPtr<UAbilitySystemComponent> SourceAbilitySystemComponent;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Projectile")
+	TObjectPtr<UGameplayAbility> SourceAbility;
 
     float TravelDistance;
     FTimerHandle TimerHandle_Lifespan;

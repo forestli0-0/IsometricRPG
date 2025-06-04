@@ -18,7 +18,7 @@ UGA_ProjectileAbility::UGA_ProjectileAbility()
     AbilityType = EHeroAbilityType::Projectile;
     
     // 默认需要目标选择
-    bRequiresTargetData = true;
+    bRequiresTargetData = false;
     
     // 投射物类默认值
     ProjectileClass = AProjectileBase::StaticClass(); // 默认为基类，具体技能应覆盖此项
@@ -32,9 +32,6 @@ void UGA_ProjectileAbility::ExecuteSkill(
     const FGameplayAbilityActivationInfo ActivationInfo, 
     const FGameplayEventData* TriggerEventData)
 {
-    // 先调用基类的执行方法
-    Super::ExecuteSkill(Handle, ActorInfo, ActivationInfo, TriggerEventData);
-
     // 获取施法者
     AActor* SelfActor = ActorInfo->AvatarActor.Get();
     if (!SelfActor || !ProjectileClass)
@@ -58,7 +55,7 @@ void UGA_ProjectileAbility::ExecuteSkill(
     FRotator SpawnRotation;
     
     // 使用目标数据确定旋转
-    GetLaunchTransform(CurrentTargetDataHandle, SelfActor, SpawnLocation, SpawnRotation);
+    GetLaunchTransform(TriggerEventData, SelfActor, SpawnLocation, SpawnRotation);
     
     // 生成投射物
     AProjectileBase* SpawnedProjectile = SpawnProjectile(SpawnLocation, SpawnRotation, SelfActor, SelfPawn, SourceASC);
@@ -79,7 +76,7 @@ void UGA_ProjectileAbility::ExecuteSkill(
 }
 
 void UGA_ProjectileAbility::GetLaunchTransform(
-    const FGameplayAbilityTargetDataHandle& TargetData, 
+    const FGameplayEventData* TriggerEventData,
     const AActor* SourceActor, 
     FVector& OutLocation, 
     FRotator& OutRotation) const
@@ -110,11 +107,11 @@ void UGA_ProjectileAbility::GetLaunchTransform(
     }
     else if (SelfPawn) // 如果没有插槽，使用Actor位置加一个偏移
     {
-        OutLocation = SelfPawn->GetActorLocation() + SelfPawn->GetActorForwardVector() * 100.0f; // 默认向前100单位
+        OutLocation = SelfPawn->GetActorLocation() + SelfPawn->GetActorForwardVector() * 50.0f; // 默认向前100单位
     }
     else if (SourceActor) // Fallback if SourceActor is not a Pawn but exists
     {
-        OutLocation = SourceActor->GetActorLocation() + SourceActor->GetActorForwardVector() * 100.0f;
+        OutLocation = SourceActor->GetActorLocation() + SourceActor->GetActorForwardVector() * 50.0f;
     }
     else // Absolute fallback, should ideally not happen
     {
@@ -125,16 +122,12 @@ void UGA_ProjectileAbility::GetLaunchTransform(
     // 确定旋转方向
     FVector TargetLocation = FVector::ZeroVector;
     bool bTargetFound = false;
-    if (TargetData.IsValid(0) && TargetData.Get(0)->HasHitResult()) // Check IsValid(index) before Get(index)
+    if (TriggerEventData && TriggerEventData->TargetData.Data.Num() > 0) // Check IsValid(index) before Get(index)
     {
-        TargetLocation = TargetData.Get(0)->GetHitResult()->Location;
+        TargetLocation = TriggerEventData->TargetData.Data[0].ToSharedRef()->GetHitResult()->Location;
         bTargetFound = true;
     }
-    else if (TargetData.Num() > 0 && TargetData.Get(0) && TargetData.Get(0)->GetActors().Num() > 0 && TargetData.Get(0)->GetActors()[0].IsValid())
-    {
-        TargetLocation = TargetData.Get(0)->GetActors()[0]->GetActorLocation();
-        bTargetFound = true;
-    }
+
 
     if (bTargetFound)
     {
@@ -191,7 +184,7 @@ AProjectileBase* UGA_ProjectileAbility::SpawnProjectile(
     if (SpawnedProjectile)
     {
         // 使用ProjectileData初始化投射物
-        SpawnedProjectile->InitializeProjectile(ProjectileData, SourceActor, SourcePawn, SourceASC);
+        SpawnedProjectile->InitializeProjectile(this, ProjectileData, SourceActor, SourcePawn, SourceASC);
     }
     else
     {

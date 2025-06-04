@@ -43,7 +43,7 @@ void AIsometricPlayerController::SetupInputComponent()
 		EIC->BindAction(Action_R, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 4);
 		EIC->BindAction(Action_Summoner1, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 5);
 		EIC->BindAction(Action_Summoner2, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 6);
-		// EIC->BindAction(Action_BasicAttack, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleBasicAttackInput); // If you add a basic attack action
+
 	}
 }
 
@@ -97,17 +97,3 @@ void AIsometricPlayerController::HandleSkillInput(int SkillIndex) // Signature c
    }  
 }
 
-// If you add HandleBasicAttackInput
-// void AIsometricPlayerController::HandleBasicAttackInput(const FInputActionValue& Value)
-// {
-// 	FHitResult HitResult;
-// 	GetHitResultUnderCursor(ECC_Visibility, true, HitResult);
-// 
-// 	if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
-// 	{
-// 		if (UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>())
-// 		{
-// 			InputComp->HandleBasicAttackInput(HitResult); // Pass HitResult
-// 		}
-// 	}
-// }
