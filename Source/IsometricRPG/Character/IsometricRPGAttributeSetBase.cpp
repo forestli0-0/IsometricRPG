@@ -3,7 +3,9 @@
 
 #include "Character/IsometricRPGAttributeSetBase.h"
 #include "GameplayEffectExtension.h"
-#include "IsometricAbilities/GameplayAbilities/GA_Death.h"
+#include "IsometricAbilities/GameplayAbilities/Death/GA_Death.h"
+#include "Gameframework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h" // Add this include to resolve the incomplete type error for UCharacterMovementComponent
 UIsometricRPGAttributeSetBase::UIsometricRPGAttributeSetBase()
 {
     //Health.SetBaseValue(100.0f);  // 设置基础生命值为 100.0
@@ -51,6 +53,20 @@ void UIsometricRPGAttributeSetBase::PostGameplayEffectExecute(const FGameplayEff
         SetMana(FMath::Clamp(NewMana, 0.0f, GetMaxMana()));
         // 触发法力值变化事件
         OnManaChanged.Broadcast(this, GetMana());
+    }
+}
+
+void UIsometricRPGAttributeSetBase::PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue)
+{
+    Super::PostAttributeChange(Attribute, OldValue, NewValue);
+
+    if (Attribute == GetMoveSpeedAttribute())
+    {
+        auto OwnerCharacter = Cast<ACharacter>(GetOwningActor());
+        if (OwnerCharacter)
+        {
+            OwnerCharacter->GetCharacterMovement()->MaxWalkSpeed = NewValue;
+        }
     }
 }
 

@@ -7,15 +7,15 @@
 #include "GA_HeroBaseAbility.generated.h"
 
 // 技能类型枚举，用于区分不同种类的技能
+// 基于英雄联盟的技能分类系统
 UENUM(BlueprintType)
 enum class EHeroAbilityType : uint8
 {
-    SelfCast     UMETA(DisplayName = "自我施放"),
-    Targeted     UMETA(DisplayName = "目标指向"),
-    SkillShot    UMETA(DisplayName = "技能射击"),
-    AreaEffect   UMETA(DisplayName = "区域效果"),
-    Projectile   UMETA(DisplayName = "投射物"),
-    Passive      UMETA(DisplayName = "被动技能")
+    SelfCast     UMETA(DisplayName = "自我施放"),   // 作用于自身，如加速、治疗
+    Targeted     UMETA(DisplayName = "目标指向"),   // 选择具体敌人，如单体攻击
+    SkillShot    UMETA(DisplayName = "方向技能"),   // 朝方向发射，如火球术
+    AreaEffect   UMETA(DisplayName = "区域效果"),   // 选择地面位置，如AOE技能
+    Passive      UMETA(DisplayName = "被动技能")    // 被动效果
 };
 
 /**

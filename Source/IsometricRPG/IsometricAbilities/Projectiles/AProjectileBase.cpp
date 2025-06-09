@@ -2,6 +2,9 @@
 #include "Components/SphereComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Particles/ParticleSystemComponent.h"
+#include "NiagaraSystem.h"
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
 #include "Kismet/GameplayStatics.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
@@ -19,7 +22,7 @@ AProjectileBase::AProjectileBase()
     CollisionComp->OnComponentHit.AddDynamic(this, &AProjectileBase::OnHit);
     RootComponent = CollisionComp;
 
-    VisualEffectComp = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("VisualEffectComp"));
+    VisualEffectComp = CreateDefaultSubobject<UNiagaraComponent>(TEXT("VisualEffectComp"));
     VisualEffectComp->SetupAttachment(RootComponent);
 
     ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovementComp"));
@@ -71,20 +74,34 @@ void AProjectileBase::InitializeProjectile(const UGameplayAbility* InSourceAbili
         }
     }
 
+
     if (VisualEffectComp && InitData.VisualEffect)
     {
-        VisualEffectComp->SetTemplate(InitData.VisualEffect);
-        VisualEffectComp->ActivateSystem();
+        //if (UNiagaraComponent* NiagaraComp = Cast<UNiagaraComponent>(VisualEffectComp))
+        //{
+        //    NiagaraComp->SetAsset(InitData.VisualEffect);
+        //    NiagaraComp->Activate();
+        //}
+
     }
     else if (VisualEffectComp)
     {
-        VisualEffectComp->DeactivateSystem();
+        VisualEffectComp->Deactivate();
     }
-
+    UNiagaraFunctionLibrary::SpawnSystemAttached(
+        InitData.VisualEffect,
+        RootComponent,
+        NAME_None,
+        FVector::ZeroVector,
+        FRotator::ZeroRotator,
+        EAttachLocation::KeepRelativeOffset,
+        true // autoDestroy
+    );
     if (FlyingSoundComp && InitData.FlyingSound)
     {
         FlyingSoundComp->SetSound(InitData.FlyingSound);
         FlyingSoundComp->Play();
+
     }
 
     // 设置生命周期
@@ -226,7 +243,12 @@ void AProjectileBase::PlayImpactEffects(const FVector& ImpactLocation)
 {
     if (InitData.ImpactEffect)
     {
-        UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), InitData.ImpactEffect, ImpactLocation, GetActorRotation());
+        UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+            GetWorld(),
+            InitData.ImpactEffect,
+            ImpactLocation,
+            GetActorRotation()
+        );
     }
     if (InitData.ImpactSound)
     {

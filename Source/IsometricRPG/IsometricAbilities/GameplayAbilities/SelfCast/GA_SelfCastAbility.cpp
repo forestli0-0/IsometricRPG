@@ -25,6 +25,46 @@ bool UGA_SelfCastAbility::RequiresTargetData_Implementation() const
     return false;
 }
 
+void UGA_SelfCastAbility::ApplySelfEffect(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo)
+{
+    // 如果有设置自我增益效果，则应用它
+    if (SelfGameplayEffect)
+    {
+        UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
+        if (ASC)
+        {
+            FGameplayEffectContextHandle ContextHandle = ASC->MakeEffectContext();
+            ContextHandle.AddSourceObject(this);
+
+            FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(
+                SelfGameplayEffect,
+                GetAbilityLevel(),
+                ContextHandle);
+
+            if (SpecHandle.IsValid())
+            {
+                // 设置持续时间
+                if (EffectDuration > 0.0f)
+                {
+                    SpecHandle.Data->SetDuration(EffectDuration, true);
+                }
+
+                // 应用效果到自身
+                FActiveGameplayEffectHandle ActiveGEHandle = ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+
+                if (ActiveGEHandle.IsValid())
+                {
+                    UE_LOG(LogTemp, Log, TEXT("%s: Successfully applied self effect."), *GetName());
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("%s: Failed to apply self effect."), *GetName());
+                }
+            }
+        }
+    }
+}
+
 
 
 void UGA_SelfCastAbility::ExecuteSkill(
@@ -33,9 +73,6 @@ void UGA_SelfCastAbility::ExecuteSkill(
     const FGameplayAbilityActivationInfo ActivationInfo, 
     const FGameplayEventData* TriggerEventData)
 {
-    // 先调用基类的执行方法
-    Super::ExecuteSkill(Handle, ActorInfo, ActivationInfo, TriggerEventData);
-    
     AActor* SelfActor = ActorInfo->AvatarActor.Get();
     if (!SelfActor)
     {
@@ -57,46 +94,3 @@ void UGA_SelfCastAbility::ExecuteSkill(
     }
 }
 
-void UGA_SelfCastAbility::ApplySelfEffect(
-    const FGameplayAbilitySpecHandle Handle,
-    const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo)
-{
-    // 如果有设置自我增益效果，则应用它
-    if (SelfGameplayEffect)
-    {
-        UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
-        if (ASC)
-        {
-            FGameplayEffectContextHandle ContextHandle = ASC->MakeEffectContext();
-            ContextHandle.AddSourceObject(this);
-            
-            FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(
-                SelfGameplayEffect, 
-                GetAbilityLevel(), 
-                ContextHandle);
-                
-            if (SpecHandle.IsValid())
-            {
-                // 设置持续时间
-                if (EffectDuration > 0.0f)
-                {
-                    SpecHandle.Data->SetDuration(EffectDuration, true);
-                }
-                
-                // 应用效果到自身
-                FActiveGameplayEffectHandle ActiveGEHandle = 
-                    ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-                    
-                if (ActiveGEHandle.IsValid())
-                {
-                    UE_LOG(LogTemp, Log, TEXT("%s: Successfully applied self effect."), *GetName());
-                }
-                else
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("%s: Failed to apply self effect."), *GetName());
-                }
-            }
-        }
-    }
-}

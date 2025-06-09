@@ -3,6 +3,9 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "GameplayEffect.h"
+#include "NiagaraSystem.h"
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
 #include "AProjectileBase.generated.h"
 
 class UAbilitySystemComponent;
@@ -39,11 +42,11 @@ struct FProjectileInitializationData
 	float DamageAmount = 10.0f;
     // 投射物视觉特效 (可选)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
-    UParticleSystem* VisualEffect;
+    UNiagaraSystem* VisualEffect;
 
-    // 投射物击中时的爆炸/冲击特效 (可选)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
-    UParticleSystem* ImpactEffect;
+    // 投射物击中时的爆炸/冲击特效 (可选)  
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")  
+    UNiagaraSystem* ImpactEffect;
     
     // 投射物飞行音效 (可选)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
@@ -95,7 +98,7 @@ protected:
     class UProjectileMovementComponent* ProjectileMovement;
 
     UPROPERTY(VisibleDefaultsOnly, Category = Effects)
-    class UParticleSystemComponent* VisualEffectComp;
+    class UNiagaraComponent* VisualEffectComp;
     
     UPROPERTY(VisibleDefaultsOnly, Category = Audio)
     class UAudioComponent* FlyingSoundComp;

@@ -15,7 +15,7 @@
 UGA_ProjectileAbility::UGA_ProjectileAbility()
 {
     // 设置技能类型为投射物
-    AbilityType = EHeroAbilityType::Projectile;
+    AbilityType = EHeroAbilityType::SkillShot;
     
     // 默认需要目标选择
     bRequiresTargetData = false;

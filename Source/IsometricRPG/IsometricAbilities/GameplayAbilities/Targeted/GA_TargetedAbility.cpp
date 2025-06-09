@@ -8,6 +8,8 @@
 #include "IsometricAbilities/TargetTrace/GATA_CursorTrace.h"
 #include "IsometricAbilities/AbilityTasks/AbilityTask_WaitMoveToLocation.h"
 #include "Character/IsometricRPGCharacter.h"
+#include "Components/CapsuleComponent.h" // 添加此行以解决不完整类型错误
+#include "NiagaraComponent.h" // Add this include to resolve the incomplete type error for UNiagaraComponent
 
 UGA_TargetedAbility::UGA_TargetedAbility()
 {
@@ -154,7 +156,49 @@ void UGA_TargetedAbility::StartTargetSelection(
     {
         UE_LOG(LogTemp, Warning, TEXT("Failed to spawn DecalActor for RangeIndicatorDecal"));
     }
+    if (!RangeIndicatorNiagaraActorClass) // 检查新的 NiagaraActor 类
+    {
+        UE_LOG(LogTemp, Error, TEXT("'%s': RangeIndicatorNiagaraActorClass is NOT SET! Cancelling."), *GetName());
+        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+        return;
+    }
+    //FVector SpawnLocation = Avatar->GetActorLocation() - Avatar->GetComponentByClass<UCapsuleComponent>()->GetScaledCapsuleHalfHeight(); // 初始位置与Avatar相同
+    auto AvatarCharacter = Cast<ACharacter>(Avatar);
+	FVector SpawnLocation = AvatarCharacter->GetMesh()->GetComponentLocation();
+    FRotator SpawnRotation = FRotator::ZeroRotator;
 
+
+    ANiagaraActor* NiagaraRangeIndicator = GetWorld()->SpawnActor<ANiagaraActor>(
+        RangeIndicatorNiagaraActorClass,
+        SpawnLocation,
+        SpawnRotation
+    );
+
+    if (NiagaraRangeIndicator)
+    {
+        //NiagaraRangeIndicator->AttachToActor(Avatar, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+            // 附着到角色的Skeletal Mesh Component上的指定Socket
+        NiagaraRangeIndicator->AttachToComponent(
+            AvatarCharacter->GetMesh(), // 父组件是Skeletal Mesh Component
+            FAttachmentTransformRules::SnapToTargetNotIncludingScale, // 依然使用SnapToTarget
+            FName("Root") // 您在编辑器中创建的Socket名称
+        );
+        if (NiagaraRangeIndicator->GetNiagaraComponent())
+        {
+            NiagaraRangeIndicator->GetNiagaraComponent()->SetFloatParameter(FName("user_Radius"), RangeToApply);
+
+            // 如果你的Niagara System用Vector来控制大小，例如 (RangeToApply, RangeToApply, 1.0f)
+            // NiagaraRangeIndicator->GetNiagaraComponent()->SetVectorParameter(FName("Scale"), FVector(RangeToApply, RangeToApply, 1.0f));
+        }
+
+        ActiveRangeIndicatorNiagaraActor = NiagaraRangeIndicator;
+
+        // NiagaraRangeIndicator->SetLifeSpan(3.0f); // 如果需要自动销毁
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Failed to spawn NiagaraActor for RangeIndicator"));
+    }
 
     TargetDataTask = UAbilityTask_WaitTargetData::WaitTargetData(
         this,
@@ -216,6 +260,11 @@ void UGA_TargetedAbility::EndAbility(const FGameplayAbilitySpecHandle Handle,
     if (MyCharacter)
     {
         MyCharacter->CurrentAbilityTargets.Empty(); // Clear previous
+    }
+    if (ActiveRangeIndicatorNiagaraActor && IsValid(ActiveRangeIndicatorNiagaraActor))
+    {
+        ActiveRangeIndicatorNiagaraActor->Destroy();
+        ActiveRangeIndicatorNiagaraActor = nullptr; // 清空引用
     }
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
