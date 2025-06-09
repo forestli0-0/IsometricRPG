@@ -6,6 +6,7 @@
 #include "CoreMinimal.h"
 #include "IsometricAbilities/GameplayAbilities/GA_HeroBaseAbility.h"
 #include "Engine/DecalActor.h"
+#include "NiagaraActor.h" 
 #include "GA_TargetedAbility.generated.h"
 
 /**
@@ -42,6 +43,10 @@ public:
 	UPROPERTY()
 	ADecalActor* RangeIndicatorDecal;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Targeting")
+	TSubclassOf<ANiagaraActor> RangeIndicatorNiagaraActorClass;
+	UPROPERTY()
+	TObjectPtr<ANiagaraActor> ActiveRangeIndicatorNiagaraActor;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Targeting")
 	UMaterialInterface* RangeIndicatorMaterial; // 在蓝图中设置你的圆形材质
 

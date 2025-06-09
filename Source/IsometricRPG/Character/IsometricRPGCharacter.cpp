@@ -163,7 +163,8 @@ void AIsometricRPGCharacter::GrantAbilityInternal(FEquippedAbilityInfo& Info, bo
         ClearAbilityInternal(Info); // 清除此插槽中的先前技能
     }
 
-    FGameplayAbilitySpec AbilitySpec(Info.AbilityClass, 1, static_cast<int32>(Info.Slot), this);
+    //FGameplayAbilitySpec AbilitySpec(Info.AbilityClass, 1, static_cast<int32>(Info.Slot), this);
+    FGameplayAbilitySpec AbilitySpec(Info.AbilityClass, 1, INDEX_NONE, this);
     Info.AbilitySpecHandle = AbilitySystemComponent->GiveAbility(AbilitySpec);
 }
 

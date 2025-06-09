@@ -123,4 +123,5 @@ public:
     FManaChangedEvent OnManaChanged;
     virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
 
+    void PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue) override;
 };

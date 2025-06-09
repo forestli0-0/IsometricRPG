@@ -258,53 +258,63 @@ void UGA_HeroBaseAbility::PlayAbilityMontage(
                     }
                     else
                     {
-                        auto TargetDataPtr = CurrentEventData.TargetData.Data[0].ToSharedRef();
-                        if (TargetDataPtr.Get().HasHitResult() && TargetDataPtr->GetHitResult())
+                        if (CurrentEventData.TargetData.Data.Num() > 0 && CurrentEventData.TargetData.Data[0].IsValid())
                         {
-                            FVector TargetLocation = TargetDataPtr->GetHitResult()->Location;
-                            //DrawDebugSphere(GetWorld(), TargetLocation, 10.f, 12, FColor::Red, true, 5.f); // Increased segments for a smoother sphere
+                            auto TargetDataPtr = CurrentEventData.TargetData.Data[0].ToSharedRef();
 
-                            if (!TargetLocation.IsZero() && Character) // Added a check for Character validity
+                            if (TargetDataPtr.Get().HasHitResult() && TargetDataPtr->GetHitResult())
                             {
-                                FVector CharacterLocation = Character->GetActorLocation();
+                                FVector TargetLocation = TargetDataPtr->GetHitResult()->Location;
+                                //DrawDebugSphere(GetWorld(), TargetLocation, 10.f, 12, FColor::Red, true, 5.f); // Increased segments for a smoother sphere
 
-                                // Calculate direction vector in the XY plane (horizontal)
-                                FVector DirectionToTargetHorizontal = TargetLocation - CharacterLocation;
-                                DirectionToTargetHorizontal.Z = 0.0f; // Ignore the Z difference
-
-                                // Check if the direction is not zero to avoid issues with Rotation()
-                                if (!DirectionToTargetHorizontal.IsNearlyZero())
+                                if (!TargetLocation.IsZero() && Character) // Added a check for Character validity
                                 {
-                                    FRotator LookAtRotation = DirectionToTargetHorizontal.Rotation();
-                                    //DrawDebugLine(GetWorld(), CharacterLocation, CharacterLocation + DirectionToTargetHorizontal.GetSafeNormal() * 100.f, FColor::Cyan, true, 5.f); // Draw line in the horizontal plane for clarity
-                                    Character->SetActorRotation(LookAtRotation, ETeleportType::None);
+                                    FVector CharacterLocation = Character->GetActorLocation();
+
+                                    // Calculate direction vector in the XY plane (horizontal)
+                                    FVector DirectionToTargetHorizontal = TargetLocation - CharacterLocation;
+                                    DirectionToTargetHorizontal.Z = 0.0f; // Ignore the Z difference
+
+                                    // Check if the direction is not zero to avoid issues with Rotation()
+                                    if (!DirectionToTargetHorizontal.IsNearlyZero())
+                                    {
+                                        FRotator LookAtRotation = DirectionToTargetHorizontal.Rotation();
+                                        //DrawDebugLine(GetWorld(), CharacterLocation, CharacterLocation + DirectionToTargetHorizontal.GetSafeNormal() * 100.f, FColor::Cyan, true, 5.f); // Draw line in the horizontal plane for clarity
+                                        Character->SetActorRotation(LookAtRotation, ETeleportType::None);
+                                    }
                                 }
                             }
                         }
+                        else
+                        {
+                            UE_LOG(LogTemp, Error, TEXT("CurrentEventData.TargetData is empty or invalid."));
+						}
                     }
 
                 }
 
-                // 创建并配置蒙太奇任务
-                MontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
-                    this, NAME_None, MontageToPlay, PlayRate);
-                if (MontageTask)
-                {
-                    MontageTask->OnCompleted.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageCompleted);
-                    MontageTask->OnBlendOut.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageCompleted);
-                    MontageTask->OnInterrupted.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageInterruptedOrCancelled);
-                    MontageTask->OnCancelled.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageInterruptedOrCancelled);
-                    MontageTask->ReadyForActivation();
-                }
-                else
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("%s: Failed to create MontageTask."), *GetName());
-                }
+
             }
             else
             {
                 UE_LOG(LogTemp, Display, TEXT("%s: No montage to play or invalid anim instance."), *GetName());
             }
+        }
+
+        // 创建并配置蒙太奇任务
+        MontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
+            this, NAME_None, MontageToPlay, PlayRate);
+        if (MontageTask)
+        {
+            MontageTask->OnCompleted.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageCompleted);
+            MontageTask->OnBlendOut.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageCompleted);
+            MontageTask->OnInterrupted.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageInterruptedOrCancelled);
+            MontageTask->OnCancelled.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageInterruptedOrCancelled);
+            MontageTask->ReadyForActivation();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("%s: Failed to create MontageTask."), *GetName());
         }
     }
 }
