@@ -15,7 +15,7 @@ UGA_TargetedAbility::UGA_TargetedAbility()
 {
 	RangeToApply = 100.f;
 }
-bool UGA_TargetedAbility::OtherCheckBeforeCommit(const FGameplayAbilityTargetDataHandle& Data) const
+bool UGA_TargetedAbility::OtherCheckBeforeCommit(const FGameplayAbilityTargetDataHandle& Data)
 {
 	// 对于指向性技能，检查目标是否有效
 	if (Data.Num() == 0)
@@ -51,9 +51,13 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit(const FGameplayAbilityTargetDat
         GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Black, TEXT("目标距离太远----来自技能内部"));
 		return false;
 	}
-	return true;
+    else
+    {
+        OnReachedTarget();
+	    return true;
+    }
 }
-bool UGA_TargetedAbility::OtherCheckBeforeCommit(const FGameplayEventData* TriggerEventData) const
+bool UGA_TargetedAbility::OtherCheckBeforeCommit(const FGameplayEventData* TriggerEventData)
 {
     // 对于指向性技能，检查目标是否有效
     if (!TriggerEventData)
@@ -81,7 +85,11 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit(const FGameplayEventData* Trigg
         GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Black, TEXT("目标距离太远----来自技能内部"));
         return false;
     }
-    return true;
+    else
+    {
+        OnReachedTarget();
+        return true;
+    }
 }
 
 void UGA_TargetedAbility::OnReachedTarget()
@@ -209,7 +217,7 @@ void UGA_TargetedAbility::StartTargetSelection(
 
     if (TargetDataTask)
     {
-        TargetDataTask->ValidData.AddDynamic(this, &UGA_HeroBaseAbility::OnTargetDataReady);
+        TargetDataTask->ValidData.AddDynamic(this, &UGA_TargetedAbility::OnTargetDataReady);
         TargetDataTask->Cancelled.AddDynamic(this, &UGA_HeroBaseAbility::OnTargetingCancelled);
 
         // 如果需要在 GATA 实例上设置属性 (比如 TraceChannel)
