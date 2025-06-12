@@ -31,8 +31,8 @@ public:
 	UFUNCTION()
 	void OnFailedToTarget();
 protected:
-	virtual bool OtherCheckBeforeCommit(const FGameplayAbilityTargetDataHandle& Data) const override;
-	virtual bool OtherCheckBeforeCommit(const FGameplayEventData* TriggerEventData) const override;
+	virtual bool OtherCheckBeforeCommit(const FGameplayAbilityTargetDataHandle& Data) override;
+	virtual bool OtherCheckBeforeCommit(const FGameplayEventData* TriggerEventData) override;
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayAbilityActivationInfo ActivationInfo,

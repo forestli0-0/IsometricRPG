@@ -163,21 +163,26 @@ void UGA_HeroBaseAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHand
     FGameplayAbilitySpecHandle Handle = GetCurrentAbilitySpecHandle();
     FGameplayAbilityActivationInfo ActivationInfo = GetCurrentActivationInfo();
 
-    OtherCheckBeforeCommit(Data);
-    UE_LOG(LogTemp, Warning, TEXT("%s: 其他检查失败，与消耗和冷却无关。"), *GetName());
-	constexpr bool bReplicateEndAbility = true;
-    constexpr bool bWasCancelled = true;
-
+    if (!OtherCheckBeforeCommit(Data))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s: 其他检查失败，与消耗和冷却无关。"), *GetName());
+        constexpr bool bReplicateEndAbility = true;
+        constexpr bool bWasCancelled = true;
+    }
     return;
 }
-bool UGA_HeroBaseAbility::OtherCheckBeforeCommit(const FGameplayAbilityTargetDataHandle& Data) const
+bool UGA_HeroBaseAbility::OtherCheckBeforeCommit(const FGameplayAbilityTargetDataHandle& Data)
 {
-    // 这里可以添加其他检查逻辑，例如检查目标数据的有效性等
+
+    // 基类中的默认实现 - 子类应该重写这个方法
+    UE_LOG(LogTemp, Log, TEXT("%s：已调用提交前的最后检查。这应该被子类覆盖."), *GetName());
     return true;
 }
 
-bool UGA_HeroBaseAbility::OtherCheckBeforeCommit(const FGameplayEventData* TriggerEventData) const
+bool UGA_HeroBaseAbility::OtherCheckBeforeCommit(const FGameplayEventData* TriggerEventData)
 {
+    // 基类中的默认实现 - 子类应该重写这个方法
+    UE_LOG(LogTemp, Log, TEXT("%s：已调用提交前的最后检查。这应该被子类覆盖."), *GetName());
     return true;
 }
 

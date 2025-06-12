@@ -141,8 +141,8 @@ protected:
         const FGameplayAbilityActivationInfo ActivationInfo,
         const FGameplayEventData* TriggerEventData);
 
-    virtual bool OtherCheckBeforeCommit(const FGameplayAbilityTargetDataHandle& Data) const;
-    virtual bool OtherCheckBeforeCommit(const FGameplayEventData* TriggerEventData) const;
+    virtual bool OtherCheckBeforeCommit(const FGameplayAbilityTargetDataHandle& Data);
+    virtual bool OtherCheckBeforeCommit(const FGameplayEventData* TriggerEventData);
     // 播放技能动画
     virtual void PlayAbilityMontage(
         const FGameplayAbilitySpecHandle Handle,
