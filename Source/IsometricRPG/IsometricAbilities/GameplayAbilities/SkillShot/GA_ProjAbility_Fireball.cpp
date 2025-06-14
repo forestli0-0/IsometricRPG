@@ -12,11 +12,11 @@ UGA_ProjAbility_Fireball::UGA_ProjAbility_Fireball()
 	ProjectileClass = AProjectileFireball::StaticClass();
 	
 	// 配置技能射击相关属性
-	MaxRange = 1200.0f; // 火球最大射程
+	RangeToApply = 1200.0f; // 火球最大射程
 	SkillShotWidth = 80.0f; // 火球宽度
 	
 	// 配置投射物数据
-	ProjectileData.MaxFlyDistance = MaxRange;
+	ProjectileData.MaxFlyDistance = RangeToApply;
 	ProjectileData.InitialSpeed = 800.0f; // 火球飞行速度
 	ProjectileData.MaxSpeed = 800.0f; // 火球最大速度
 	ProjectileData.DamageAmount = 100.0f;

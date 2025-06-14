@@ -28,7 +28,6 @@ UGA_DashStrike::UGA_DashStrike()
 	DashDistance = 1000.0f;
 	DashSpeed = 1500.0f;
 	CollisionRadius = 60.0f;
-	MaxRange = DashDistance;
 	SkillShotWidth = CollisionRadius * 2.0f;
 
 	// 需要目标数据（方向选择）

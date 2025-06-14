@@ -176,6 +176,18 @@ bool UGA_HeroBaseAbility::OtherCheckBeforeCommit(const FGameplayAbilityTargetDat
 
     // 基类中的默认实现 - 子类应该重写这个方法
     UE_LOG(LogTemp, Log, TEXT("%s：已调用提交前的最后检查。这应该被子类覆盖."), *GetName());
+    if (!CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s: Failed to commit ability for direct execution."), *GetName());
+        CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
+        return false;
+    }
+
+    // 播放技能动画
+    PlayAbilityMontage(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo);
+
+    // 执行技能逻辑
+    ExecuteSkill(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, CurrentTriggerEventData);
     return true;
 }
 

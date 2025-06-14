@@ -22,10 +22,6 @@ public:
 	UGA_SkillShotAbility();
 
 protected:
-	// Maximum range for the skill shot
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SkillShot")
-	float MaxRange = 1000.0f;
-
 	// Width/radius of the skill shot effect
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SkillShot")
 	float SkillShotWidth = 100.0f;
