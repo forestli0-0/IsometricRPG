@@ -110,7 +110,7 @@ void UGA_SkillShotAbility::ExecuteSkillShot(const FVector& Direction, const FVec
 	else
 	{
 		// Implement line trace or instant hit logic here
-		FVector EndLocation = StartLocation + (Direction * MaxRange);
+		FVector EndLocation = StartLocation + (Direction * RangeToApply);
 		
 		// Perform line trace
 		FCollisionQueryParams QueryParams;
