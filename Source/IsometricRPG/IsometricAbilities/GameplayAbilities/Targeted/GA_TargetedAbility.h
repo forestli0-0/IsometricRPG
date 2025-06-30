@@ -40,9 +40,6 @@ protected:
 		bool bWasCancelled) override;
 public:
 
-	UPROPERTY()
-	ADecalActor* RangeIndicatorDecal;
-
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Targeting")
 	TSubclassOf<ANiagaraActor> RangeIndicatorNiagaraActorClass;
 	UPROPERTY()

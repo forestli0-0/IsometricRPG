@@ -68,6 +68,16 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit(const FGameplayEventData* Trigg
     // 检查是否在施法范围内
     auto TargetActor = TriggerEventData->Target; 
     if (!TargetActor) return false;
+    auto MyCharacter = Cast<AIsometricRPGCharacter>(GetAvatarActorFromActorInfo());
+    if (MyCharacter)
+    {
+        MyCharacter->CurrentAbilityTargets.Empty(); // Clear previous
+        if (TargetActor)  
+        {  
+            TWeakObjectPtr<AActor> WeakTargetActor = const_cast<AActor*>(TargetActor.Get());
+            MyCharacter->CurrentAbilityTargets.Add(WeakTargetActor);  
+        }
+    }
     auto TargetActorLocation = TargetActor->GetActorLocation();
     auto SelfActorLocation = GetCurrentActorInfo()->AvatarActor->GetActorLocation();
     auto Distance = FVector::Distance(TargetActorLocation, SelfActorLocation);
@@ -87,7 +97,7 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit(const FGameplayEventData* Trigg
     }
     else
     {
-        OnReachedTarget();
+        //OnReachedTarget();
         return true;
     }
 }
@@ -142,28 +152,6 @@ void UGA_TargetedAbility::StartTargetSelection(
         return;
     }
 
-    // 创建 Decal
-    FVector DecalLocation = Avatar->GetActorLocation() - FVector(0, 0, 88);
-    FRotator DecalRotation = FRotator(0, 0, 1.0f); // 指向地面
-    FVector DecalSize = FVector(RangeToApply, RangeToApply, RangeToApply); // Decal 的大小
-    // Create a Decal Actor instead of directly assigning the UDecalComponent
-    ADecalActor* DecalActor = GetWorld()->SpawnActor<ADecalActor>(DecalLocation, DecalRotation);
-    if (DecalActor)
-    {
-        DecalActor->SetDecalMaterial(RangeIndicatorMaterial);
-        DecalActor->GetDecal()->DecalSize = DecalSize;
-        // No other changes are needed in the existing code
-        DecalActor->SetLifeSpan(3.0f); // Set the lifespan of the decal actor
-
-        DecalActor->AttachToActor(Avatar, FAttachmentTransformRules::KeepWorldTransform);
-        DecalActor->SetActorRelativeRotation(FRotator(-90.0f, 0.0f, 0.0f));
-
-        RangeIndicatorDecal = DecalActor; // Assign the DecalActor to RangeIndicatorDecal
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Failed to spawn DecalActor for RangeIndicatorDecal"));
-    }
     if (!RangeIndicatorNiagaraActorClass) // 检查新的 NiagaraActor 类
     {
         UE_LOG(LogTemp, Error, TEXT("'%s': RangeIndicatorNiagaraActorClass is NOT SET! Cancelling."), *GetName());
