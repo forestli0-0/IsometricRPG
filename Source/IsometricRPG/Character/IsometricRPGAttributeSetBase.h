@@ -13,7 +13,7 @@ GAMEPLAYATTRIBUTE_VALUE_GETTER(PropertyName) \
 GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
 GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
 
-// Fix: Correct the type of the first parameter in the delegate declaration
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FHealthChangedEvent, UIsometricRPGAttributeSetBase*, AttributeSet, float, NewHealth);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FManaChangedEvent, UIsometricRPGAttributeSetBase*, AttributeSet, float, NewMana);
 /**
@@ -22,109 +22,143 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FManaChangedEvent, UIsometricRPGAtt
 UCLASS()
 class ISOMETRICRPG_API UIsometricRPGAttributeSetBase : public UAttributeSet
 {
-GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-UIsometricRPGAttributeSetBase();
+	UIsometricRPGAttributeSetBase();
 
-/** ----- 核心属性 ----- */
+	//~====================================================================================
+	//~ 核心属性
+	//~====================================================================================
 
-// 最大生命值
-UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attributes")
-FGameplayAttributeData MaxHealth;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MaxHealth);
-// 当前生命值
-UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attributes")
-FGameplayAttributeData Health;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Health);
-// 生命值恢复速率
-UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attributes")
-FGameplayAttributeData HealthRegenRate;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, HealthRegenRate);
+	// 最大生命值
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attributes|Core")
+	FGameplayAttributeData MaxHealth;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MaxHealth);
 
-// 最大法力值
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-FGameplayAttributeData MaxMana;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MaxMana);
+	// 当前生命值
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attributes|Core")
+	FGameplayAttributeData Health;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Health);
 
-// 当前法力值
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-FGameplayAttributeData Mana;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Mana);
+	// 生命值恢复速率
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attributes|Core")
+	FGameplayAttributeData HealthRegenRate;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, HealthRegenRate);
 
-// 法力值恢复速率
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-FGameplayAttributeData ManaRegenRate;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, ManaRegenRate);
+	// 最大法力值
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Core")
+	FGameplayAttributeData MaxMana;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MaxMana);
 
-/** ----- 攻击属性 ----- */
-// 攻击范围
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-FGameplayAttributeData AttackRange;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AttackRange);
-// 攻击力
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-FGameplayAttributeData AttackDamage;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AttackDamage);
-// 攻击速度
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-FGameplayAttributeData AttackSpeed;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AttackSpeed);
-// 暴击几率
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-FGameplayAttributeData CriticalChance;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, CriticalChance);
-// 暴击伤害
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-FGameplayAttributeData CriticalDamage;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, CriticalDamage);
-// 物理穿透
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-FGameplayAttributeData ArmorPenetration;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, ArmorPenetration);
-// 魔法穿透
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-FGameplayAttributeData MagicPenetration;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MagicPenetration);
+	// 当前法力值
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Core")
+	FGameplayAttributeData Mana;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Mana);
 
-// 移动速度
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-FGameplayAttributeData MoveSpeed;
+	// 法力值恢复速率
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Core")
+	FGameplayAttributeData ManaRegenRate;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, ManaRegenRate);
+	
+	// 移动速度
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Core")
+	FGameplayAttributeData MoveSpeed;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MoveSpeed);
 
-/** ----- 防御属性 ----- */
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MoveSpeed);
-// 物理防御
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-FGameplayAttributeData PhysicalDefense;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, PhysicalDefense);
-// 魔法防御
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-FGameplayAttributeData MagicDefense;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MagicDefense);
-// 生命偷取
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-FGameplayAttributeData LifeSteal;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, LifeSteal);
+	//~====================================================================================
+	//~ 攻击属性
+	//~====================================================================================
 
-/** ----- 经验与等级 ----- */
+	// 攻击范围
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Attack")
+	FGameplayAttributeData AttackRange;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AttackRange);
 
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-FGameplayAttributeData Experience;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Experience);
+	// 攻击力
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Attack")
+	FGameplayAttributeData AttackDamage;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AttackDamage);
 
-UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-FGameplayAttributeData Level;
-ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Level);
+	// 攻击速度
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Attack")
+	FGameplayAttributeData AttackSpeed;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AttackSpeed);
+
+	// 暴击几率
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Attack")
+	FGameplayAttributeData CriticalChance;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, CriticalChance);
+
+	// 暴击伤害
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Attack")
+	FGameplayAttributeData CriticalDamage;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, CriticalDamage);
+
+	// 物理穿透
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Attack")
+	FGameplayAttributeData ArmorPenetration;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, ArmorPenetration);
+
+	// 魔法穿透
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Attack")
+	FGameplayAttributeData MagicPenetration;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MagicPenetration);
+
+	//~====================================================================================
+	//~ 防御属性
+	//~====================================================================================
+	
+	// 物理防御
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Defense")
+	FGameplayAttributeData PhysicalDefense;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, PhysicalDefense);
+
+	// 魔法防御
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Defense")
+	FGameplayAttributeData MagicDefense;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MagicDefense);
+
+	// 生命偷取
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Defense")
+	FGameplayAttributeData LifeSteal;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, LifeSteal);
+
+	//~====================================================================================
+	//~ 经验与等级
+	//~====================================================================================
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Experience")
+	FGameplayAttributeData Experience;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Experience);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Experience")
+	FGameplayAttributeData Level;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Level);
 
 
 public:
-    static TSubclassOf<UGameplayEffect> GetDefaultInitGE();
+	//~====================================================================================
+	//~ Public Methods
+	//~====================================================================================
+	
+	static TSubclassOf<UGameplayEffect> GetDefaultInitGE();
 
-    UPROPERTY(BlueprintAssignable)
-    FHealthChangedEvent OnHealthChanged;
-    UPROPERTY(BlueprintAssignable)
-    FManaChangedEvent OnManaChanged;
-    virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
+	//~====================================================================================
+	//~ Delegates
+	//~====================================================================================
 
-    void PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue) override;
+	UPROPERTY(BlueprintAssignable)
+	FHealthChangedEvent OnHealthChanged;
+	
+	UPROPERTY(BlueprintAssignable)
+	FManaChangedEvent OnManaChanged;
+
+	//~====================================================================================
+	//~ Overrides
+	//~====================================================================================
+	
+	virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
+
+	void PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue) override;
 };
