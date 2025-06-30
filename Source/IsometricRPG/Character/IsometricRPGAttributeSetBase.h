@@ -58,7 +58,10 @@ FGameplayAttributeData ManaRegenRate;
 ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, ManaRegenRate);
 
 /** ----- 攻击属性 ----- */
-
+// 攻击范围
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
+FGameplayAttributeData AttackRange;
+ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AttackRange);
 // 攻击力
 UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
 FGameplayAttributeData AttackDamage;

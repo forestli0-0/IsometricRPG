@@ -37,8 +37,20 @@ AIsometricRPGCharacter::AIsometricRPGCharacter()
 	GetCharacterMovement()->bSnapToPlaneAtStart = true;
 
 	EquippedAbilities.SetNum(static_cast<int32>(ESkillSlot::Invalid));
+
+    TeamId = FGenericTeamId(1);
+}
+// 实现GetGenericTeamId函数，直接返回我们的TeamId变量
+FGenericTeamId AIsometricRPGCharacter::GetGenericTeamId() const
+{
+    return TeamId;
 }
 
+// 实现SetGenericTeamId函数
+void AIsometricRPGCharacter::SetGenericTeamId(const FGenericTeamId& InTeamId)
+{
+    TeamId = InTeamId;
+}
 void AIsometricRPGCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
@@ -49,16 +61,7 @@ void AIsometricRPGCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty
 void AIsometricRPGCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	// 服务器应初始化技能。客户端将通过 OnRep_EquippedAbilities 获取它们
-	// 或者如果不是玩家控制的，服务器可以在这里初始化。
-    if (GetLocalRole() == ROLE_Authority)
-    {
-	    InitializeAttributes();
-        // 启动被动技能，生命和法力回复
-        FGameplayTagContainer thisTags;
-        thisTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Regen.Basic")));
-        GetAbilitySystemComponent()->TryActivateAbilitiesByTag(thisTags);
-    }
+	// 初始化已移至 PossessedBy() 中，确保在 AbilitySystemComponent 正确设置后进行
 }
 
 // 每帧调用
@@ -83,10 +86,21 @@ void AIsometricRPGCharacter::PossessedBy(AController* NewController)
         AbilitySystemComponent->InitAbilityActorInfo(this, this);
     }
 
-	// 服务器：初始化属性和技能
+	// 服务器：按正确顺序初始化属性和技能
     if (GetLocalRole() == ROLE_Authority)
     {
-        InitAbilities(); 
+        // 1. 首先初始化属性
+        InitializeAttributes();
+        UE_LOG(LogTemp, Log, TEXT("角色初始化属性"));
+
+        // 2. 然后初始化技能（技能可能依赖于属性）
+        InitAbilities();
+        UE_LOG(LogTemp, Log, TEXT("角色初始化技能"));
+
+        // 3. 最后启动被动技能，生命和法力回复
+        FGameplayTagContainer thisTags;
+        thisTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Regen.Basic")));
+        GetAbilitySystemComponent()->TryActivateAbilitiesByTag(thisTags);
     }
     // 客户端：属性通常通过效果复制，技能通过 OnRep_EquippedAbilities 复制
 }

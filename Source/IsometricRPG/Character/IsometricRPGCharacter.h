@@ -9,6 +9,7 @@
 #include "AbilitySystemComponent.h" 
 #include "IsometricComponents/IsometricInputComponent.h"
 #include "GameplayTagContainer.h"
+#include "GenericTeamAgentInterface.h"
 #include "IsometricRPGCharacter.generated.h"
 
 // Define ESkillSlot and FEquippedAbilityInfo here or in a separate types header
@@ -48,7 +49,7 @@ struct FEquippedAbilityInfo
 };
 
 UCLASS()
-class ISOMETRICRPG_API AIsometricRPGCharacter : public ACharacter, public IAbilitySystemInterface
+class ISOMETRICRPG_API AIsometricRPGCharacter : public ACharacter, public IAbilitySystemInterface, public IGenericTeamAgentInterface
 {
 
 	GENERATED_BODY()
@@ -69,6 +70,14 @@ public:
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
 	TArray<TWeakObjectPtr<AActor>> CurrentAbilityTargets;
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI")
+	FGenericTeamId TeamId;
+
+	// 4. 声明接口需要我们实现的函数
+	virtual FGenericTeamId GetGenericTeamId() const override;
+	virtual void SetGenericTeamId(const FGenericTeamId& InTeamId);
 
 public:
 	// 技能系统组件
