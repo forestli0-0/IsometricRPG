@@ -33,7 +33,7 @@ void UGA_ProjectileAbility::ExecuteSkill(
     const FGameplayEventData* TriggerEventData)
 {
     // 获取施法者
-    AActor* SelfActor = ActorInfo->AvatarActor.Get();
+    AActor* SelfActor = GetAvatarActorFromActorInfo();
     if (!SelfActor || !ProjectileClass)
     {
         UE_LOG(LogTemp, Error, TEXT("%s: Cannot execute skill - SelfActor or ProjectileClass is invalid."), *GetName());

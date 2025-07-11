@@ -45,7 +45,7 @@ void UGA_DashStrike::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const
 {
 	Super::ExecuteSkill(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
-	if (!TriggerEventData || !ActorInfo || !ActorInfo->AvatarActor.IsValid())
+	if (!TriggerEventData || !ActorInfo || !GetAvatarActorFromActorInfo())
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
@@ -53,7 +53,7 @@ void UGA_DashStrike::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const
 
 	// 获取突进方向
 	FVector DashDirection = GetSkillShotDirection(TriggerEventData);
-	FVector StartLocation = ActorInfo->AvatarActor->GetActorLocation();
+	FVector StartLocation = GetAvatarActorFromActorInfo()->GetActorLocation();
 
 	UE_LOG(LogTemp, Log, TEXT("DashStrike: Starting dash in direction: %s"), *DashDirection.ToString());
 

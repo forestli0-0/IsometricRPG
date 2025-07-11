@@ -17,7 +17,7 @@ UGA_TargetedProjectileAbility::UGA_TargetedProjectileAbility()
 void UGA_TargetedProjectileAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
 	// 获取施法者
-	AActor* SelfActor = ActorInfo->AvatarActor.Get();
+	AActor* SelfActor = GetAvatarActorFromActorInfo();
 	if (!SelfActor || !ProjectileClass)
 	{
 		UE_LOG(LogTemp, Error, TEXT("%s: Cannot execute skill - SelfActor or ProjectileClass is invalid."), *GetName());
@@ -107,14 +107,25 @@ void UGA_TargetedProjectileAbility::GetLaunchTransform(const FGameplayEventData*
 		if (HitResult && HitResult->GetActor())
 		{
 			TargetLocation = HitResult->GetActor()->GetActorLocation();
+			//DrawDebugSphere(GetWorld(), TargetLocation, 20.0f, 12, FColor::Green, false, 5.0f);
 			bTargetFound = true;
 		}
 	}
-
+	else if (TriggerEventData && TriggerEventData->Target)
+	{
+		auto TargetActor = TriggerEventData->Target;
+		if (TargetActor)
+		{
+			TargetLocation = TargetActor->GetActorLocation();
+			//DrawDebugSphere(GetWorld(), TargetLocation, 20.0f, 12, FColor::Green, false, 5.0f);
+			bTargetFound = true;
+		}
+	}
 	if (bTargetFound)
 	{
 		// 计算从起始点到目标的方向
 		FVector DirectionToTarget = TargetLocation - OutLocation;
+		//DrawDebugDirectionalArrow(GetWorld(), OutLocation, TargetLocation, 50.0f, FColor::Red, false, 5.0f);
 		DirectionToTarget.Z = 0.0f; // 保持水平方向
 
 		if (!DirectionToTarget.IsNearlyZero())

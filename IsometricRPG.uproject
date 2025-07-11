@@ -10,7 +10,8 @@
 			"LoadingPhase": "Default",
 			"AdditionalDependencies": [
 				"GameplayAbilities",
-				"Niagara"
+				"Niagara",
+				"Engine"
 			]
 		}
 	],
