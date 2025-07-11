@@ -4,6 +4,7 @@
 #include "Abilities/GameplayAbility.h"
 #include "Character/IsometricRPGAttributeSetBase.h"
 #include "Abilities/Tasks/AbilityTask_WaitTargetData.h"
+#include "GameplayTagContainer.h"
 #include "GA_HeroBaseAbility.generated.h"
 
 // 技能类型枚举，用于区分不同种类的技能
@@ -37,6 +38,9 @@ public:
     // 目标选择任务
     UPROPERTY()
     class UAbilityTask_WaitTargetData* TargetDataTask;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability")
+    FGameplayTag TriggerTag;
 protected:
     // 技能类型
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Type")
@@ -76,7 +80,7 @@ protected:
 	// 消耗资源
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ability|Cost")
 	float CostMagnitude = 1.f;
-    
+
     //=========================================
     // 关键的覆盖方法和新增虚函数
     //=========================================

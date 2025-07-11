@@ -4,7 +4,7 @@
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h" // For FGameplayTag
 #include "Engine/HitResult.h"    // For FHitResult
-
+#include "IsometricRPG/IsometricAbilities/Types/HeroAbilityTypes.h"
 // Forward declarations
 class UAbilitySystemComponent;
 class AIsometricRPGCharacter;
@@ -13,18 +13,7 @@ class APlayerController;
 
 #include "IsometricInputComponent.generated.h" // THIS MUST BE THE LAST INCLUDE
 
-UENUM(BlueprintType)
-enum class EAbilityInputID : uint8
-{
-	None            UMETA(DisplayName = "None"),
-	Confirm         UMETA(DisplayName = "Confirm"),
-	Cancel          UMETA(DisplayName = "Cancel"),
-	Ability1        UMETA(DisplayName = "Ability 1 (Primary)"),
-	Ability2        UMETA(DisplayName = "Ability 2 (Secondary)"),
-	Jump            UMETA(DisplayName = "Jump"),
-	Sprint          UMETA(DisplayName = "Sprint")
-	// ... 其他你需要的输入
-};
+
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class ISOMETRICRPG_API UIsometricInputComponent : public UActorComponent
@@ -41,7 +30,7 @@ public:
 	// These methods are called by AIsometricPlayerController (or an AI Controller)
 	void HandleLeftClick(const FHitResult& HitResult);
 	void HandleRightClick(const FHitResult& HitResult);
-	void HandleSkillInput(int32 SkillSlotID, const FHitResult& TargetData);
+	void HandleSkillInput(EAbilityInputID InputID, const FHitResult& TargetData);
 
 
 	// Game action requests, can be called by this component internally or by AI
@@ -49,14 +38,20 @@ public:
 	void RequestBasicAttack(AActor* TargetActor);
 
 public:
-	UPROPERTY(EditDefaultsOnly, Category = "Input|Skills")
-	TMap<int32, FGameplayTag> SkillSlotToAbilityTagMap;
+	/**
+	 * 【新的技能映射】
+	 * 在蓝图中直接为每个输入动作（键）分配一个技能类。
+	 * 这比使用 GameplayTag 更加直观和类型安全。
+	 * 例如：Key = EAbilityInputID::Skill1, Value = GA_Fireball::StaticClass()
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Skills", meta = (DisplayName = "Skill Input Mappings"))
+	TMap<EAbilityInputID, TSubclassOf<class UGameplayAbility>> SkillInputMappings;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Input|GAS", meta = (ToolTip = "Input ID for confirming target in GAS. Typically 0."))
-	int32 ConfirmInputID = 1; 
-	UPROPERTY(EditDefaultsOnly, Category = "Input|GAS", meta = (ToolTip = "Input ID for canceling target in GAS. Typically 1."))
-	int32 CancelInputID = 2;
-
+	/*
+	 * 【旧的映射 - 已废弃】
+	 * UPROPERTY(EditDefaultsOnly, Category = "Input|Skills")
+	 * TMap<int32, FGameplayTag> SkillSlotToAbilityTagMap;
+	 */
 
 private:
 	UPROPERTY()

@@ -8,6 +8,7 @@
 #include "Character/IsometricRPGCharacter.h"
 #include "Blueprint/AIBlueprintHelperLibrary.h" 
 #include <AbilitySystemBlueprintLibrary.h>
+#include "IsometricAbilities/GameplayAbilities/GA_HeroBaseAbility.h"
 
 
 UIsometricInputComponent::UIsometricInputComponent()
@@ -22,9 +23,7 @@ void UIsometricInputComponent::BeginPlay()
     if (OwnerCharacter)
     {
         OwnerASC = OwnerCharacter->GetAbilitySystemComponent();
-        // CachedPlayerController should be set by the PlayerController itself when it initializes this component,
-        // or this component should get it when needed, if it's always owned by a pawn controlled by a PlayerController.
-        // For now, we assume PlayerController will pass HitResult, so direct caching might not be strictly needed for cursor traces.
+
         CachedPlayerController = Cast<APlayerController>(OwnerCharacter->GetController()); 
         if (!CachedPlayerController)
         {
@@ -66,11 +65,6 @@ void UIsometricInputComponent::BeginPlay()
 
 }
 
-// SetupPlayerInputComponent is removed as PlayerController now handles input bindings.
-// void UIsometricInputComponent::SetupPlayerInputComponent(UEnhancedInputComponent* PlayerInputComponent, APlayerController* InPlayerController)
-// {
-//    ...
-// }
 
 void UIsometricInputComponent::HandleLeftClick(const FHitResult& HitResult)
 {
@@ -94,7 +88,7 @@ void UIsometricInputComponent::HandleLeftClick(const FHitResult& HitResult)
 
 void UIsometricInputComponent::HandleRightClick(const FHitResult& HitResult)
 {
-    if (!OwnerCharacter || !OwnerASC) return; // CachedPlayerController no longer needed for HitResult
+    if (!OwnerCharacter || !OwnerASC) return;
 
     SendCancelTargetInput(); 
 
@@ -110,38 +104,43 @@ void UIsometricInputComponent::HandleRightClick(const FHitResult& HitResult)
     }
 }
 
-void UIsometricInputComponent::HandleSkillInput(int32 SkillSlotID, const FHitResult& TargetData)
+void UIsometricInputComponent::HandleSkillInput(EAbilityInputID InputID, const FHitResult& TargetData)
 {
     if (!OwnerCharacter || !OwnerASC) return;
 
-    // Here, TargetData (FHitResult) is available if the skill needs it.
-    // The GameplayAbility itself will decide if and how to use this TargetData.
-    // For example, a targeted skill might use TargetData.GetActor() or TargetData.ImpactPoint.
-    // A self-cast skill might ignore it.
 
-    if (const FGameplayTag* AbilityTag = SkillSlotToAbilityTagMap.Find(SkillSlotID))
+
+    // 在新的映射表中查找分配给该输入的技能类
+    if (const TSubclassOf<UGameplayAbility>* AbilityClassPtr = SkillInputMappings.Find(InputID))
     {
+        const TSubclassOf<UGameplayAbility> AbilityClass = *AbilityClassPtr;
+        if (!AbilityClass)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("InputID: %d is mapped to a null AbilityClass."), InputID);
+            return;
+        }
 
-        // We might need to pass target data to the ability. 
-        // One way is to use a GameplayEvent with the target data payload, which the ability listens for.
-        // Or, if the ability uses WaitTargetData, SendConfirmTargetInput (called from HandleLeftClick) would provide it.
-        // For simplicity, let's assume abilities activated by tag handle their own targeting or use a target already set.
-        // If a skill *always* uses the cursor location/target from the moment it's pressed, 
-        // then the ability's ActivateAbility could use TargetData.
-        // This part highly depends on your GAS setup and ability design.
+        // 从技能类中获取其默认对象(CDO)以读取属性，而无需创建实例。
+        const UGA_HeroBaseAbility* AbilityCDO = AbilityClass->GetDefaultObject<UGA_HeroBaseAbility>();
+        if (!AbilityCDO || !AbilityCDO->TriggerTag.IsValid())
+        { 
+            UE_LOG(LogTemp, Warning, TEXT("Ability class for InputID %d is missing a valid TriggerTag."), InputID);
+            return;
+        }
 
-        //OwnerASC->TryActivateAbilitiesByTag(AbilityTags); 
-		FGameplayEventData EventData;
+        // 使用获取到的 TriggerTag 发送 GameplayEvent
+        FGameplayEventData EventData;
         EventData.Instigator = OwnerCharacter;
-        EventData.Target = TargetData.GetActor(); // If the ability needs a target actor
-        EventData.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(TargetData); // Convert HitResult to TargetData
-		// HandleGameplayEvent is a common way to pass data to abilities.
-		OwnerASC->HandleGameplayEvent(*AbilityTag, &EventData);
-        UE_LOG(LogTemp, Display, TEXT("Attempting to activate ability with tag %s for slot %d. TargetData available."), *AbilityTag->ToString(), SkillSlotID);
+        EventData.Target = TargetData.GetActor();
+        EventData.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(TargetData);
+        
+        OwnerASC->HandleGameplayEvent(AbilityCDO->TriggerTag, &EventData);
+
+        UE_LOG(LogTemp, Display, TEXT("Triggering ability with tag %s for InputID %d."), *AbilityCDO->TriggerTag.ToString(), InputID);
     }
     else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("SkillSlotID: %d has no mapped AbilityTag."), SkillSlotID);
+    { 
+        UE_LOG(LogTemp, Warning, TEXT("InputID: %d has no mapped ability class."), InputID);
     }
 }
 
@@ -206,15 +205,16 @@ void UIsometricInputComponent::SendConfirmTargetInput()
 {
     if (OwnerASC)
     {
-        OwnerASC->AbilityLocalInputPressed(ConfirmInputID); 
+        OwnerASC->AbilityLocalInputPressed((int32)EAbilityInputID::Confirm); 
     }
 }
 
 void UIsometricInputComponent::SendCancelTargetInput()
 {
+	//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("Cancel Target Input Sent!"));
     if (OwnerASC)
     {
-        OwnerASC->AbilityLocalInputPressed(CancelInputID); 
+        OwnerASC->AbilityLocalInputPressed((int32)EAbilityInputID::Cancel); 
     }
 }
 
