@@ -1,5 +1,6 @@
 #include "GA_HeroBaseAbility.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerState.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h" 
 #include "AbilitySystemComponent.h"
 #include "Character/IsometricRPGAttributeSetBase.h"
@@ -18,28 +19,9 @@ UGA_HeroBaseAbility::UGA_HeroBaseAbility()
     AbilityType = EHeroAbilityType::Targeted;
 }
 
-
-
-bool UGA_HeroBaseAbility::RequiresTargetData_Implementation() const
-{
-    return bRequiresTargetData;
-}
-
-void UGA_HeroBaseAbility::ExecuteSkill(
-    const FGameplayAbilitySpecHandle Handle, 
-    const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo, 
-    const FGameplayEventData* TriggerEventData)
-{
-    // 基类中的默认实现 - 子类应该重写这个方法
-    UE_LOG(LogTemp, Log, TEXT("%s：已调用基本ExecuteSkill。这应该被子类覆盖."), *GetName());
-    
-    // 如果没有动画蒙太奇，则直接结束技能
-    if (!MontageToPlay)
-    {
-        EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
-    }
-}
+// =================================================================================================================
+// Gampelay Ability Core
+// =================================================================================================================
 
 void UGA_HeroBaseAbility::ActivateAbility(
     const FGameplayAbilitySpecHandle Handle,
@@ -106,6 +88,151 @@ void UGA_HeroBaseAbility::ActivateAbility(
     }
 }
 
+bool UGA_HeroBaseAbility::CheckCost(
+    const FGameplayAbilitySpecHandle Handle,
+    const FGameplayAbilityActorInfo* ActorInfo,
+    OUT FGameplayTagContainer* OptionalRelevantTags) const
+{
+    // 获取AbilitySystemComponent
+    UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
+    if (!ASC)
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: AbilitySystemComponent is null in ActivateAbility."), *GetName());
+        return false;
+    }
+
+    // 获取属性集
+    auto AttriSet = const_cast<UIsometricRPGAttributeSetBase*>(ASC->GetSet<UIsometricRPGAttributeSetBase>());
+    if (!AttriSet)
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: AttributeSet is null in ActivateAbility."), *GetName());
+        return false;
+    }
+    // 获取当前资源值（比如 Mana）
+    float CurrentMana = AttriSet->GetMana();
+
+    // 假设我们从 Ability 属性里设定 CostMagnitude
+    if (CurrentMana < CostMagnitude)
+    {
+        if (OptionalRelevantTags)
+        {
+            OptionalRelevantTags->AddTag(UAbilitySystemGlobals::Get().ActivateFailCostTag);
+        }
+        return false;
+    }
+
+    return true;
+}
+
+
+void UGA_HeroBaseAbility::ApplyCost(
+    const FGameplayAbilitySpecHandle Handle, 
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo ActivationInfo) const
+{
+    // 使用自定义消耗效果类或退回到基类实现
+    if (CostGameplayEffectClass)
+    {
+        UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
+        if (ASC)
+        {
+            FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CostGameplayEffectClass, GetAbilityLevel());
+            if (SpecHandle.Data.IsValid())
+            {
+                FGameplayEffectSpec& GESpec = *SpecHandle.Data.Get();
+                
+                // 寻找消耗标签
+                FGameplayTag CostTag = FGameplayTag::RequestGameplayTag(TEXT("Data.Cost.Magnitude"));
+                if (CostTag.IsValid())
+                {
+                    // 设置消耗值
+                    GESpec.SetSetByCallerMagnitude(CostTag, -CostMagnitude);
+                }
+                
+                // 应用消耗效果
+                ASC->ApplyGameplayEffectSpecToSelf(GESpec);
+                return;
+			}
+            if (SpecHandle.Data.IsValid())
+            {
+                ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+                return;
+            }
+        }
+    }
+    else
+    {
+        // 退回到基类实现
+        Super::ApplyCost(Handle, ActorInfo, ActivationInfo);
+    }
+}
+
+void UGA_HeroBaseAbility::ApplyCooldown(
+    const FGameplayAbilitySpecHandle Handle,
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo ActivationInfo) const
+{
+    // 使用自定义冷却效果类或退回到基类实现
+    if (CooldownGameplayEffectClass)
+    {
+        UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
+        if (ASC)
+        {
+            FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CooldownGameplayEffectClass, GetAbilityLevel());
+            if (SpecHandle.Data.IsValid())
+            {
+                FGameplayEffectSpec& GESpec = *SpecHandle.Data.Get();
+                
+                // 寻找冷却时间标签
+                FGameplayTag CooldownDurationTag = FGameplayTag::RequestGameplayTag(TEXT("Data.Cooldown.Duration"));
+                if (CooldownDurationTag.IsValid())
+                {
+                    // 设置冷却时间
+                    GESpec.SetSetByCallerMagnitude(CooldownDurationTag, CooldownDuration);
+                }
+                
+                ASC->ApplyGameplayEffectSpecToSelf(GESpec);
+                return;
+            }
+        }
+    }
+    
+    // 退回到基类实现
+    Super::ApplyCooldown(Handle, ActorInfo, ActivationInfo);
+}
+
+void UGA_HeroBaseAbility::EndAbility(
+    const FGameplayAbilitySpecHandle Handle,
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo ActivationInfo,
+    bool bReplicateEndAbility,
+    bool bWasCancelled)
+{
+    if (MontageTask)
+    {
+        if (MontageTask->IsActive())
+        {
+            MontageTask->EndTask();
+        }
+    }
+    MontageTask = nullptr;
+
+    if (TargetDataTask)
+    {
+        if (TargetDataTask->IsActive())
+        {
+            TargetDataTask->EndTask();
+        }
+    }
+    TargetDataTask = nullptr;
+
+    Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
+}
+
+// =================================================================================================================
+// Ability Execution
+// =================================================================================================================
+
 void UGA_HeroBaseAbility::StartTargetSelection(
     const FGameplayAbilitySpecHandle Handle,
     const FGameplayAbilityActorInfo* ActorInfo,
@@ -149,32 +276,34 @@ void UGA_HeroBaseAbility::StartTargetSelection(
     }
 }
 
-void UGA_HeroBaseAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data)
+void UGA_HeroBaseAbility::DirectExecuteAbility(
+    const FGameplayAbilitySpecHandle Handle,
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo ActivationInfo,
+    const FGameplayEventData* TriggerEventData)
 {
-    // 保存目标数据
-    CurrentTargetDataHandle = Data;
-    
-    if (TargetDataTask)
-    {
-        TargetDataTask->EndTask();
-    }
-    TargetDataTask = nullptr;
-
-    const FGameplayAbilityActorInfo* ActorInfo = GetCurrentActorInfo();
-    FGameplayAbilitySpecHandle Handle = GetCurrentAbilitySpecHandle();
-    FGameplayAbilityActivationInfo ActivationInfo = GetCurrentActivationInfo();
-
-    if (!OtherCheckBeforeCommit(Data))
+    if (!OtherCheckBeforeCommit(TriggerEventData))
     {
         UE_LOG(LogTemp, Warning, TEXT("%s: 其他检查失败，与消耗和冷却无关。"), *GetName());
         constexpr bool bReplicateEndAbility = true;
-        constexpr bool bWasCancelled = true;
+        return;
     }
-    return;
+    if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s: Failed to commit ability for direct execution."), *GetName());
+        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+        return;
+    }
+    
+    // 播放技能动画
+    PlayAbilityMontage(Handle, ActorInfo, ActivationInfo);
+    
+    // 执行技能逻辑
+    ExecuteSkill(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 }
+
 bool UGA_HeroBaseAbility::OtherCheckBeforeCommit(const FGameplayAbilityTargetDataHandle& Data)
 {
-
     // 基类中的默认实现 - 子类应该重写这个方法
     UE_LOG(LogTemp, Log, TEXT("%s：已调用提交前的最后检查。这应该被子类覆盖."), *GetName());
     if (!CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo))
@@ -199,12 +328,28 @@ bool UGA_HeroBaseAbility::OtherCheckBeforeCommit(const FGameplayEventData* Trigg
     return true;
 }
 
+void UGA_HeroBaseAbility::ExecuteSkill(
+    const FGameplayAbilitySpecHandle Handle, 
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo ActivationInfo, 
+    const FGameplayEventData* TriggerEventData)
+{
+    // 基类中的默认实现 - 子类应该重写这个方法
+    UE_LOG(LogTemp, Log, TEXT("%s：已调用基本ExecuteSkill。这应该被子类覆盖."), *GetName());
+    
+    // 如果没有动画蒙太奇，则直接结束技能
+    if (!MontageToPlay)
+    {
+        EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+    }
+}
+
 void UGA_HeroBaseAbility::PlayAbilityMontage(
     const FGameplayAbilitySpecHandle Handle,
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo ActivationInfo)
 {
-    UAnimInstance* AnimInstance = ActorInfo->GetAnimInstance();
+    UAnimInstance* AnimInstance = CurrentActorInfo->GetAnimInstance();
     if (MontageToPlay && IsValid(AnimInstance))
     {
         // 设置动画蒙太奇的播放速率，对于普攻这类冷却较短的技能，可以根据冷却时间来调整播放速率，防止动画还没播完就结束了
@@ -341,30 +486,32 @@ void UGA_HeroBaseAbility::PlayAbilityMontage(
     }
 }
 
-void UGA_HeroBaseAbility::DirectExecuteAbility(
-    const FGameplayAbilitySpecHandle Handle,
-    const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo,
-    const FGameplayEventData* TriggerEventData)
+// =================================================================================================================
+// Callbacks
+// =================================================================================================================
+
+void UGA_HeroBaseAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data)
 {
-    if (!OtherCheckBeforeCommit(TriggerEventData))
+    // 保存目标数据
+    CurrentTargetDataHandle = Data;
+    
+    if (TargetDataTask)
+    {
+        TargetDataTask->EndTask();
+    }
+    TargetDataTask = nullptr;
+
+    const FGameplayAbilityActorInfo* ActorInfo = GetCurrentActorInfo();
+    FGameplayAbilitySpecHandle Handle = GetCurrentAbilitySpecHandle();
+    FGameplayAbilityActivationInfo ActivationInfo = GetCurrentActivationInfo();
+
+    if (!OtherCheckBeforeCommit(Data))
     {
         UE_LOG(LogTemp, Warning, TEXT("%s: 其他检查失败，与消耗和冷却无关。"), *GetName());
         constexpr bool bReplicateEndAbility = true;
-        return;
+        constexpr bool bWasCancelled = true;
     }
-    if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
-    {
-        UE_LOG(LogTemp, Warning, TEXT("%s: Failed to commit ability for direct execution."), *GetName());
-        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
-        return;
-    }
-    
-    // 播放技能动画
-    PlayAbilityMontage(Handle, ActorInfo, ActivationInfo);
-    
-    // 执行技能逻辑
-    ExecuteSkill(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+    return;
 }
 
 void UGA_HeroBaseAbility::OnTargetingCancelled(const FGameplayAbilityTargetDataHandle& Data)
@@ -391,143 +538,11 @@ void UGA_HeroBaseAbility::HandleMontageInterruptedOrCancelled()
     CancelAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(), GetCurrentActivationInfo(), true);
 }
 
-void UGA_HeroBaseAbility::ApplyCooldown(
-    const FGameplayAbilitySpecHandle Handle,
-    const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo) const
+// =================================================================================================================
+// Misc
+// =================================================_================================================================
+
+bool UGA_HeroBaseAbility::RequiresTargetData_Implementation() const
 {
-    // 使用自定义冷却效果类或退回到基类实现
-    if (CooldownGameplayEffectClass)
-    {
-        UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
-        if (ASC)
-        {
-            FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CooldownGameplayEffectClass, GetAbilityLevel());
-            if (SpecHandle.Data.IsValid())
-            {
-                FGameplayEffectSpec& GESpec = *SpecHandle.Data.Get();
-                
-                // 寻找冷却时间标签
-                FGameplayTag CooldownDurationTag = FGameplayTag::RequestGameplayTag(TEXT("Data.Cooldown.Duration"));
-                if (CooldownDurationTag.IsValid())
-                {
-                    // 设置冷却时间
-                    GESpec.SetSetByCallerMagnitude(CooldownDurationTag, CooldownDuration);
-                }
-                
-                ASC->ApplyGameplayEffectSpecToSelf(GESpec);
-                return;
-            }
-        }
-    }
-    
-    // 退回到基类实现
-    Super::ApplyCooldown(Handle, ActorInfo, ActivationInfo);
-}
-
-bool UGA_HeroBaseAbility::CheckCost(
-    const FGameplayAbilitySpecHandle Handle,
-    const FGameplayAbilityActorInfo* ActorInfo,
-    OUT FGameplayTagContainer* OptionalRelevantTags) const
-{
-    // 获取AbilitySystemComponent
-    UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
-    if (!ASC)
-    {
-        UE_LOG(LogTemp, Error, TEXT("%s: AbilitySystemComponent is null in ActivateAbility."), *GetName());
-        return false;
-    }
-
-    // 获取属性集
-    auto AttriSet = const_cast<UIsometricRPGAttributeSetBase*>(ASC->GetSet<UIsometricRPGAttributeSetBase>());
-    if (!AttriSet)
-    {
-        UE_LOG(LogTemp, Error, TEXT("%s: AttributeSet is null in ActivateAbility."), *GetName());
-        return false;
-    }
-    // 获取当前资源值（比如 Mana）
-    float CurrentMana = AttriSet->GetMana();
-
-    // 假设我们从 Ability 属性里设定 CostMagnitude
-    if (CurrentMana < CostMagnitude)
-    {
-        if (OptionalRelevantTags)
-        {
-            OptionalRelevantTags->AddTag(UAbilitySystemGlobals::Get().ActivateFailCostTag);
-        }
-        return false;
-    }
-
-    return true;
-}
-
-
-void UGA_HeroBaseAbility::ApplyCost(
-    const FGameplayAbilitySpecHandle Handle, 
-    const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo) const
-{
-    // 使用自定义消耗效果类或退回到基类实现
-    if (CostGameplayEffectClass)
-    {
-        UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
-        if (ASC)
-        {
-            FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CostGameplayEffectClass, GetAbilityLevel());
-            if (SpecHandle.Data.IsValid())
-            {
-                FGameplayEffectSpec& GESpec = *SpecHandle.Data.Get();
-                
-                // 寻找消耗标签
-                FGameplayTag CostTag = FGameplayTag::RequestGameplayTag(TEXT("Data.Cost.Magnitude"));
-                if (CostTag.IsValid())
-                {
-                    // 设置消耗值
-                    GESpec.SetSetByCallerMagnitude(CostTag, -CostMagnitude);
-                }
-                
-                // 应用消耗效果
-                ASC->ApplyGameplayEffectSpecToSelf(GESpec);
-                return;
-			}
-            if (SpecHandle.Data.IsValid())
-            {
-                ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-                return;
-            }
-        }
-    }
-    else
-    {
-        // 退回到基类实现
-        Super::ApplyCost(Handle, ActorInfo, ActivationInfo);
-    }
-}
-
-void UGA_HeroBaseAbility::EndAbility(
-    const FGameplayAbilitySpecHandle Handle,
-    const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo,
-    bool bReplicateEndAbility,
-    bool bWasCancelled)
-{
-    if (MontageTask)
-    {
-        if (MontageTask->IsActive())
-        {
-            MontageTask->EndTask();
-        }
-    }
-    MontageTask = nullptr;
-
-    if (TargetDataTask)
-    {
-        if (TargetDataTask->IsActive())
-        {
-            TargetDataTask->EndTask();
-        }
-    }
-    TargetDataTask = nullptr;
-
-    Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
+    return bRequiresTargetData;
 }

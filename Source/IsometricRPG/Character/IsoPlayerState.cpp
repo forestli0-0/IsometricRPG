@@ -127,6 +127,12 @@ void AIsoPlayerState::InitAbilities()
             GrantAbilityInternal(NewEquippedInfo, true);
         }
     }
+
+    // 在授予技能后，激活被动技能
+    FGameplayTagContainer PassiveTags;
+    PassiveTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Regen.Basic")));
+    AbilitySystemComponent->TryActivateAbilitiesByTag(PassiveTags);
+    
     bAbilitiesInitialized = true;
     OnRep_EquippedAbilities();
 }

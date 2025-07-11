@@ -21,7 +21,7 @@ void UGA_SkillShotAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle,
 
 	// Get the direction from the trigger event data (should contain target location)
 	FVector Direction = GetSkillShotDirection(TriggerEventData);
-	FVector StartLocation = ActorInfo->AvatarActor->GetActorLocation();
+	FVector StartLocation = GetAvatarActorFromActorInfo()->GetActorLocation();
 
 	// Execute the skill shot
 	ExecuteSkillShot(Direction, StartLocation);

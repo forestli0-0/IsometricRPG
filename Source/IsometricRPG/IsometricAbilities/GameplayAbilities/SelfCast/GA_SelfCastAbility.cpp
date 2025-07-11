@@ -73,7 +73,7 @@ void UGA_SelfCastAbility::ExecuteSkill(
     const FGameplayAbilityActivationInfo ActivationInfo, 
     const FGameplayEventData* TriggerEventData)
 {
-    AActor* SelfActor = ActorInfo->AvatarActor.Get();
+    AActor* SelfActor = GetAvatarActorFromActorInfo();
     if (!SelfActor)
     {
         UE_LOG(LogTemp, Error, TEXT("%s: Cannot execute self-cast skill - SelfActor is invalid."), *GetName());

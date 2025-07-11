@@ -48,7 +48,6 @@ void AIsometricRPGCharacter::SetGenericTeamId(const FGenericTeamId& InTeamId)
 void AIsometricRPGCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	// 初始化已移至 PossessedBy() 中，确保在 AbilitySystemComponent 正确设置后进行
 }
 
 // 每帧调用
@@ -83,11 +82,18 @@ UIsometricRPGAttributeSetBase* AIsometricRPGCharacter::GetAttributeSet() const
 void AIsometricRPGCharacter::PossessedBy(AController* NewController)
 {
     Super::PossessedBy(NewController);
+
+    // 为服务器初始化 Ability Actor Info
+    InitAbilityActorInfo();
+
     // 只负责表现性逻辑：激活被动技能（如回血蓝）
     if (GetLocalRole() == ROLE_Authority)
     {
         FGameplayTagContainer PassiveTags;
         PassiveTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Regen.Basic")));
+        // 这里支持角色激活回血被动
+  //      AIsoPlayerState* PS = Cast<AIsoPlayerState>(GetPlayerState());
+		//if (!PS) return;
         if (UAbilitySystemComponent* ASC = GetAbilitySystemComponent())
         {
             ASC->TryActivateAbilitiesByTag(PassiveTags);

@@ -170,7 +170,7 @@ protected:
     // 动画播放任务引用
     UPROPERTY()
     class UAbilityTask_PlayMontageAndWait* MontageTask;
-
+    void OnMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
 
     FGameplayAbilityActivationInfo CurrentActivationInfo;

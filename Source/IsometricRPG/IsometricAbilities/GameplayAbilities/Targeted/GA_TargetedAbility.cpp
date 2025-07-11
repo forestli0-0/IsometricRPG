@@ -79,7 +79,7 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit(const FGameplayEventData* Trigg
         }
     }
     auto TargetActorLocation = TargetActor->GetActorLocation();
-    auto SelfActorLocation = GetCurrentActorInfo()->AvatarActor->GetActorLocation();
+    auto SelfActorLocation = GetAvatarActorFromActorInfo()->GetActorLocation();
     auto Distance = FVector::Distance(TargetActorLocation, SelfActorLocation);
     if (Distance > RangeToApply)
     {
