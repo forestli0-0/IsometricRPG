@@ -1,0 +1,71 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/PlayerState.h"
+#include "AbilitySystemInterface.h"
+#include "IsometricAbilities/Types/EquippedAbilityInfo.h"
+#include "IsoPlayerState.generated.h"
+
+class UAbilitySystemComponent;
+class UIsometricRPGAttributeSetBase;
+class UGameplayAbility;
+/**
+ * 
+ */
+UCLASS()
+class ISOMETRICRPG_API AIsoPlayerState : public APlayerState, public IAbilitySystemInterface
+{
+	GENERATED_BODY()
+public:
+    AIsoPlayerState();
+
+    // --- 实现 IAbilitySystemInterface ---
+    // 这是让GAS系统能找到ASC的关键函数
+    virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+
+    // --- 公开你的AttributeSet ---
+    UIsometricRPGAttributeSetBase* GetAttributeSet() const { return AttributeSet; }
+
+    // 技能相关属性
+    UPROPERTY(EditDefaultsOnly, Category = "Abilities")
+    TArray<FEquippedAbilityInfo> DefaultAbilities;
+
+    UPROPERTY(VisibleAnywhere, ReplicatedUsing=OnRep_EquippedAbilities, Category = "Abilities")
+    TArray<FEquippedAbilityInfo> EquippedAbilities;
+
+    UFUNCTION(BlueprintCallable, Category = "Abilities")
+    FEquippedAbilityInfo GetEquippedAbilityInfo(ESkillSlot Slot) const;
+
+    UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Abilities")
+    void Server_EquipAbilityToSlot(TSubclassOf<UGameplayAbility> NewAbilityClass, ESkillSlot Slot);
+    
+    UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Abilities")
+    void Server_UnequipAbilityFromSlot(ESkillSlot Slot);
+protected:
+    // Called when the game starts or when spawned
+    virtual void BeginPlay() override;
+protected:
+    // --- 创建ASC和AS ---
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GAS", meta = (AllowPrivateAccess = "true"))
+    TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GAS", meta = (AllowPrivateAccess = "true"))
+    TObjectPtr<UIsometricRPGAttributeSetBase> AttributeSet;
+
+    UFUNCTION()
+    void OnRep_EquippedAbilities();
+
+    void GrantAbilityInternal(FEquippedAbilityInfo& Info, bool bRemoveExistingFirst = false);
+    void ClearAbilityInternal(FEquippedAbilityInfo& Info);
+
+    bool bAbilitiesInitialized = false;
+    void InitAbilities();
+
+public:
+    // 属性初始化
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Attributes")
+    TSubclassOf<class UGameplayEffect> DefaultAttributesEffect;
+    void InitializeAttributes();
+};

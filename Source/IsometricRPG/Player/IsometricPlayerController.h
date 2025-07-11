@@ -4,11 +4,13 @@
 #include "GameFramework/PlayerController.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
+#include "IsometricRPG/IsometricAbilities/Types/HeroAbilityTypes.h"
 #include "IsometricPlayerController.generated.h"
+
 
 class UInputMappingContext;
 class UInputAction;
-
+class IsometricInputComponent;
 UCLASS()
 class ISOMETRICRPG_API AIsometricPlayerController : public APlayerController
 {
@@ -51,7 +53,6 @@ protected:
 
 protected:
 	// 处理技能输入
-	UFUNCTION()
-	void HandleSkillInput(int32 SkillIndex);
+	void HandleSkillInput(EAbilityInputID InputID);
 
 };

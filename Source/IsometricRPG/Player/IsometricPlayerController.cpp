@@ -35,15 +35,15 @@ void AIsometricPlayerController::SetupInputComponent()
 	{
 		EIC->BindAction(Action_LeftClick, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleLeftClickInput);
 		EIC->BindAction(Action_RightClick, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleRightClickInput);
-		// 绑定技能按键
-		EIC->BindAction(Action_A, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 0);
-		EIC->BindAction(Action_Q, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 1);
-		EIC->BindAction(Action_W, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 2);
-		EIC->BindAction(Action_E, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 3);
-		EIC->BindAction(Action_R, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 4);
-		EIC->BindAction(Action_Summoner1, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 5);
-		EIC->BindAction(Action_Summoner2, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, 6);
-
+		
+		// 绑定技能按键, 使用 EAbilityInputID 枚举替换魔术数字
+		EIC->BindAction(Action_A, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, EAbilityInputID::Ability_A);
+		EIC->BindAction(Action_Q, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, EAbilityInputID::Ability_Q);
+		EIC->BindAction(Action_W, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, EAbilityInputID::Ability_W);
+		EIC->BindAction(Action_E, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, EAbilityInputID::Ability_E);
+		EIC->BindAction(Action_R, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, EAbilityInputID::Ability_R);
+		EIC->BindAction(Action_Summoner1, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, EAbilityInputID::Ability_Summoner1);
+		EIC->BindAction(Action_Summoner2, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, EAbilityInputID::Ability_Summoner2);
 	}
 }
 
@@ -75,24 +75,17 @@ void AIsometricPlayerController::HandleLeftClickInput(const FInputActionValue& V
 	}
 }
 
-// SetTargetActor has been removed from the header and is no longer needed here.
-// void AIsometricPlayerController::SetTargetActor(AActor* NewTargetActor)
-// {
-// 	TargetActor = NewTargetActor;
-// }
 
-void AIsometricPlayerController::HandleSkillInput(int SkillIndex) // Signature changed in header
+void AIsometricPlayerController::HandleSkillInput(EAbilityInputID InputID)
 {
-	// const UInputAction* TriggeredAction = Instance.GetSourceAction(); // Instance is no longer passed
-	FHitResult HitResult; // Skills might need target data
+	FHitResult HitResult; 
 	GetHitResultUnderCursor(ECC_Visibility, true, HitResult);
 
-   // 找到控制的角色  
    if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))  
    {  
        if (UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>())  
        {  
-           InputComp->HandleSkillInput(SkillIndex, HitResult); // Pass SkillIndex and HitResult
+           InputComp->HandleSkillInput(InputID, HitResult); // 将枚举传递下去
        }  
    }  
 }

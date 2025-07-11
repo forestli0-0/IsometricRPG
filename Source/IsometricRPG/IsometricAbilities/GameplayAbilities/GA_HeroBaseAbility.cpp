@@ -47,6 +47,7 @@ void UGA_HeroBaseAbility::ActivateAbility(
     const FGameplayAbilityActivationInfo ActivationInfo,
     const FGameplayEventData* TriggerEventData)
 {
+	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, FString::Printf(TEXT("ActivateAbility: %s"), *GetName()));
     // 保存当前技能信息以便子类访问
     CurrentSpecHandle = Handle;
     CurrentActorInfo = ActorInfo;
@@ -333,6 +334,10 @@ void UGA_HeroBaseAbility::PlayAbilityMontage(
         {
             UE_LOG(LogTemp, Warning, TEXT("%s: Failed to create MontageTask."), *GetName());
         }
+    }
+    else
+    {
+		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("No montage to play or invalid anim instance in %s."), *GetName()));
     }
 }
 

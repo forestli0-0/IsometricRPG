@@ -359,6 +359,11 @@ void UGA_DashStrike::PlayAbilityMontage(const FGameplayAbilitySpecHandle Handle,
 	// 停止移动，否则在发射后会出现很怪的逻辑
 	auto Owener = GetAvatarActorFromActorInfo();
 	auto SourCharacter = Cast<ACharacter>(Owener);
+	if(SourCharacter == nullptr)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UGA_DashStrike::PlayAbilityMontage: Owener is not a Character!"));
+		return;
+	}
 	SourCharacter->GetController()->StopMovement();
 	Super::PlayAbilityMontage(Handle, ActorInfo, ActivationInfo);
 }

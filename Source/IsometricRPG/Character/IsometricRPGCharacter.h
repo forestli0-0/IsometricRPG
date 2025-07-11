@@ -5,136 +5,79 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "UObject/ObjectMacros.h"
-#include "AbilitySystemInterface.h" 
-#include "AbilitySystemComponent.h" 
+#include "AbilitySystemInterface.h"
+#include "AbilitySystemComponent.h"
 #include "IsometricComponents/IsometricInputComponent.h"
 #include "GameplayTagContainer.h"
 #include "GenericTeamAgentInterface.h"
+#include "IsoPlayerState.h"
+#include "IsometricAbilities/Types/EquippedAbilityInfo.h"
 #include "IsometricRPGCharacter.generated.h"
 
-// Define ESkillSlot and FEquippedAbilityInfo here or in a separate types header
-UENUM(BlueprintType)
-enum class ESkillSlot : uint8
-{
-	Skill_Q UMETA(DisplayName = "Skill Q"),
-	Skill_W UMETA(DisplayName = "Skill W"),
-	Skill_E UMETA(DisplayName = "Skill E"),
-	Skill_R UMETA(DisplayName = "Skill R"),
-	Skill_A UMETA(DisplayName = "Skill A"),
-	RightClick UMETA(DisplayName = "Right Click"),
-	Skill_Passive UMETA(DisplayName="Skill Passive"),
-	Skill_Summoner1 UMETA(DisplayName="Skill Summoner 1"),
-	Skill_Summoner2 UMETA(DisplayName="Skill Summoner 2"),
-	Skill_Death UMETA(DisplayName = "Skill Death"),
-	Invalid UMETA(Hidden)
-};
-
-USTRUCT(BlueprintType)
-struct FEquippedAbilityInfo
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ability")
-	TSubclassOf<UGameplayAbility> AbilityClass;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Ability")
-	ESkillSlot Slot = ESkillSlot::Invalid;
-	
-	UPROPERTY(BlueprintReadOnly, Category="Ability") 
-	FGameplayAbilitySpecHandle AbilitySpecHandle; 
-
-	FEquippedAbilityInfo() : AbilityClass(nullptr), Slot(ESkillSlot::Invalid) {}
-	FEquippedAbilityInfo(TSubclassOf<UGameplayAbility> InAbility, ESkillSlot InSlot) 
-		: AbilityClass(InAbility), Slot(InSlot) {}
-};
+class UIsometricRPGAttributeSetBase;
+class UGameplayAbility;
+class UGameplayEffect;
 
 UCLASS()
 class ISOMETRICRPG_API AIsometricRPGCharacter : public ACharacter, public IAbilitySystemInterface, public IGenericTeamAgentInterface
 {
-
-	GENERATED_BODY()
-
+    GENERATED_BODY()
 public:
-	// Sets default values for this character's properties
-	AIsometricRPGCharacter();
+    // Sets default values for this character's properties
+    AIsometricRPGCharacter();
 
 protected:
-	// Called when the game starts or when spawned
-	virtual void BeginPlay() override;
+    // Called when the game starts or when spawned
+    virtual void BeginPlay() override;
 
-public:	
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
+public:    
+    // Called every frame
+    virtual void Tick(float DeltaTime) override;
 
-	// IAbilitySystemInterface implementation
-	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+    // IAbilitySystemInterface implementation
+    virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
-	TArray<TWeakObjectPtr<AActor>> CurrentAbilityTargets;
+	UFUNCTION(BlueprintPure, Category="Attributes")
+    virtual UIsometricRPGAttributeSetBase* GetAttributeSet() const;
+	
+    TArray<TWeakObjectPtr<AActor>> CurrentAbilityTargets;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI")
+    FGenericTeamId TeamId;
+
+    // 4. 声明接口需要我们实现的函数
+    virtual FGenericTeamId GetGenericTeamId() const override;
+    virtual void SetGenericTeamId(const FGenericTeamId& InTeamId);
+
+    // 初始化技能系统
+    virtual void PossessedBy(AController* NewController) override;
+
+    // 初始化技能 GE
+    // UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Abilities")
+    // TSubclassOf<UGameplayEffect> DefaultAttributesEffect;
+protected:
+    // 当PlayerState在客户端上被复制时调用
+    virtual void OnRep_PlayerState() override;
+    // 初始化GAS组件的辅助函数
+    void InitAbilityActorInfo();
 public:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI")
-	FGenericTeamId TeamId;
-
-	// 4. 声明接口需要我们实现的函数
-	virtual FGenericTeamId GetGenericTeamId() const override;
-	virtual void SetGenericTeamId(const FGenericTeamId& InTeamId);
-
-public:
-	// 技能系统组件
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Character")
-	UAbilitySystemComponent* AbilitySystemComponent;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Character")
-	UAttributeSet* AttributeSet;
-
-
-public:
-	bool bAbilitiesInitialized = false;
-	// 初始化技能系统
-	virtual void PossessedBy(AController* NewController) override;
-	// Server-side initialization of abilities
-    virtual void InitAbilities();
-	// 初始化技能 GE
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Abilities")
-	TSubclassOf<UGameplayEffect> DefaultAttributesEffect;
-
-public:
-	// 输入组件
+    // 输入组件
     // Add this include to the top of the file
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Input")
-	UIsometricInputComponent* IRPGInputComponent;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Input")
+    UIsometricInputComponent* IRPGInputComponent;
 
-	// --- Skill Management ---
-	UFUNCTION(BlueprintCallable, Category = "Abilities")
-	FEquippedAbilityInfo GetEquippedAbilityInfo(ESkillSlot Slot) const;
+    // Attribute initialization
+    // virtual void InitializeAttributes();
 
-	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Abilities")
-	void Server_EquipAbilityToSlot(TSubclassOf<UGameplayAbility> NewAbilityClass, ESkillSlot Slot);
-	
-	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Abilities")
-	void Server_UnequipAbilityFromSlot(ESkillSlot Slot);
+    UFUNCTION(Server, Reliable)
+    void Server_EquipAbilityToSlot(TSubclassOf<UGameplayAbility> NewAbilityClass, ESkillSlot Slot);
+    UFUNCTION(Server, Reliable)
+    void Server_UnequipAbilityFromSlot(ESkillSlot Slot);
+    FEquippedAbilityInfo GetEquippedAbilityInfo(ESkillSlot Slot) const;
+    // Current Health (方便蓝图访问)
+    UFUNCTION(BlueprintPure, Category="Attributes")
+    float GetCurrentHealth() const;
+    UFUNCTION(BlueprintPure, Category="Attributes")
+    float GetMaxHealth() const;
 
-	// Initialize default abilities that the character starts with
-	UPROPERTY(EditDefaultsOnly, Category = "Abilities")
-    TArray<FEquippedAbilityInfo> DefaultAbilities;
-
-	void OnSkillOutOfRange(const FGameplayEventData* EventData);
-protected:
-	UPROPERTY(VisibleAnywhere, ReplicatedUsing=OnRep_EquippedAbilities, Category = "Abilities")
-	TArray<FEquippedAbilityInfo> EquippedAbilities;
-	
-	UFUNCTION()
-	void OnRep_EquippedAbilities();
-
-	// Server-side helper functions
-	void GrantAbilityInternal(FEquippedAbilityInfo& Info, bool bRemoveExistingFirst = false);
-	void ClearAbilityInternal(FEquippedAbilityInfo& Info);
-
-	// Attribute initialization
-	virtual void InitializeAttributes();
-
-	// Current Health (方便蓝图访问)
-	UFUNCTION(BlueprintPure, Category="Attributes")
-	float GetCurrentHealth() const;
-	UFUNCTION(BlueprintPure, Category="Attributes")
-	float GetMaxHealth() const;
 };

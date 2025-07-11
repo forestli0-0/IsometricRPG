@@ -53,7 +53,19 @@ void UAN_PlayMeleeAttackMontageNotify::Notify(USkeletalMeshComponent* MeshComp, 
 
 
     // 获取目标的能力系统组件
-    UAbilitySystemComponent* TargetASC = TargetActor->FindComponentByClass<UAbilitySystemComponent>();
+    UAbilitySystemComponent* TargetASC = nullptr;
+    if (TargetActor->GetClass()->ImplementsInterface(UAbilitySystemInterface::StaticClass()))
+    {
+        IAbilitySystemInterface* AbilityInterface = Cast<IAbilitySystemInterface>(TargetActor);
+        if (AbilityInterface)
+        {
+            TargetASC = AbilityInterface->GetAbilitySystemComponent();
+        }
+    }
+    if (!TargetASC)
+    {
+        TargetASC = TargetActor->FindComponentByClass<UAbilitySystemComponent>();
+    }
     if (!TargetASC)
     {
         UE_LOG(LogTemp, Error, TEXT("Notify: Target AbilitySystemComponent not found on %s"), *TargetActor->GetName());
