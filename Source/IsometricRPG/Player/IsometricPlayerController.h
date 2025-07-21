@@ -21,6 +21,8 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
+    // 添加Tick函数来处理按住右键的逻辑
+	virtual void PlayerTick(float DeltaTime) override;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	UInputMappingContext* ClickMappingContext;
@@ -49,10 +51,17 @@ protected:
 	void HandleLeftClickInput(const FInputActionValue& Value);
 	// 处理鼠标右键点击: 移动或者攻击目标
 	UFUNCTION()
-	void HandleRightClickInput(const FInputActionValue& Value);
+	void HandleRightClickStarted(const FInputActionValue& Value);
+    UFUNCTION()
+    void HandleRightClickCompleted(const FInputActionValue& Value);
 
 protected:
 	// 处理技能输入
 	void HandleSkillInput(EAbilityInputID InputID);
-
+private:
+    // 【新增】用于追踪右键是否被按下的状态
+    bool bIsRightMouseDown = false;
+    
+    // 【新增】用于缓存上一帧的目标Actor，以判断目标是否变化
+    TWeakObjectPtr<AActor> LastHitActor;
 };

@@ -26,7 +26,28 @@ void AIsometricPlayerController::BeginPlay()
 	bEnableClickEvents = true;
 	bEnableMouseOverEvents = true;
 }
+// 【新增】实现PlayerTick函数
+void AIsometricPlayerController::PlayerTick(float DeltaTime)
+{
+    Super::PlayerTick(DeltaTime);
 
+    // 如果右键被按住，则持续处理
+    if (bIsRightMouseDown)
+    {
+        FHitResult HitResult;
+        GetHitResultUnderCursor(ECC_Visibility, true, HitResult);
+
+        if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
+        {
+            if (UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>())
+            {
+                // 持续调用Triggered函数
+                InputComp->HandleRightClickTriggered(HitResult, LastHitActor);
+                LastHitActor = HitResult.GetActor(); // 更新上一个目标
+            }
+        }
+    }
+}
 void AIsometricPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
@@ -34,7 +55,9 @@ void AIsometricPlayerController::SetupInputComponent()
 	if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(InputComponent))
 	{
 		EIC->BindAction(Action_LeftClick, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleLeftClickInput);
-		EIC->BindAction(Action_RightClick, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleRightClickInput);
+		// 【修改】绑定右键的Started, Triggered, Completed事件
+		EIC->BindAction(Action_RightClick, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleRightClickStarted);
+		EIC->BindAction(Action_RightClick, ETriggerEvent::Completed, this, &AIsometricPlayerController::HandleRightClickCompleted);
 		
 		// 绑定技能按键, 使用 EAbilityInputID 枚举替换魔术数字
 		EIC->BindAction(Action_A, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, EAbilityInputID::Ability_A);
@@ -47,8 +70,11 @@ void AIsometricPlayerController::SetupInputComponent()
 	}
 }
 
-void AIsometricPlayerController::HandleRightClickInput(const FInputActionValue& Value)
+void AIsometricPlayerController::HandleRightClickStarted(const FInputActionValue& Value)
 {
+	bIsRightMouseDown = true; // 设置右键按下状态
+    LastHitActor = nullptr; // 重置上一个目标
+
 	FHitResult HitResult;
 	GetHitResultUnderCursor(ECC_Visibility, true, HitResult);
 	
@@ -56,10 +82,18 @@ void AIsometricPlayerController::HandleRightClickInput(const FInputActionValue& 
 	{
 		if (UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>())
 		{
-			InputComp->HandleRightClick(HitResult); // Pass HitResult
+            // 第一次点击时，就直接触发一次逻辑
+			InputComp->HandleRightClickTriggered(HitResult, LastHitActor);
+            LastHitActor = HitResult.GetActor();
 		}
 
 	}
+}
+// 【新增】处理右键松开
+void AIsometricPlayerController::HandleRightClickCompleted(const FInputActionValue& Value)
+{
+    bIsRightMouseDown = false; // 重置右键按下状态
+    LastHitActor = nullptr; // 清空缓存
 }
 void AIsometricPlayerController::HandleLeftClickInput(const FInputActionValue& Value)
 {
