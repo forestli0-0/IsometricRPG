@@ -29,7 +29,9 @@ protected:
 public:
 	// These methods are called by AIsometricPlayerController (or an AI Controller)
 	void HandleLeftClick(const FHitResult& HitResult);
-	void HandleRightClick(const FHitResult& HitResult);
+    // 【修改】重命名原有的HandleRightClick
+    void HandleRightClickTriggered(const FHitResult& HitResult, TWeakObjectPtr<AActor> LastHitActor);
+
 	void HandleSkillInput(EAbilityInputID InputID, const FHitResult& TargetData);
 
 

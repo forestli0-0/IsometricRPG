@@ -86,20 +86,24 @@ void UIsometricInputComponent::HandleLeftClick(const FHitResult& HitResult)
     }
 }
 
-void UIsometricInputComponent::HandleRightClick(const FHitResult& HitResult)
+void UIsometricInputComponent::HandleRightClickTriggered(const FHitResult& HitResult, TWeakObjectPtr<AActor> LastHitActor)
 {
     if (!OwnerCharacter || !OwnerASC) return;
 
+    // 总是取消上一次的目标选择状态
     SendCancelTargetInput(); 
 
-    AActor* HitActor = HitResult.GetActor();
+    AActor* CurrentHitActor = HitResult.GetActor();
 
-    if (HitActor && HitActor != OwnerCharacter && HitActor->ActorHasTag(FName("Enemy"))) 
+    // 判断当前鼠标下的目标
+    if (CurrentHitActor && CurrentHitActor != OwnerCharacter && CurrentHitActor->ActorHasTag(FName("Enemy"))) 
     {
-        RequestBasicAttack(HitActor);
+        // 如果当前目标是敌人，则请求攻击
+        RequestBasicAttack(CurrentHitActor);
     }
     else if (HitResult.bBlockingHit)    
 	{
+        // 如果是地面或其他可移动点，则请求移动
         RequestMoveToLocation(HitResult.ImpactPoint);
     }
 }

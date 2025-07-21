@@ -62,10 +62,17 @@ void UIsometricRPGAttributeSetBase::PostAttributeChange(const FGameplayAttribute
 
     if (Attribute == GetMoveSpeedAttribute())
     {
-        auto OwnerCharacter = Cast<ACharacter>(GetOwningActor());
-        if (OwnerCharacter)
+        // 属性集现在在PlayerState上，所以我们需要通过它来获取Character。
+        // GetOwningAbilitySystemComponent() -> GetAvatarActor() 是获取与此ASC关联的Character的可靠方法。
+        if (UAbilitySystemComponent* ASC = GetOwningAbilitySystemComponent())
         {
-            OwnerCharacter->GetCharacterMovement()->MaxWalkSpeed = NewValue;
+            if (ACharacter* OwnerCharacter = Cast<ACharacter>(ASC->GetAvatarActor()))
+            {
+                if (UCharacterMovementComponent* MovementComponent = OwnerCharacter->GetCharacterMovement())
+                {
+                    MovementComponent->MaxWalkSpeed = NewValue;
+                }
+            }
         }
     }
 }
