@@ -14,7 +14,7 @@ UCLASS()
 class ISOMETRICRPG_API UGA_Death : public UGameplayAbility
 {
 	GENERATED_BODY()
-
+public:
     UGA_Death();
 
     virtual void ActivateAbility(

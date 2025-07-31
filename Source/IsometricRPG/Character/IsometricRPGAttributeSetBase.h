@@ -16,6 +16,9 @@ GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FHealthChangedEvent, UIsometricRPGAttributeSetBase*, AttributeSet, float, NewHealth);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FManaChangedEvent, UIsometricRPGAttributeSetBase*, AttributeSet, float, NewMana);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FExperienceChangedEvent, UIsometricRPGAttributeSetBase*, AttributeSet, float, NewExperience, float, NewMaxExperience);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FLevelChangedEvent, UIsometricRPGAttributeSetBase*, AttributeSet, float, NewLevel);
 /**
 * 
 */
@@ -127,15 +130,29 @@ public:
 	//~====================================================================================
 	//~ 经验与等级
 	//~====================================================================================
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Experience")
-	FGameplayAttributeData Experience;
-	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Experience);
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Experience")
+	// 当前经验值
+	// 当前等级
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_Level, Category = "Attributes|Experience")
 	FGameplayAttributeData Level;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Level);
 
+	// 当前经验值
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_Experience, Category = "Attributes|Experience")
+	FGameplayAttributeData Experience;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Experience);
+
+	// 升级所需经验
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_ExperienceToNextLevel, Category = "Attributes|Experience")
+	FGameplayAttributeData ExperienceToNextLevel;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, ExperienceToNextLevel);
+
+	// 击杀该单位可获得的经验奖励
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Experience")
+	FGameplayAttributeData ExperienceBounty;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, ExperienceBounty);
+	// 经验曲线
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Experience")
+	TObjectPtr<class UCurveFloat> ExperienceCurve;
 
 public:
 	//~====================================================================================
@@ -154,6 +171,11 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FManaChangedEvent OnManaChanged;
 
+	UPROPERTY(BlueprintAssignable)
+	FExperienceChangedEvent OnExperienceChanged;
+	
+	UPROPERTY(BlueprintAssignable)
+	FLevelChangedEvent OnLevelChanged;
 	//~====================================================================================
 	//~ Overrides
 	//~====================================================================================
@@ -161,4 +183,16 @@ public:
 	virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
 
 	void PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue) override;
+
+protected:
+    // 为新属性添加OnRep函数
+    UFUNCTION()
+    virtual void OnRep_Level(const FGameplayAttributeData& OldLevel);
+
+    UFUNCTION()
+    virtual void OnRep_Experience(const FGameplayAttributeData& OldExperience);
+
+    UFUNCTION()
+    virtual void OnRep_ExperienceToNextLevel(const FGameplayAttributeData& OldExperienceToNextLevel);
+
 };
