@@ -9,6 +9,7 @@
 #include "Net/UnrealNetwork.h"
 #include "IsoPlayerState.h"
 #include "AbilitySystemBlueprintLibrary.h"
+#include <LevelUp/LevelUpData.h>
 UIsometricRPGAttributeSetBase::UIsometricRPGAttributeSetBase()
 {
     //Health.SetBaseValue(100.0f);  // 设置基础生命值为 100.0
@@ -109,20 +110,47 @@ void UIsometricRPGAttributeSetBase::PostGameplayEffectExecute(const FGameplayEff
                     SetExperienceToNextLevel(NewExpToNextLevel);
                 }
 
-                // 4. 应用升级属性增益 GameplayEffect (需要在蓝图中创建)
-                // 这个 GE 应该包含对 MaxHealth, MaxMana, AttackDamage 等属性的永久性提升
-                AIsoPlayerState* PS = Cast<AIsoPlayerState>(OwningActor);
-                if (PS)
-                {
-                    // 假设你在PlayerState中定义了一个LevelUpEffect
-                    // TSubclassOf<UGameplayEffect> LevelUpEffect = PS->LevelUpEffect;
-                    // if (LevelUpEffect)
-                    // {
-                    //     FGameplayEffectSpecHandle SpecHandle = GetOwningAbilitySystemComponent()->MakeOutgoingSpec(LevelUpEffect, NewLevel, Context);
-                    //     GetOwningAbilitySystemComponent()->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-                    // }
-                }
+                // 4. 应用升级属性增益 GameplayEffect
 
+
+                UAbilitySystemComponent* ASC = GetOwningAbilitySystemComponent();
+                if (ASC)
+                {
+                        if (LevelUpTable)
+                        {
+                            // 定义ContextString
+                            static const FString ContextString(TEXT("IsometricRPGAttributeSetBase::LevelUp"));
+
+                            FString RowName = FString::FromInt(NewLevel);
+                            // FindRow模板参数写法修正，且ContextString已定义
+                            FLevelUpData* RowData = LevelUpTable->FindRow<FLevelUpData>(FName(*RowName), ContextString);
+                            if (RowData)
+                            {
+                                if (LevelUpEffectClass)
+                                {
+                                    FGameplayEffectContextHandle ContextHandle = ASC->MakeEffectContext();
+                                    ContextHandle.AddSourceObject(OwningActor);
+                                    FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(LevelUpEffectClass, NewLevel, ContextHandle);
+                            
+                                    // 4.4 使用SetByCaller将表格中的数据填入GE Spec
+                                    SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.LevelUp.MaxHealth")), RowData->MaxHealthGain);
+                                    SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.LevelUp.MaxMana")), RowData->MaxManaGain);
+                                    SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.LevelUp.AttackDamage")), RowData->AttackDamageGain);
+                                    SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.LevelUp.PhysicalDefense")), RowData->PhysicalDefenseGain);
+                                    SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.LevelUp.MagicDefense")), RowData->MagicDefenseGain);
+                            
+                                    // 应用这个填满了数据的GE Spec
+                                    ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+                            
+                                    UE_LOG(LogTemp, Warning, TEXT("Level Up to %d! Health Gain: %f, Damage Gain: %f"), (int32)NewLevel, RowData->MaxHealthGain, RowData->AttackDamageGain);
+                            
+                                    // 升级后自动回满血蓝
+                                    SetHealth(GetMaxHealth());
+                                    SetMana(GetMaxMana());
+                                }
+                            }
+                    }
+                }
                 // 5. 广播等级变化事件
                 OnLevelChanged.Broadcast(this, NewLevel);
 
@@ -139,8 +167,6 @@ void UIsometricRPGAttributeSetBase::PostAttributeChange(const FGameplayAttribute
 
     if (Attribute == GetMoveSpeedAttribute())
     {
-        // 属性集现在在PlayerState上，所以我们需要通过它来获取Character。
-        // GetOwningAbilitySystemComponent() -> GetAvatarActor() 是获取与此ASC关联的Character的可靠方法。
         if (UAbilitySystemComponent* ASC = GetOwningAbilitySystemComponent())
         {
             if (ACharacter* OwnerCharacter = Cast<ACharacter>(ASC->GetAvatarActor()))

@@ -58,6 +58,15 @@ protected:
 protected:
 	// 处理技能输入
 	void HandleSkillInput(EAbilityInputID InputID);
+
+protected:
+	// 添加一个属性来存储我们的主HUD类
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<class UUserWidget> PlayerHUDClass;
+
+	// 添加一个变量来持有创建的HUD实例
+	UPROPERTY()
+	TObjectPtr<UUserWidget> PlayerHUD;
 private:
     // 【新增】用于追踪右键是否被按下的状态
     bool bIsRightMouseDown = false;

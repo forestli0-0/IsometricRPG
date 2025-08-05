@@ -13,7 +13,7 @@ public class IsometricRPG : ModuleRules
                 "IsometricRPG"
         	}
     	);
-        PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "GameplayAbilities", "AIModule", "NavigationSystem", "GameplayTags", "AnimationBlueprintLibrary", "GameplayTasks", "AnimGraphRuntime" });
+        PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "GameplayAbilities", "AIModule", "NavigationSystem", "GameplayTags", "AnimationBlueprintLibrary", "GameplayTasks", "AnimGraphRuntime", "UMG" });
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
 

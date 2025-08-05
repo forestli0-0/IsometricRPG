@@ -153,7 +153,19 @@ public:
 	// 经验曲线
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Experience")
 	TObjectPtr<class UCurveFloat> ExperienceCurve;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Experience")
+	TSubclassOf<UGameplayEffect> LevelUpEffectClass;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Experience")
+	TObjectPtr<UDataTable> LevelUpTable;
 
+	//~====================================================================================
+	//~ 技能点
+	//~====================================================================================
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|SkillPoints")
+	float TotalSkillPoint;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|SkillPoints")
+	float UnUsedSkillPoint;
 public:
 	//~====================================================================================
 	//~ Public Methods
