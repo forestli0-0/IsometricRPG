@@ -6,8 +6,8 @@
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
 #include "Character/IsometricRPGCharacter.h"
-#include "IsometricComponents/IsometricInputComponent.h" // Added include for UIsometricInputComponent
-
+#include "IsometricComponents/IsometricInputComponent.h"
+#include "Blueprint/UserWidget.h"
 AIsometricPlayerController::AIsometricPlayerController()
 {
     // 设置使用自定义的PlayerCameraManager
@@ -25,6 +25,15 @@ void AIsometricPlayerController::BeginPlay()
 	bShowMouseCursor = true;
 	bEnableClickEvents = true;
 	bEnableMouseOverEvents = true;
+
+	if (IsLocalController() && PlayerHUDClass)
+	{
+		PlayerHUD = CreateWidget<UUserWidget>(this, PlayerHUDClass);
+		if (PlayerHUD)
+		{
+			PlayerHUD->AddToViewport();
+		}
+	}
 }
 // 【新增】实现PlayerTick函数
 void AIsometricPlayerController::PlayerTick(float DeltaTime)
