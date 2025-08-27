@@ -5,6 +5,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "IsometricRPG/IsometricAbilities/Types/HeroAbilityTypes.h"
+#include "IsometricRPG/UI/PlayerHUDWidget.h"
 #include "IsometricPlayerController.generated.h"
 
 
@@ -63,10 +64,10 @@ protected:
 	// 添加一个属性来存储我们的主HUD类
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<class UUserWidget> PlayerHUDClass;
-
+public:
 	// 添加一个变量来持有创建的HUD实例
 	UPROPERTY()
-	TObjectPtr<UUserWidget> PlayerHUD;
+	TObjectPtr<UUserWidget> PlayerHUDInstance;
 private:
     // 【新增】用于追踪右键是否被按下的状态
     bool bIsRightMouseDown = false;

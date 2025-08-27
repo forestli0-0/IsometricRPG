@@ -13,7 +13,8 @@
 
 UIsometricInputComponent::UIsometricInputComponent()
 {
-    PrimaryComponentTick.bCanEverTick = false; // 通常输入组件不需要Tick
+    PrimaryComponentTick.bCanEverTick = false;
+    SetIsReplicatedByDefault(true);
 }
 
 void UIsometricInputComponent::BeginPlay()
@@ -155,35 +156,63 @@ void UIsometricInputComponent::HandleSkillInput(EAbilityInputID InputID, const F
 
 void UIsometricInputComponent::RequestMoveToLocation(const FVector& TargetLocation)
 {
-    if (OwnerCharacter && OwnerCharacter->GetController() && OwnerASC) 
+
+    AController* OwnerController = OwnerCharacter ? OwnerCharacter->GetController() : nullptr;
+    UAbilitySystemComponent* CurrentASC = OwnerCharacter ? OwnerCharacter->GetAbilitySystemComponent() : nullptr;
+    if (!(OwnerCharacter && OwnerController && CurrentASC))
     {
-        FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.BasicAttack"));
-        FGameplayTag DirBasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.DirBasicAttack"));
-        if (BasicAttackAbilityTag.IsValid())
-        {
-            FGameplayTagContainer TagContainer(BasicAttackAbilityTag);
-            TagContainer.AddTag(DirBasicAttackAbilityTag);
-            OwnerASC->CancelAbilities(&TagContainer);
-        }
-
-        if (OwnerCharacter->GetMesh() && OwnerCharacter->GetMesh()->GetAnimInstance())
-        {
-            OwnerCharacter->GetMesh()->GetAnimInstance()->Montage_Stop(0.1f); // Stop any montage
-        }
-
-        UAIBlueprintHelperLibrary::SimpleMoveToLocation(OwnerCharacter->GetController(), TargetLocation);
+        UE_LOG(LogTemp, Warning, TEXT("RequestMoveToLocation failed: OwnerCharacter (%p), Controller (%p), or ASC (%p) is null."), OwnerCharacter, OwnerController, CurrentASC);
+        return;
     }
+
+    // 客户端 -> 服务器
+    if (!OwnerCharacter->HasAuthority() )
+    {
+        Server_RequestMoveToLocation(TargetLocation);
+        return;
+    }
+
+    FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.BasicAttack"));
+    FGameplayTag DirBasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.DirBasicAttack"));
+    if (BasicAttackAbilityTag.IsValid())
+    {
+        FGameplayTagContainer TagContainer(BasicAttackAbilityTag);
+        TagContainer.AddTag(DirBasicAttackAbilityTag);
+        CurrentASC->CancelAbilities(&TagContainer);
+        UE_LOG(LogTemp, Log, TEXT("Server: Canceled attack abilities."));
+    }
+
+    if (OwnerCharacter->GetMesh() && OwnerCharacter->GetMesh()->GetAnimInstance())
+    {
+        OwnerCharacter->GetMesh()->GetAnimInstance()->Montage_Stop(0.1f); // Stop any montage
+        UE_LOG(LogTemp, Log, TEXT("Server: Stopped any active montage."));
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("Server: Calling SimpleMoveToLocation."));
+    UAIBlueprintHelperLibrary::SimpleMoveToLocation(OwnerController, TargetLocation);
 }
 
 void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor)
 {
-    if (!OwnerCharacter || !OwnerASC || !TargetActor) return;
+    AController* OwnerController = OwnerCharacter ? OwnerCharacter->GetController() : nullptr;
+    UAbilitySystemComponent* CurrentASC = OwnerCharacter ? OwnerCharacter->GetAbilitySystemComponent() : nullptr;
+
+    if (!OwnerCharacter || !CurrentASC || !TargetActor || !OwnerController)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("RequestBasicAttack failed: OwnerCharacter (%p), Controller (%p), ASC (%p), or TargetActor (%p) is null."), OwnerCharacter, OwnerController, CurrentASC, TargetActor);
+        return;
+    }
+
+    // 客户端转到服务器
+    if (OwnerCharacter->GetLocalRole() < ROLE_Authority)
+    {
+        Server_RequestBasicAttack(TargetActor);
+        return;
+    }
 
     FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.DirBasicAttack")); 
     if (BasicAttackAbilityTag.IsValid())
     {
-        // Store target for the ability to pick up, or pass via event/payload
-        // This is a common pattern: set a target on ASC or Character, then activate.
         if (!OwnerCharacter) return;
         OwnerCharacter->CurrentAbilityTargets.Empty();
         OwnerCharacter->CurrentAbilityTargets.Add(TargetActor);
@@ -193,7 +222,7 @@ void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor)
         EventData.Instigator = OwnerCharacter;
         FGameplayAbilityTargetDataHandle TargetDataHandle = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(FHitResult(TargetActor, nullptr, FVector::ZeroVector, FVector::ZeroVector));
         EventData.TargetData = TargetDataHandle;
-        auto count = OwnerASC->HandleGameplayEvent(BasicAttackAbilityTag, &EventData);
+        auto count = CurrentASC->HandleGameplayEvent(BasicAttackAbilityTag, &EventData);
 		UE_LOG(LogTemp, Display, TEXT("RequestBasicAttack: Attempting to activate Basic Attack ability with tag %s. TargetActor: %s, Count: %d"), *BasicAttackAbilityTag.ToString(), *TargetActor->GetName(), count);
     }
     else
@@ -220,5 +249,16 @@ void UIsometricInputComponent::SendCancelTargetInput()
     {
         OwnerASC->AbilityLocalInputPressed((int32)EAbilityInputID::Cancel); 
     }
+}
+
+// --- Server RPC implementations ---
+void UIsometricInputComponent::Server_RequestMoveToLocation_Implementation(const FVector& TargetLocation)
+{
+    RequestMoveToLocation(TargetLocation);
+}
+
+void UIsometricInputComponent::Server_RequestBasicAttack_Implementation(AActor* TargetActor)
+{
+    RequestBasicAttack(TargetActor);
 }
 

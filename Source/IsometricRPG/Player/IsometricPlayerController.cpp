@@ -6,6 +6,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
 #include "Character/IsometricRPGCharacter.h"
+#include "Character/IsoPlayerState.h"
 #include "IsometricComponents/IsometricInputComponent.h"
 #include "Blueprint/UserWidget.h"
 AIsometricPlayerController::AIsometricPlayerController()
@@ -16,11 +17,32 @@ AIsometricPlayerController::AIsometricPlayerController()
 void AIsometricPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
-
-	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = GetLocalPlayer()->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
+	// 统一使用 Game + UI，确保鼠标位置与命中测试一致
+	FInputModeGameAndUI InputModeData;
+	InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	InputModeData.SetHideCursorDuringCapture(false);
+	SetInputMode(InputModeData);
+	UE_LOG(LogTemp, Log, TEXT("[PC] InputMode: GameAndUI on %s (Auth=%d)"), *GetName(), HasAuthority()?1:0);
+	if (IsLocalController())
 	{
-		Subsystem->AddMappingContext(ClickMappingContext, 0);
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = GetLocalPlayer()->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
+		{
+			if (!ClickMappingContext)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[PC] ClickMappingContext is NOT set on %s"), *GetName());
+			}
+			else
+			{
+				Subsystem->AddMappingContext(ClickMappingContext, 0);
+				UE_LOG(LogTemp, Log, TEXT("[PC] MappingContext added on %s"), *GetName());
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[PC] EnhancedInputLocalPlayerSubsystem not found on %s"), *GetName());
+		}
 	}
+
 	// 显示鼠标
 	bShowMouseCursor = true;
 	bEnableClickEvents = true;
@@ -28,10 +50,17 @@ void AIsometricPlayerController::BeginPlay()
 
 	if (IsLocalController() && PlayerHUDClass)
 	{
-		PlayerHUD = CreateWidget<UUserWidget>(this, PlayerHUDClass);
-		if (PlayerHUD)
+		UE_LOG(LogTemp, Log, TEXT("[PC] Creating PlayerHUD on %s"), *GetName());
+		PlayerHUDInstance = CreateWidget<UUserWidget>(this, PlayerHUDClass);
+		if (PlayerHUDInstance)
 		{
-			PlayerHUD->AddToViewport();
+			PlayerHUDInstance->AddToViewport();
+			
+			// 通知PlayerState UI已经初始化完成
+			if (AIsoPlayerState* IsoPlayerState = GetPlayerState<AIsoPlayerState>())
+			{
+				IsoPlayerState->OnUIInitialized();
+			}
 		}
 	}
 }
@@ -77,15 +106,21 @@ void AIsometricPlayerController::SetupInputComponent()
 		EIC->BindAction(Action_Summoner1, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, EAbilityInputID::Ability_Summoner1);
 		EIC->BindAction(Action_Summoner2, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, EAbilityInputID::Ability_Summoner2);
 	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[PC] SetupInputComponent: EnhancedInputComponent cast FAILED on %s"), *GetName());
+	}
 }
 
 void AIsometricPlayerController::HandleRightClickStarted(const FInputActionValue& Value)
 {
 	bIsRightMouseDown = true; // 设置右键按下状态
     LastHitActor = nullptr; // 重置上一个目标
+	UE_LOG(LogTemp, Log, TEXT("[PC] RightClick Started on %s (Auth=%d)"), *GetName(), HasAuthority()?1:0);
 
 	FHitResult HitResult;
 	GetHitResultUnderCursor(ECC_Visibility, true, HitResult);
+	UE_LOG(LogTemp, Log, TEXT("[PC] RightClick Hit: Block=%d Loc=%s Actor=%s"), HitResult.bBlockingHit?1:0, *HitResult.ImpactPoint.ToString(), HitResult.GetActor()?*HitResult.GetActor()->GetName():TEXT("None"));
 	
 	if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
 	{
@@ -103,11 +138,14 @@ void AIsometricPlayerController::HandleRightClickCompleted(const FInputActionVal
 {
     bIsRightMouseDown = false; // 重置右键按下状态
     LastHitActor = nullptr; // 清空缓存
+	UE_LOG(LogTemp, Log, TEXT("[PC] RightClick Completed on %s (Auth=%d)"), *GetName(), HasAuthority()?1:0);
 }
 void AIsometricPlayerController::HandleLeftClickInput(const FInputActionValue& Value)
 {
+	UE_LOG(LogTemp, Log, TEXT("[PC] LeftClick Started on %s (Auth=%d)"), *GetName(), HasAuthority()?1:0);
 	FHitResult HitResult;
 	GetHitResultUnderCursor(ECC_Visibility, true, HitResult);
+	UE_LOG(LogTemp, Log, TEXT("[PC] LeftClick Hit: Block=%d Loc=%s Actor=%s"), HitResult.bBlockingHit?1:0, *HitResult.ImpactPoint.ToString(), HitResult.GetActor()?*HitResult.GetActor()->GetName():TEXT("None"));
 
 	if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
 	{

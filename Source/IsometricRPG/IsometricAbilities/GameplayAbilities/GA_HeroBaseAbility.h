@@ -41,6 +41,9 @@ public:
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability")
     FGameplayTag TriggerTag;
+    // 冷却时间
+    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ability|Cooldown")
+    float CooldownDuration = 1.f;
 protected:
     // 技能类型
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Type")
@@ -69,9 +72,7 @@ protected:
     UPROPERTY(Transient, BlueprintReadOnly, Category = "Ability|Attribute") 
     UIsometricRPGAttributeSetBase* AttributeSet;
     
-    // 冷却时间
-    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ability|Cooldown")
-    float CooldownDuration = 1.f;
+
     
     // 是否在技能结束后自动应用冷却
     UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ability|Cooldown")
