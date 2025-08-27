@@ -52,9 +52,7 @@ public:
     // 初始化技能系统
     virtual void PossessedBy(AController* NewController) override;
 
-    // 初始化技能 GE
-    // UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Abilities")
-    // TSubclassOf<UGameplayEffect> DefaultAttributesEffect;
+
 protected:
     // 当PlayerState在客户端上被复制时调用
     virtual void OnRep_PlayerState() override;
@@ -62,12 +60,9 @@ protected:
     void InitAbilityActorInfo();
 public:
     // 输入组件
-    // Add this include to the top of the file
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Input")
     UIsometricInputComponent* IRPGInputComponent;
 
-    // Attribute initialization
-    // virtual void InitializeAttributes();
 
     UFUNCTION(Server, Reliable)
     void Server_EquipAbilityToSlot(TSubclassOf<UGameplayAbility> NewAbilityClass, ESkillSlot Slot);

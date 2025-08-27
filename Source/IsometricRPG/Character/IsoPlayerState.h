@@ -68,4 +68,13 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Attributes")
     TSubclassOf<class UGameplayEffect> DefaultAttributesEffect;
     void InitializeAttributes();
+    
+    // UI初始化相关
+    bool bUIInitialized = false;
+    bool bPendingUIUpdate = false;
+    void OnUIInitialized();
+    void UpdateUIWhenReady();
+private:
+	int SlotIndex = 0; // 用于跟踪当前技能槽的索引
+    void OnAssetsLoadedForUI();
 };

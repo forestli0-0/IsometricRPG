@@ -2,16 +2,16 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "GameplayTagContainer.h" // For FGameplayTag
-#include "Engine/HitResult.h"    // For FHitResult
+#include "GameplayTagContainer.h"
+#include "Engine/HitResult.h"
 #include "IsometricRPG/IsometricAbilities/Types/HeroAbilityTypes.h"
 // Forward declarations
 class UAbilitySystemComponent;
 class AIsometricRPGCharacter;
 class APlayerController;
-// struct FInputActionValue; // Removed as input actions are now handled by PlayerController
 
-#include "IsometricInputComponent.generated.h" // THIS MUST BE THE LAST INCLUDE
+
+#include "IsometricInputComponent.generated.h"
 
 
 
@@ -29,7 +29,7 @@ protected:
 public:
 	// These methods are called by AIsometricPlayerController (or an AI Controller)
 	void HandleLeftClick(const FHitResult& HitResult);
-    // 【修改】重命名原有的HandleRightClick
+
     void HandleRightClickTriggered(const FHitResult& HitResult, TWeakObjectPtr<AActor> LastHitActor);
 
 	void HandleSkillInput(EAbilityInputID InputID, const FHitResult& TargetData);
@@ -49,18 +49,12 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Input|Skills", meta = (DisplayName = "Skill Input Mappings"))
 	TMap<EAbilityInputID, TSubclassOf<class UGameplayAbility>> SkillInputMappings;
 
-	/*
-	 * 【旧的映射 - 已废弃】
-	 * UPROPERTY(EditDefaultsOnly, Category = "Input|Skills")
-	 * TMap<int32, FGameplayTag> SkillSlotToAbilityTagMap;
-	 */
-
 private:
 	UPROPERTY()
 	AIsometricRPGCharacter* OwnerCharacter;
 
 	UPROPERTY()
-	APlayerController* CachedPlayerController; // Retained for convenience, e.g. if component needs to get cursor info directly for some reason, though PC should pass it.
+	APlayerController* CachedPlayerController;
 
 	UPROPERTY()
 	UAbilitySystemComponent* OwnerASC;
@@ -77,4 +71,12 @@ private:
 	// Helper methods to send GAS input confirmations/cancellations
 	void SendConfirmTargetInput();
 	void SendCancelTargetInput();
+
+	// --- Server RPCs for networked actions ---
+public:
+	UFUNCTION(Server, Reliable)
+	void Server_RequestMoveToLocation(const FVector& TargetLocation);
+
+	UFUNCTION(Server, Reliable)
+	void Server_RequestBasicAttack(AActor* TargetActor);
 };

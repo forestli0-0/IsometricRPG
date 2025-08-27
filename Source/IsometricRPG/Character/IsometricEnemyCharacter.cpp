@@ -22,26 +22,29 @@ void AIsometricEnemyCharacter::BeginPlay()
 {
     Super::BeginPlay();
 
-    // 初始化属性
-    if (AbilitySystemComponent && DefaultAttributesEffect)
+    if (HasAuthority())
     {
-        FGameplayEffectContextHandle EffectContext = AbilitySystemComponent->MakeEffectContext();
-        EffectContext.AddSourceObject(this);
-        FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(DefaultAttributesEffect, 1, EffectContext);
-        if (SpecHandle.IsValid())
+        // 初始化属性
+        if (AbilitySystemComponent && DefaultAttributesEffect)
         {
-            AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-        }
-    }
-
-    // 授予默认技能
-    if (AbilitySystemComponent)
-    {
-        for (auto& AbilityClass : DefaultAbilities)
-        {
-            if (AbilityClass)
+            FGameplayEffectContextHandle EffectContext = AbilitySystemComponent->MakeEffectContext();
+            EffectContext.AddSourceObject(this);
+            FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(DefaultAttributesEffect, 1, EffectContext);
+            if (SpecHandle.IsValid())
             {
-                AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(AbilityClass, 1, INDEX_NONE, this));
+                AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+            }
+        }
+
+        // 授予默认技能
+        if (AbilitySystemComponent)
+        {
+            for (auto& AbilityClass : DefaultAbilities)
+            {
+                if (AbilityClass)
+                {
+                    AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(AbilityClass, 1, INDEX_NONE, this));
+                }
             }
         }
     }
