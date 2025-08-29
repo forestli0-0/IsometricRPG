@@ -3,8 +3,8 @@
 #include "Components/SceneComponent.h"
 #include "AIController.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "Net/UnrealNetwork.h" // DOREPLIFETIME 所需
-#include "GameplayAbilitySpec.h" // FGameplayAbilitySpec 所需
+#include "Net/UnrealNetwork.h"
+#include "GameplayAbilitySpec.h"
 #include "IsoPlayerState.h"
 #include "AnimationBlueprintLibrary.h"
 #include <Blueprint/AIBlueprintHelperLibrary.h>
@@ -15,8 +15,6 @@
 AIsometricRPGCharacter::AIsometricRPGCharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
-	// 不再创建 AbilitySystemComponent 和 AttributeSet
-
 	// 创建输入组件
 	IRPGInputComponent = CreateDefaultSubobject<UIsometricInputComponent>(TEXT("IRPGInputComponent"));
 	// 不要让角色面朝摄像机方向
@@ -42,8 +40,6 @@ void AIsometricRPGCharacter::SetGenericTeamId(const FGenericTeamId& InTeamId)
     TeamId = InTeamId;
 }
 
-
-
 // 当游戏开始或生成时调用
 void AIsometricRPGCharacter::BeginPlay()
 {
@@ -56,8 +52,6 @@ void AIsometricRPGCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 }
 
-
-
 UAbilitySystemComponent* AIsometricRPGCharacter::GetAbilitySystemComponent() const
 {
     AIsoPlayerState* PS = Cast<AIsoPlayerState>(GetPlayerState());
@@ -68,7 +62,6 @@ UAbilitySystemComponent* AIsometricRPGCharacter::GetAbilitySystemComponent() con
     return nullptr;
 }
  
-
 UIsometricRPGAttributeSetBase* AIsometricRPGCharacter::GetAttributeSet() const
 {
     AIsoPlayerState* PS = Cast<AIsoPlayerState>(GetPlayerState());
@@ -127,7 +120,6 @@ FEquippedAbilityInfo AIsometricRPGCharacter::GetEquippedAbilityInfo(ESkillSlot S
     }
     return FEquippedAbilityInfo();
 }
-
 
 float AIsometricRPGCharacter::GetCurrentHealth() const
 {
