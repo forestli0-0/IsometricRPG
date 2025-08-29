@@ -546,3 +546,35 @@ bool UGA_HeroBaseAbility::RequiresTargetData_Implementation() const
 {
     return bRequiresTargetData;
 }
+
+void UGA_HeroBaseAbility::PostInitProperties()
+{
+    Super::PostInitProperties();
+
+    // 仅在CDO上做一次触发器注入，避免实例期重复添加
+    if (HasAnyFlags(RF_ClassDefaultObject))
+    {
+        if (TriggerTag.IsValid())
+        {
+            bool bAlreadyAdded = false;
+            for (const FAbilityTriggerData& T : AbilityTriggers)
+            {
+                if (T.TriggerSource == EGameplayAbilityTriggerSource::GameplayEvent &&
+                    T.TriggerTag.MatchesTagExact(TriggerTag))
+                {
+                    bAlreadyAdded = true;
+                    break;
+                }
+            }
+            if (!bAlreadyAdded)
+            {
+                FAbilityTriggerData Data;
+                Data.TriggerSource = EGameplayAbilityTriggerSource::GameplayEvent;
+                Data.TriggerTag = TriggerTag;
+                AbilityTriggers.Add(Data);
+            }
+        }
+    }
+}
+
+

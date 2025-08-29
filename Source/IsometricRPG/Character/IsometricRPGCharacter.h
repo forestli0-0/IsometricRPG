@@ -63,7 +63,6 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Input")
     UIsometricInputComponent* IRPGInputComponent;
 
-
     UFUNCTION(Server, Reliable)
     void Server_EquipAbilityToSlot(TSubclassOf<UGameplayAbility> NewAbilityClass, ESkillSlot Slot);
     UFUNCTION(Server, Reliable)

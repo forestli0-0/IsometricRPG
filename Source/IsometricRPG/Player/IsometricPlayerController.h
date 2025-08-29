@@ -71,7 +71,8 @@ public:
 private:
     // 【新增】用于追踪右键是否被按下的状态
     bool bIsRightMouseDown = false;
-    
     // 【新增】用于缓存上一帧的目标Actor，以判断目标是否变化
     TWeakObjectPtr<AActor> LastHitActor;
+
+
 };

@@ -30,8 +30,11 @@ AIsoPlayerState::AIsoPlayerState()
 void AIsoPlayerState::BeginPlay()
 {
     Super::BeginPlay();
-    InitializeAttributes(); // 先初始化属性
-    InitAbilities(); // 再初始化技能
+    if (HasAuthority())
+    {
+        InitializeAttributes(); // 先初始化属性
+        InitAbilities(); // 再初始化技能
+    }
 }
 
 void AIsoPlayerState::InitializeAttributes()

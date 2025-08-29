@@ -109,54 +109,62 @@ void UIsometricInputComponent::HandleRightClickTriggered(const FHitResult& HitRe
     }
 }
 
+
 void UIsometricInputComponent::HandleSkillInput(EAbilityInputID InputID, const FHitResult& TargetData)
 {
-    if (!OwnerCharacter || !OwnerASC) return;
+    if (!OwnerCharacter) return;
+    if (!OwnerASC) { OwnerASC = OwnerCharacter->GetAbilitySystemComponent(); }
+    if (!OwnerASC) return;
 
-
-
-    // 在新的映射表中查找分配给该输入的技能类
-    if (const TSubclassOf<UGameplayAbility>* AbilityClassPtr = SkillInputMappings.Find(InputID))
+    if (OwnerCharacter->GetLocalRole() < ROLE_Authority)
     {
-        const TSubclassOf<UGameplayAbility> AbilityClass = *AbilityClassPtr;
-        if (!AbilityClass)
+        Server_HandleSkillInput(InputID, TargetData);
+        return;
+    }
+
+    const TSubclassOf<UGameplayAbility>* AbilityClassPtr = SkillInputMappings.Find(InputID);
+    if (!AbilityClassPtr || !(*AbilityClassPtr))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("InputID %d has no valid mapping."), InputID);
+        return;
+    }
+    const TSubclassOf<UGameplayAbility> MappedClass = *AbilityClassPtr;
+
+    // 在ASC中查找已授予的能力（允许子类）
+    FGameplayAbilitySpec* FoundSpec = nullptr;
+    for (FGameplayAbilitySpec& Spec : OwnerASC->GetActivatableAbilities())
+    {
+        if (Spec.Ability && Spec.Ability->GetClass()->IsChildOf(MappedClass))
         {
-            UE_LOG(LogTemp, Warning, TEXT("InputID: %d is mapped to a null AbilityClass."), InputID);
-            return;
+            FoundSpec = &Spec; break;
         }
-
-        // 从技能类中获取其默认对象(CDO)以读取属性，而无需创建实例。
-        const UGA_HeroBaseAbility* AbilityCDO = AbilityClass->GetDefaultObject<UGA_HeroBaseAbility>();
-        if (!AbilityCDO || !AbilityCDO->TriggerTag.IsValid())
-        { 
-            UE_LOG(LogTemp, Warning, TEXT("Ability class for InputID %d is missing a valid TriggerTag."), InputID);
-            return;
-        }
-
-        // 使用获取到的 TriggerTag 发送 GameplayEvent
-        FGameplayEventData EventData;
-        EventData.Instigator = OwnerCharacter;
-        EventData.Target = TargetData.GetActor();
-        EventData.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(TargetData);
-        
-        OwnerASC->HandleGameplayEvent(AbilityCDO->TriggerTag, &EventData);
-
-        UE_LOG(LogTemp, Display, TEXT("Triggering ability with tag %s for InputID %d."), *AbilityCDO->TriggerTag.ToString(), InputID);
     }
-    else
-    { 
-        UE_LOG(LogTemp, Warning, TEXT("InputID: %d has no mapped ability class."), InputID);
+    if (!FoundSpec || !FoundSpec->Ability)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("ASC has not granted %s (or child)."), *MappedClass->GetName());
+        return;
     }
+
+    const UGA_HeroBaseAbility* GrantedCDO = Cast<UGA_HeroBaseAbility>(FoundSpec->Ability);
+    if (!GrantedCDO || !GrantedCDO->TriggerTag.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Granted ability %s has invalid TriggerTag."), *FoundSpec->Ability->GetClass()->GetName());
+        return;
+    }
+
+    // 构造事件
+    FGameplayEventData EventData;
+    EventData.Instigator = OwnerCharacter;
+    EventData.Target = TargetData.GetActor();
+    EventData.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(TargetData);
+
+    const int32 Count = OwnerASC->HandleGameplayEvent(GrantedCDO->TriggerTag, &EventData);
+    UE_LOG(LogTemp, Display, TEXT("HandleGameplayEvent Tag=%s -> %d"),
+        *GrantedCDO->TriggerTag.ToString(), Count);
 }
-
-
-
-// ... rest of the file (RequestMoveToLocation, RequestBasicAttack, SendConfirmTargetInput, SendCancelTargetInput) remains largely the same
-// but ensure they don't rely on FInputActionValue or direct input bindings.
 
 void UIsometricInputComponent::RequestMoveToLocation(const FVector& TargetLocation)
 {
-
     AController* OwnerController = OwnerCharacter ? OwnerCharacter->GetController() : nullptr;
     UAbilitySystemComponent* CurrentASC = OwnerCharacter ? OwnerCharacter->GetAbilitySystemComponent() : nullptr;
     if (!(OwnerCharacter && OwnerController && CurrentASC))
@@ -165,33 +173,31 @@ void UIsometricInputComponent::RequestMoveToLocation(const FVector& TargetLocati
         return;
     }
 
-    // 客户端 -> 服务器
-    if (!OwnerCharacter->HasAuthority() )
+    if (!OwnerCharacter->HasAuthority())
     {
         Server_RequestMoveToLocation(TargetLocation);
-        return;
     }
 
-    FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.BasicAttack"));
-    FGameplayTag DirBasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.DirBasicAttack"));
-    if (BasicAttackAbilityTag.IsValid())
+    if (OwnerCharacter->HasAuthority())
     {
-        FGameplayTagContainer TagContainer(BasicAttackAbilityTag);
-        TagContainer.AddTag(DirBasicAttackAbilityTag);
-        CurrentASC->CancelAbilities(&TagContainer);
-        UE_LOG(LogTemp, Log, TEXT("Server: Canceled attack abilities."));
-    }
+        FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.BasicAttack"));
+        FGameplayTag DirBasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.DirBasicAttack"));
+        if (BasicAttackAbilityTag.IsValid())
+        {
+            FGameplayTagContainer TagContainer(BasicAttackAbilityTag);
+            TagContainer.AddTag(DirBasicAttackAbilityTag);
+            CurrentASC->CancelAbilities(&TagContainer);
+            UE_LOG(LogTemp, Log, TEXT("Server: Canceled attack abilities."));
+        }
 
-    if (OwnerCharacter->GetMesh() && OwnerCharacter->GetMesh()->GetAnimInstance())
-    {
-        OwnerCharacter->GetMesh()->GetAnimInstance()->Montage_Stop(0.1f); // Stop any montage
-        UE_LOG(LogTemp, Log, TEXT("Server: Stopped any active montage."));
+        if (OwnerCharacter->GetMesh() && OwnerCharacter->GetMesh()->GetAnimInstance())
+        {
+            OwnerCharacter->GetMesh()->GetAnimInstance()->Montage_Stop(0.1f); // Stop any montage
+            UE_LOG(LogTemp, Log, TEXT("Server: Stopped any active montage."));
+        }
     }
-
-    UE_LOG(LogTemp, Log, TEXT("Server: Calling SimpleMoveToLocation."));
     UAIBlueprintHelperLibrary::SimpleMoveToLocation(OwnerController, TargetLocation);
 }
-
 void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor)
 {
     AController* OwnerController = OwnerCharacter ? OwnerCharacter->GetController() : nullptr;
@@ -232,8 +238,6 @@ void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor)
 }
 
 
-// GetTargetUnderCursor and GetLocationUnderCursor are removed as PlayerController handles this.
-
 void UIsometricInputComponent::SendConfirmTargetInput()
 {
     if (OwnerASC)
@@ -244,7 +248,6 @@ void UIsometricInputComponent::SendConfirmTargetInput()
 
 void UIsometricInputComponent::SendCancelTargetInput()
 {
-	//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("Cancel Target Input Sent!"));
     if (OwnerASC)
     {
         OwnerASC->AbilityLocalInputPressed((int32)EAbilityInputID::Cancel); 
@@ -262,3 +265,7 @@ void UIsometricInputComponent::Server_RequestBasicAttack_Implementation(AActor* 
     RequestBasicAttack(TargetActor);
 }
 
+void UIsometricInputComponent::Server_HandleSkillInput_Implementation(EAbilityInputID InputID, const FHitResult& TargetData)
+{
+    HandleSkillInput(InputID, TargetData);
+}

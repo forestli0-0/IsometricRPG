@@ -30,124 +30,91 @@ class ISOMETRICRPG_API UIsometricRPGAttributeSetBase : public UAttributeSet
 public:
 	UIsometricRPGAttributeSetBase();
 
-	//~====================================================================================
-	//~ 核心属性
-	//~====================================================================================
-
-	// 最大生命值
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attributes|Core")
+	// 核心属性
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_MaxHealth, Category = "Attributes|Core")
 	FGameplayAttributeData MaxHealth;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MaxHealth);
 
-	// 当前生命值
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attributes|Core")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_Health, Category = "Attributes|Core")
 	FGameplayAttributeData Health;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Health);
 
-	// 生命值恢复速率
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attributes|Core")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_HealthRegenRate, Category = "Attributes|Core")
 	FGameplayAttributeData HealthRegenRate;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, HealthRegenRate);
 
-	// 最大法力值
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Core")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_MaxMana, Category = "Attributes|Core")
 	FGameplayAttributeData MaxMana;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MaxMana);
 
-	// 当前法力值
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Core")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_Mana, Category = "Attributes|Core")
 	FGameplayAttributeData Mana;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Mana);
 
-	// 法力值恢复速率
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Core")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_ManaRegenRate, Category = "Attributes|Core")
 	FGameplayAttributeData ManaRegenRate;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, ManaRegenRate);
-	
-	// 移动速度
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Core")
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_MoveSpeed, Category = "Attributes|Core")
 	FGameplayAttributeData MoveSpeed;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MoveSpeed);
 
-	//~====================================================================================
-	//~ 攻击属性
-	//~====================================================================================
-
-	// 攻击范围
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Attack")
+	// 攻击属性
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_AttackRange, Category = "Attributes|Attack")
 	FGameplayAttributeData AttackRange;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AttackRange);
 
-	// 攻击力
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Attack")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_AttackDamage, Category = "Attributes|Attack")
 	FGameplayAttributeData AttackDamage;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AttackDamage);
 
-	// 攻击速度
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Attack")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_AttackSpeed, Category = "Attributes|Attack")
 	FGameplayAttributeData AttackSpeed;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AttackSpeed);
 
-	// 暴击几率
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Attack")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_CriticalChance, Category = "Attributes|Attack")
 	FGameplayAttributeData CriticalChance;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, CriticalChance);
 
-	// 暴击伤害
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Attack")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_CriticalDamage, Category = "Attributes|Attack")
 	FGameplayAttributeData CriticalDamage;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, CriticalDamage);
 
-	// 物理穿透
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Attack")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_ArmorPenetration, Category = "Attributes|Attack")
 	FGameplayAttributeData ArmorPenetration;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, ArmorPenetration);
 
-	// 魔法穿透
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Attack")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_MagicPenetration, Category = "Attributes|Attack")
 	FGameplayAttributeData MagicPenetration;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MagicPenetration);
 
-	//~====================================================================================
-	//~ 防御属性
-	//~====================================================================================
-	
-	// 物理防御
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Defense")
+	// 防御属性
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_PhysicalDefense, Category = "Attributes|Defense")
 	FGameplayAttributeData PhysicalDefense;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, PhysicalDefense);
 
-	// 魔法防御
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Defense")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_MagicDefense, Category = "Attributes|Defense")
 	FGameplayAttributeData MagicDefense;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MagicDefense);
 
-	// 生命偷取
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Defense")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_LifeSteal, Category = "Attributes|Defense")
 	FGameplayAttributeData LifeSteal;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, LifeSteal);
 
-	//~====================================================================================
-	//~ 经验与等级
-	//~====================================================================================
-	// 当前经验值
-	// 当前等级
+	// 经验与等级
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_Level, Category = "Attributes|Experience")
 	FGameplayAttributeData Level;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Level);
 
-	// 当前经验值
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_Experience, Category = "Attributes|Experience")
 	FGameplayAttributeData Experience;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Experience);
 
-	// 升级所需经验
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_ExperienceToNextLevel, Category = "Attributes|Experience")
 	FGameplayAttributeData ExperienceToNextLevel;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, ExperienceToNextLevel);
 
-	// 击杀该单位可获得的经验奖励
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|Experience")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_ExperienceBounty, Category = "Attributes|Experience")
 	FGameplayAttributeData ExperienceBounty;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, ExperienceBounty);
 	// 经验曲线
@@ -161,11 +128,13 @@ public:
 	//~====================================================================================
 	//~ 技能点
 	//~====================================================================================
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|SkillPoints")
-	float TotalSkillPoint;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, ReplicatedUsing = OnRep_TotalSkillPoint, Category = "Attributes|SkillPoints")
+	FGameplayAttributeData TotalSkillPoint;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, TotalSkillPoint);
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes|SkillPoints")
-	float UnUsedSkillPoint;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, ReplicatedUsing = OnRep_UnUsedSkillPoint, Category = "Attributes|SkillPoints")
+	FGameplayAttributeData UnUsedSkillPoint;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, UnUsedSkillPoint);
 public:
 	//~====================================================================================
 	//~ Public Methods
@@ -198,13 +167,33 @@ public:
 
 protected:
     // 为新属性添加OnRep函数
-    UFUNCTION()
-    virtual void OnRep_Level(const FGameplayAttributeData& OldLevel);
+    UFUNCTION() virtual void OnRep_MaxHealth(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_Health(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_HealthRegenRate(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_MaxMana(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_Mana(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_ManaRegenRate(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_MoveSpeed(const FGameplayAttributeData& OldValue);
 
-    UFUNCTION()
-    virtual void OnRep_Experience(const FGameplayAttributeData& OldExperience);
+	UFUNCTION() virtual void OnRep_AttackRange(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_AttackDamage(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_AttackSpeed(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_CriticalChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_CriticalDamage(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_ArmorPenetration(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_MagicPenetration(const FGameplayAttributeData& OldValue);
 
-    UFUNCTION()
-    virtual void OnRep_ExperienceToNextLevel(const FGameplayAttributeData& OldExperienceToNextLevel);
+	UFUNCTION() virtual void OnRep_PhysicalDefense(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_MagicDefense(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_LifeSteal(const FGameplayAttributeData& OldValue);
+
+	UFUNCTION() virtual void OnRep_ExperienceBounty(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_Level(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_Experience(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_ExperienceToNextLevel(const FGameplayAttributeData& OldValue);
+
+	UFUNCTION() virtual void OnRep_TotalSkillPoint(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_UnUsedSkillPoint(const FGameplayAttributeData& OldValue);
+
 
 };

@@ -65,14 +65,9 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Targeting")
     bool bRequiresTargetData = true;
 
-
-
-
     // 技能都应该在激活前获取自身的属性集
     UPROPERTY(Transient, BlueprintReadOnly, Category = "Ability|Attribute") 
     UIsometricRPGAttributeSetBase* AttributeSet;
-    
-
     
     // 是否在技能结束后自动应用冷却
     UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ability|Cooldown")
@@ -173,8 +168,11 @@ protected:
     class UAbilityTask_PlayMontageAndWait* MontageTask;
     void OnMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
-
     FGameplayAbilityActivationInfo CurrentActivationInfo;
     const FGameplayEventData* CurrentTriggerEventData;
     FGameplayAbilityTargetDataHandle CurrentTargetDataHandle;
+protected:
+        virtual void PostInitProperties() override;
+
+
 };

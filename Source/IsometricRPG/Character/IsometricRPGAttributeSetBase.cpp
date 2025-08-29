@@ -12,20 +12,14 @@
 #include <LevelUp/LevelUpData.h>
 UIsometricRPGAttributeSetBase::UIsometricRPGAttributeSetBase()
 {
-    //Health.SetBaseValue(100.0f);  // 设置基础生命值为 100.0
-    //MaxHealth.SetBaseValue(100.0f);  // 设置最大生命值为 100.0
-    //HealthRegenRate.SetBaseValue(1.0f);  // 设置生命恢复速率为 1.0
+
 }
-
-
 
 TSubclassOf<UGameplayEffect> UIsometricRPGAttributeSetBase::GetDefaultInitGE()
 {
     static ConstructorHelpers::FClassFinder<UGameplayEffect> GEClass(TEXT("/Game/Blueprint/GameEffects/GE_InitializeAttributes"));
     return GEClass.Class;
 }
-
-
 
 void UIsometricRPGAttributeSetBase::PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data)
 {
@@ -49,7 +43,6 @@ void UIsometricRPGAttributeSetBase::PostGameplayEffectExecute(const FGameplayEff
            {
                // 1. 定义事件标签
                FGameplayTag DeathEventTag = FGameplayTag::RequestGameplayTag(FName("Event.Character.Death"));
-
                // 2. 创建事件数据 "包裹"
                FGameplayEventData Payload;
                Payload.EventTag = DeathEventTag;
@@ -57,7 +50,6 @@ void UIsometricRPGAttributeSetBase::PostGameplayEffectExecute(const FGameplayEff
                Payload.Target = GetOwningActor(); // 死者是自己
                // 你还可以放入其他数据，比如伤害量、伤害来源等
                Payload.EventMagnitude = Data.EvaluatedData.Magnitude;
-
                // 3. 发送事件给目标ASC (也就是死者自己)
                // HandleGameplayEvent 会自动查找并激活监听此Tag的技能
                TargetASC->HandleGameplayEvent(DeathEventTag, &Payload);
@@ -184,30 +176,86 @@ void UIsometricRPGAttributeSetBase::GetLifetimeReplicatedProps(TArray<FLifetimeP
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-    // 为新属性添加复制规则
+    // Core
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, MaxHealth, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, Health, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, HealthRegenRate, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, MaxMana, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, Mana, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, ManaRegenRate, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, MoveSpeed, COND_None, REPNOTIFY_Always);
+
+    // Attack
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, AttackRange, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, AttackDamage, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, AttackSpeed, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, CriticalChance, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, CriticalDamage, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, ArmorPenetration, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, MagicPenetration, COND_None, REPNOTIFY_Always);
+
+    // Defense
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, PhysicalDefense, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, MagicDefense, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, LifeSteal, COND_None, REPNOTIFY_Always);
+
+    // Level/Experience（已存在）
     DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, Level, COND_None, REPNOTIFY_Always);
     DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, Experience, COND_None, REPNOTIFY_Always);
     DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, ExperienceToNextLevel, COND_None, REPNOTIFY_Always);
+
+    // Bounty
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, ExperienceBounty, COND_None, REPNOTIFY_Always);
 }
 
-
-// 实现 OnRep 函数
-void UIsometricRPGAttributeSetBase::OnRep_Level(const FGameplayAttributeData& OldLevel)
+// OnRep 实现（统一使用宏）
+void UIsometricRPGAttributeSetBase::OnRep_MaxHealth(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, MaxHealth, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_Health(const FGameplayAttributeData& OldValue)
 {
-    GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, Level, OldLevel);
+    GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, Health, OldValue);
+    OnHealthChanged.Broadcast(this, GetHealth());
+}
+void UIsometricRPGAttributeSetBase::OnRep_HealthRegenRate(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, HealthRegenRate, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_MaxMana(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, MaxMana, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_Mana(const FGameplayAttributeData& OldValue)
+{
+    GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, Mana, OldValue);
+    OnManaChanged.Broadcast(this, GetMana());
+}
+void UIsometricRPGAttributeSetBase::OnRep_ManaRegenRate(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, ManaRegenRate, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_MoveSpeed(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, MoveSpeed, OldValue); }
+
+void UIsometricRPGAttributeSetBase::OnRep_AttackRange(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, AttackRange, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_AttackDamage(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, AttackDamage, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_AttackSpeed(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, AttackSpeed, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_CriticalChance(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, CriticalChance, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_CriticalDamage(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, CriticalDamage, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_ArmorPenetration(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, ArmorPenetration, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_MagicPenetration(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, MagicPenetration, OldValue); }
+
+void UIsometricRPGAttributeSetBase::OnRep_PhysicalDefense(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, PhysicalDefense, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_MagicDefense(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, MagicDefense, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_LifeSteal(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, LifeSteal, OldValue); }
+
+void UIsometricRPGAttributeSetBase::OnRep_ExperienceBounty(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, ExperienceBounty, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_Level(const FGameplayAttributeData& OldValue)
+{
+    GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, Level, OldValue);
     OnLevelChanged.Broadcast(this, GetLevel());
 }
 
-void UIsometricRPGAttributeSetBase::OnRep_Experience(const FGameplayAttributeData& OldExperience)
+void UIsometricRPGAttributeSetBase::OnRep_Experience(const FGameplayAttributeData& OldValue)
 {
-    GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, Experience, OldExperience);
+    GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, Experience, OldValue);
     OnExperienceChanged.Broadcast(this, GetExperience(), GetExperienceToNextLevel());
 }
 
-void UIsometricRPGAttributeSetBase::OnRep_ExperienceToNextLevel(const FGameplayAttributeData& OldExperienceToNextLevel)
+void UIsometricRPGAttributeSetBase::OnRep_ExperienceToNextLevel(const FGameplayAttributeData& OldValue)
 {
-    GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, ExperienceToNextLevel, OldExperienceToNextLevel);
-    OnExperienceChanged.Broadcast(this, GetExperience(), GetExperienceToNextLevel());
+    GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, ExperienceToNextLevel, OldValue);
+
 }
+void UIsometricRPGAttributeSetBase::OnRep_TotalSkillPoint(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, TotalSkillPoint, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_UnUsedSkillPoint(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, UnUsedSkillPoint, OldValue); }
 
 
