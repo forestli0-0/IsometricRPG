@@ -10,6 +10,7 @@
 #include "Abilities/GameplayAbilityTargetActor_GroundTrace.h"
 #include "Abilities/GameplayAbilityTargetActor_SingleLineTrace.h"
 #include "AbilitySystemGlobals.h" 
+#include <Character/IsometricRPGCharacter.h>
 
 UGA_HeroBaseAbility::UGA_HeroBaseAbility()
 {
@@ -35,11 +36,15 @@ void UGA_HeroBaseAbility::ActivateAbility(
     CurrentActorInfo = ActorInfo;
     CurrentActivationInfo = ActivationInfo;
 
-    if (TriggerEventData)
+    AIsometricRPGCharacter* RPGCharacter = Cast<AIsometricRPGCharacter>(GetAvatarActorFromActorInfo());
+    if (!RPGCharacter)
     {
-        CurrentTriggerEventData = TriggerEventData;
+        UE_LOG(LogTemp, Error, TEXT("%s: AvatarActor is not an AIsometricRPGCharacter. Cannot get target data."), *GetName());
+        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+        return;
     }
-
+    // 主动从角色身上拉取暂存的目标数据
+    CurrentTargetDataHandle = RPGCharacter->GetAbilityTargetData();
     // 获取Avatar Actor
     AActor* SelfActor = GetAvatarActorFromActorInfo();
     if (!SelfActor)
@@ -70,21 +75,21 @@ void UGA_HeroBaseAbility::ActivateAbility(
     // 根据技能是否需要目标选择来决定执行流程
     if (RequiresTargetData())
     {
-        // 如果需要目标选择但没有设置TargetActorClass
-        if (!TargetActorClass)
+		// 如果已经有目标数据，直接执行技能(比如按下技能时，鼠标已经指向了一个目标)
+        if (CurrentTargetDataHandle.Num() > 0)
         {
-            UE_LOG(LogTemp, Error, TEXT("%s: TargetActorClass is not set but skill requires target data!"), *GetName());
-            CancelAbility(Handle, ActorInfo, ActivationInfo, true);
-            return;
+            OnTargetDataReady(CurrentTargetDataHandle);
         }
-        
-        // 开始目标选择
-        StartTargetSelection(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+        else
+        {
+            // 如果需要目标但数据为空（例如直接按Q但没点目标），则开始等待目标数据
+            StartTargetSelection(Handle, ActorInfo, ActivationInfo);
+        }
     }
     else
     {
         // 不需要目标选择，直接执行技能
-        DirectExecuteAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+        DirectExecuteAbility(Handle, ActorInfo, ActivationInfo);
     }
 }
 
@@ -236,8 +241,7 @@ void UGA_HeroBaseAbility::EndAbility(
 void UGA_HeroBaseAbility::StartTargetSelection(
     const FGameplayAbilitySpecHandle Handle,
     const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo,
-    const FGameplayEventData* TriggerEventData)
+    const FGameplayAbilityActivationInfo ActivationInfo)
 {
 
     if (!TargetActorClass)
@@ -279,18 +283,17 @@ void UGA_HeroBaseAbility::StartTargetSelection(
 void UGA_HeroBaseAbility::DirectExecuteAbility(
     const FGameplayAbilitySpecHandle Handle,
     const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo,
-    const FGameplayEventData* TriggerEventData)
+    const FGameplayAbilityActivationInfo ActivationInfo)
 {
-    if (!OtherCheckBeforeCommit(TriggerEventData))
+    if (!OtherCheckBeforeCommit())
     {
-        UE_LOG(LogTemp, Warning, TEXT("%s: 其他检查失败，与消耗和冷却无关。"), *GetName());
+        UE_LOG(LogTemp, Warning, TEXT("%s: 提交前的检查失败，与消耗和冷却无关。"), *GetName());
         constexpr bool bReplicateEndAbility = true;
         return;
     }
     if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
     {
-        UE_LOG(LogTemp, Warning, TEXT("%s: Failed to commit ability for direct execution."), *GetName());
+        UE_LOG(LogTemp, Warning, TEXT("%s: 技能提交失败，可能是由于消耗或冷却问题。"), *GetName());
         CancelAbility(Handle, ActorInfo, ActivationInfo, true);
         return;
     }
@@ -299,40 +302,27 @@ void UGA_HeroBaseAbility::DirectExecuteAbility(
     PlayAbilityMontage(Handle, ActorInfo, ActivationInfo);
     
     // 执行技能逻辑
-    ExecuteSkill(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+    ExecuteSkill(Handle, ActorInfo, ActivationInfo);
 }
 
-bool UGA_HeroBaseAbility::OtherCheckBeforeCommit(const FGameplayAbilityTargetDataHandle& Data)
+bool UGA_HeroBaseAbility::OtherCheckBeforeCommit()
 {
     // 基类中的默认实现 - 子类应该重写这个方法
-    UE_LOG(LogTemp, Log, TEXT("%s：已调用提交前的最后检查。这应该被子类覆盖."), *GetName());
+    UE_LOG(LogTemp, Log, TEXT("%s：检查除Cost和Cooldown之外的条件。这应该被子类覆盖."), *GetName());
     if (!CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo))
     {
         UE_LOG(LogTemp, Warning, TEXT("%s: Failed to commit ability for direct execution."), *GetName());
         CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
         return false;
     }
-
-    // 播放技能动画
-    PlayAbilityMontage(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo);
-
-    // 执行技能逻辑
-    ExecuteSkill(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, CurrentTriggerEventData);
     return true;
 }
 
-bool UGA_HeroBaseAbility::OtherCheckBeforeCommit(const FGameplayEventData* TriggerEventData)
-{
-    // 基类中的默认实现 - 子类应该重写这个方法
-    UE_LOG(LogTemp, Log, TEXT("%s：已调用提交前的最后检查。这应该被子类覆盖."), *GetName());
-    return true;
-}
 
 void UGA_HeroBaseAbility::ExecuteSkill(
     const FGameplayAbilitySpecHandle Handle, 
     const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo, 
-    const FGameplayEventData* TriggerEventData)
+    const FGameplayAbilityActivationInfo ActivationInfo)
 {
     // 基类中的默认实现 - 子类应该重写这个方法
     UE_LOG(LogTemp, Log, TEXT("%s：已调用基本ExecuteSkill。这应该被子类覆盖."), *GetName());
@@ -505,12 +495,21 @@ void UGA_HeroBaseAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHand
     FGameplayAbilitySpecHandle Handle = GetCurrentAbilitySpecHandle();
     FGameplayAbilityActivationInfo ActivationInfo = GetCurrentActivationInfo();
 
-    if (!OtherCheckBeforeCommit(Data))
+    if (!OtherCheckBeforeCommit())
     {
-        UE_LOG(LogTemp, Warning, TEXT("%s: 其他检查失败，与消耗和冷却无关。"), *GetName());
-        constexpr bool bReplicateEndAbility = true;
-        constexpr bool bWasCancelled = true;
+        UE_LOG(LogTemp, Warning, TEXT("%s: 超出范围，向目标移动······"), *GetName());
+		return;
     }
+    if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s: 技能提交失败，可能是由于消耗或冷却问题。"), *GetName());
+        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+        return;
+	}
+	// 播放技能动画
+	PlayAbilityMontage(Handle, ActorInfo, ActivationInfo);
+	// 执行技能逻辑
+	ExecuteSkill(Handle, ActorInfo, ActivationInfo);
     return;
 }
 

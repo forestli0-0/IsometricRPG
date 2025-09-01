@@ -45,7 +45,6 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI")
     FGenericTeamId TeamId;
 
-    // 4. 声明接口需要我们实现的函数
     virtual FGenericTeamId GetGenericTeamId() const override;
     virtual void SetGenericTeamId(const FGenericTeamId& InTeamId);
 
@@ -74,4 +73,15 @@ public:
     UFUNCTION(BlueprintPure, Category="Attributes")
     float GetMaxHealth() const;
 
+public:
+    /** 由InputComponent在激活技能前调用，用于暂存目标数据 */
+    void SetAbilityTargetData(const FHitResult& HitResult);
+    void SetAbilityTargetData(AActor* TargetActor);
+
+    /** 供GameplayAbility在激活时调用，用于获取目标数据 */
+    FGameplayAbilityTargetDataHandle GetAbilityTargetData() const;
+
+protected:
+    /** 技能的目标数据暂存区 */
+    FGameplayAbilityTargetDataHandle StoredTargetData;
 };

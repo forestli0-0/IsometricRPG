@@ -29,7 +29,7 @@ protected:
 	float EffectDuration = 5.0f;
 
 
-	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
+	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) override;
 	// 自我施放技能不需要目标数据
 	virtual bool RequiresTargetData_Implementation() const override;
 	

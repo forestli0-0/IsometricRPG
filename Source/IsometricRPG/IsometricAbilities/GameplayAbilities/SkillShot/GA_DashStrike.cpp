@@ -41,18 +41,18 @@ UGA_DashStrike::UGA_DashStrike()
 	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Cooldown.Ability.DashStrike")));
 }
 
-void UGA_DashStrike::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
+void UGA_DashStrike::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo)
 {
-	Super::ExecuteSkill(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+	Super::ExecuteSkill(Handle, ActorInfo, ActivationInfo);
 
-	if (!TriggerEventData || !ActorInfo || !GetAvatarActorFromActorInfo())
+	if (!CurrentTargetDataHandle.IsValid(0))
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
 
 	// 获取突进方向
-	FVector DashDirection = GetSkillShotDirection(TriggerEventData);
+	FVector DashDirection = GetSkillShotDirection();
 	FVector StartLocation = GetAvatarActorFromActorInfo()->GetActorLocation();
 
 	UE_LOG(LogTemp, Log, TEXT("DashStrike: Starting dash in direction: %s"), *DashDirection.ToString());
@@ -494,12 +494,12 @@ void UGA_DashStrike::UpdateDashPosition()
 	}
 }
 
-FVector UGA_DashStrike::GetSkillShotDirection(const FGameplayEventData* TriggerEventData) const
+FVector UGA_DashStrike::GetSkillShotDirection() const
 {
-	if (TriggerEventData && TriggerEventData->TargetData.Num() > 0)
+	if (CurrentTargetDataHandle.Num() > 0)
 	{
 		// Get direction from current location to target location
-		const FHitResult* HitResult = TriggerEventData->TargetData.Get(0)->GetHitResult();
+		const FHitResult* HitResult = CurrentTargetDataHandle.Get(0)->GetHitResult();
 		if (HitResult)
 		{
 			FVector StartLocation = GetAvatarActorFromActorInfo()->GetActorLocation();

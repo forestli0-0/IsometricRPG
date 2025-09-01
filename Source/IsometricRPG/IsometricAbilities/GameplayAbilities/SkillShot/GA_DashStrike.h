@@ -66,7 +66,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio")
 	class USoundBase* HitSound;
 
-	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
+	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) override;
 
 	// 执行突进
 	UFUNCTION()
@@ -142,5 +142,5 @@ private:
 		const FGameplayAbilityActivationInfo ActivationInfo) override;
 
 	// 重写获取技能方向的方法，确保突进距离固定
-	virtual FVector GetSkillShotDirection(const FGameplayEventData* TriggerEventData) const override;
+	virtual FVector GetSkillShotDirection() const override;
 };

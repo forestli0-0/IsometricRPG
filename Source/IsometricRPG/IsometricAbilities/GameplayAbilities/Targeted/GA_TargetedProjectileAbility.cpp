@@ -14,7 +14,7 @@ UGA_TargetedProjectileAbility::UGA_TargetedProjectileAbility()
 	MuzzleSocketName = FName("Muzzle");
 }
 
-void UGA_TargetedProjectileAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
+void UGA_TargetedProjectileAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo)
 {
 	// 获取施法者
 	AActor* SelfActor = GetAvatarActorFromActorInfo();
@@ -37,11 +37,11 @@ void UGA_TargetedProjectileAbility::ExecuteSkill(const FGameplayAbilitySpecHandl
 	// 获取发射位置和旋转
 	FVector SpawnLocation;
 	FRotator SpawnRotation;
-	GetLaunchTransform(TriggerEventData, SelfActor, SpawnLocation, SpawnRotation);
-	
+	GetLaunchTransform(CurrentTargetDataHandle, SelfActor, SpawnLocation, SpawnRotation);
+
 	// 生成投射物
-	AProjectileBase* SpawnedProjectile = SpawnProjectile(SpawnLocation, SpawnRotation, SelfActor, SelfPawn, SourceASC, TriggerEventData);
-	
+	AProjectileBase* SpawnedProjectile = SpawnProjectile(SpawnLocation, SpawnRotation, SelfActor, SelfPawn, SourceASC);
+
 	if (!SpawnedProjectile)
 	{
 		UE_LOG(LogTemp, Error, TEXT("%s: Failed to spawn targeted projectile using class %s."), *GetName(), *ProjectileClass->GetName());
@@ -58,7 +58,7 @@ void UGA_TargetedProjectileAbility::ExecuteSkill(const FGameplayAbilitySpecHandl
 	}
 }
 
-void UGA_TargetedProjectileAbility::GetLaunchTransform(const FGameplayEventData* TriggerEventData, const AActor* SourceActor, FVector& OutLocation, FRotator& OutRotation) const
+void UGA_TargetedProjectileAbility::GetLaunchTransform(const FGameplayAbilityTargetDataHandle inCurrentTargetDataHandle, const AActor* SourceActor, FVector& OutLocation, FRotator& OutRotation) const
 {
 	// 首先尝试找到指定的插槽
 	USceneComponent* MuzzleComponent = nullptr;
@@ -100,27 +100,33 @@ void UGA_TargetedProjectileAbility::GetLaunchTransform(const FGameplayEventData*
 	// 确定旋转方向（朝向目标）
 	FVector TargetLocation = FVector::ZeroVector;
 	bool bTargetFound = false;
-	
-	if (TriggerEventData && TriggerEventData->TargetData.Data.Num() > 0)
+	if (inCurrentTargetDataHandle.Num() > 0)
 	{
-		const FHitResult* HitResult = TriggerEventData->TargetData.Data[0]->GetHitResult();
+		// Todo: 这里目标执行技能，理论上讲，Handle里应该只有Actor数据，所以会返回空指针
+		const FHitResult* HitResult = inCurrentTargetDataHandle.Data[0]->GetHitResult();
 		if (HitResult && HitResult->GetActor())
 		{
 			TargetLocation = HitResult->GetActor()->GetActorLocation();
 			//DrawDebugSphere(GetWorld(), TargetLocation, 20.0f, 12, FColor::Green, false, 5.0f);
 			bTargetFound = true;
 		}
-	}
-	else if (TriggerEventData && TriggerEventData->Target)
-	{
-		auto TargetActor = TriggerEventData->Target;
-		if (TargetActor)
+		else
 		{
-			TargetLocation = TargetActor->GetActorLocation();
-			//DrawDebugSphere(GetWorld(), TargetLocation, 20.0f, 12, FColor::Green, false, 5.0f);
-			bTargetFound = true;
+			auto TargetActor = inCurrentTargetDataHandle.Data[0]->GetActors()[0].Get();
+			if (TargetActor)
+			{
+				TargetLocation = TargetActor->GetActorLocation();
+				//DrawDebugSphere(GetWorld(), TargetLocation, 20.0f, 12, FColor::Green, false, 5.0f);
+				bTargetFound = true;
+			}
 		}
 	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s: GetLaunchTransform - No target data available in CurrentTargetDataHandle."), *GetName());
+		return;
+	}
+
 	if (bTargetFound)
 	{
 		// 计算从起始点到目标的方向
@@ -157,8 +163,7 @@ AProjectileBase* UGA_TargetedProjectileAbility::SpawnProjectile(
 	const FRotator& SpawnRotation, 
 	AActor* SourceActor, 
 	APawn* SourcePawn,
-	UAbilitySystemComponent* SourceASC,
-	const FGameplayEventData* TriggerEventData)
+	UAbilitySystemComponent* SourceASC)
 {
 	if (!ProjectileClass)
 	{

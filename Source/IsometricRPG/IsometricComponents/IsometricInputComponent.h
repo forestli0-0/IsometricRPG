@@ -79,7 +79,6 @@ public:
 
 	UFUNCTION(Server, Reliable)
 	void Server_RequestBasicAttack(AActor* TargetActor);
-	UFUNCTION(Server, Reliable)
-	void Server_HandleSkillInput(EAbilityInputID InputID, const FHitResult& TargetData);
+
 
 };

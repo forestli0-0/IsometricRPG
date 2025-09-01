@@ -147,8 +147,8 @@ protected:
 	// ==================== 核心方法重写 ====================
 	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, 
 		const FGameplayAbilityActorInfo* ActorInfo, 
-		const FGameplayAbilityActivationInfo ActivationInfo, 
-		const FGameplayEventData* TriggerEventData) override;
+		const FGameplayAbilityActivationInfo ActivationInfo
+	) override;
 
 
 	// ==================== 技能阶段方法 ====================

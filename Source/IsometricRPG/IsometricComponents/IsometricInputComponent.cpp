@@ -35,9 +35,6 @@ void UIsometricInputComponent::BeginPlay()
         if (!PCInputComponent)
         {
             UE_LOG(LogTemp, Warning, TEXT("UIsometricInputComponent: PlayerController's InputComponent is null in BeginPlay. GAS Input Binding cannot occur yet."));
-            // 你可能需要等待 InputComponent 被创建。
-            // 一种方法是让 PlayerController 在其 InputComponent 创建后调用一个此组件的函数。
-            // 或者，将绑定逻辑移到 Character 的 SetupPlayerInputComponent 中。
             return;
         }
         // 获取 UEnum*
@@ -116,20 +113,15 @@ void UIsometricInputComponent::HandleSkillInput(EAbilityInputID InputID, const F
     if (!OwnerASC) { OwnerASC = OwnerCharacter->GetAbilitySystemComponent(); }
     if (!OwnerASC) return;
 
-    if (OwnerCharacter->GetLocalRole() < ROLE_Authority)
-    {
-        Server_HandleSkillInput(InputID, TargetData);
-        return;
-    }
-
+    OwnerCharacter->SetAbilityTargetData(TargetData);
     const TSubclassOf<UGameplayAbility>* AbilityClassPtr = SkillInputMappings.Find(InputID);
     if (!AbilityClassPtr || !(*AbilityClassPtr))
     {
         UE_LOG(LogTemp, Warning, TEXT("InputID %d has no valid mapping."), InputID);
         return;
     }
-    const TSubclassOf<UGameplayAbility> MappedClass = *AbilityClassPtr;
 
+    const TSubclassOf<UGameplayAbility> MappedClass = *AbilityClassPtr;
     // 在ASC中查找已授予的能力（允许子类）
     FGameplayAbilitySpec* FoundSpec = nullptr;
     for (FGameplayAbilitySpec& Spec : OwnerASC->GetActivatableAbilities())
@@ -139,6 +131,7 @@ void UIsometricInputComponent::HandleSkillInput(EAbilityInputID InputID, const F
             FoundSpec = &Spec; break;
         }
     }
+
     if (!FoundSpec || !FoundSpec->Ability)
     {
         UE_LOG(LogTemp, Warning, TEXT("ASC has not granted %s (or child)."), *MappedClass->GetName());
@@ -215,21 +208,19 @@ void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor)
         Server_RequestBasicAttack(TargetActor);
         return;
     }
-
-    FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.DirBasicAttack")); 
+    OwnerCharacter->SetAbilityTargetData(TargetActor);
+    FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.DirBasicAttack"));
     if (BasicAttackAbilityTag.IsValid())
     {
-        if (!OwnerCharacter) return;
-        OwnerCharacter->CurrentAbilityTargets.Empty();
-        OwnerCharacter->CurrentAbilityTargets.Add(TargetActor);
-        // 使用GameplayAbility系统激活技能
-        FGameplayEventData EventData;
-        EventData.Target = TargetActor;
-        EventData.Instigator = OwnerCharacter;
-        FGameplayAbilityTargetDataHandle TargetDataHandle = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(FHitResult(TargetActor, nullptr, FVector::ZeroVector, FVector::ZeroVector));
-        EventData.TargetData = TargetDataHandle;
-        auto count = CurrentASC->HandleGameplayEvent(BasicAttackAbilityTag, &EventData);
-		UE_LOG(LogTemp, Display, TEXT("RequestBasicAttack: Attempting to activate Basic Attack ability with tag %s. TargetActor: %s, Count: %d"), *BasicAttackAbilityTag.ToString(), *TargetActor->GetName(), count);
+        // 直接通过Tag激活技能，这种方式更通用，无需知道具体技能类
+        if (CurrentASC->TryActivateAbilitiesByTag(FGameplayTagContainer(BasicAttackAbilityTag)))
+        {
+            UE_LOG(LogTemp, Display, TEXT("RequestBasicAttack: Successfully activated Basic Attack ability with tag %s."), *BasicAttackAbilityTag.ToString());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("RequestBasicAttack: Failed to activate Basic Attack ability with tag %s."), *BasicAttackAbilityTag.ToString());
+        }
     }
     else
     {
@@ -265,7 +256,4 @@ void UIsometricInputComponent::Server_RequestBasicAttack_Implementation(AActor* 
     RequestBasicAttack(TargetActor);
 }
 
-void UIsometricInputComponent::Server_HandleSkillInput_Implementation(EAbilityInputID InputID, const FHitResult& TargetData)
-{
-    HandleSkillInput(InputID, TargetData);
-}
+

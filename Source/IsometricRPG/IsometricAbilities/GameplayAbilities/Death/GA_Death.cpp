@@ -37,7 +37,8 @@ void UGA_Death::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const F
         return;
     }
     Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
-    // 只在服务器端执行经验掉落逻辑
+	// 死亡技能与普通技能的激活方式不一样，由于需要传入击杀者信息，所以只能通过事件触发
+	// Todo: 这里一个是掉落形式应该在客户端表现，另一个是经验值的发放应该是服务器端执行
     if (ActorInfo->IsNetAuthority())
     {
         AActor* InstigatorActor = nullptr;
@@ -49,6 +50,7 @@ void UGA_Death::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const F
         // 确保击杀者存在且不是自己
         if (InstigatorActor && InstigatorActor != ActorInfo->AvatarActor.Get())
         {
+			// 获取死掉的角色的属性集
             const UIsometricRPGAttributeSetBase* DeadCharacterAttributes = ActorInfo->AbilitySystemComponent->GetSet<UIsometricRPGAttributeSetBase>();
             if (DeadCharacterAttributes)
             {

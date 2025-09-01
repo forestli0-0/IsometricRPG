@@ -11,6 +11,7 @@
 #include "GameFramework/PlayerState.h"
 #include "IsometricAbilities/Types/EquippedAbilityInfo.h"
 #include "IsometricRPGAttributeSetBase.h"
+#include <AbilitySystemBlueprintLibrary.h>
 // 设置默认值
 AIsometricRPGCharacter::AIsometricRPGCharacter()
 {
@@ -85,7 +86,6 @@ void AIsometricRPGCharacter::PossessedBy(AController* NewController)
         FGameplayTagContainer PassiveTags;
         PassiveTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Regen.Basic")));
         // 这里支持角色激活回血被动
-
         if (UAbilitySystemComponent* ASC = GetAbilitySystemComponent())
         {
             ASC->TryActivateAbilitiesByTag(PassiveTags);
@@ -159,3 +159,27 @@ void AIsometricRPGCharacter::InitAbilityActorInfo()
     }
 }
 
+void AIsometricRPGCharacter::SetAbilityTargetData(const FHitResult& HitResult)
+{
+    // 将FHitResult打包成GAS可以理解的FGameplayAbilityTargetDataHandle
+    StoredTargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(HitResult);
+}
+
+void AIsometricRPGCharacter::SetAbilityTargetData(AActor* TargetActor)
+{
+    if (TargetActor)
+    {
+        // 将AActor打包成FGameplayAbilityTargetDataHandle
+        StoredTargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromActor(TargetActor);
+    }
+    else
+    {
+        // 如果目标为空，则清空数据
+        StoredTargetData.Clear();
+    }
+}
+
+FGameplayAbilityTargetDataHandle AIsometricRPGCharacter::GetAbilityTargetData() const
+{
+    return StoredTargetData;
+}

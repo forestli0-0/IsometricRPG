@@ -14,13 +14,13 @@ UGA_SkillShotAbility::UGA_SkillShotAbility()
 
 
 
-void UGA_SkillShotAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
+void UGA_SkillShotAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo)
 {
 
 	UE_LOG(LogTemp, Log, TEXT("%s: Executing skill shot ability."), *GetName());
 
 	// Get the direction from the trigger event data (should contain target location)
-	FVector Direction = GetSkillShotDirection(TriggerEventData);
+	FVector Direction = GetSkillShotDirection();
 	FVector StartLocation = GetAvatarActorFromActorInfo()->GetActorLocation();
 
 	// Execute the skill shot
@@ -36,8 +36,7 @@ void UGA_SkillShotAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle,
 void UGA_SkillShotAbility::StartTargetSelection(
 	const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
-	const FGameplayAbilityActivationInfo ActivationInfo,
-	const FGameplayEventData* TriggerEventData)
+	const FGameplayAbilityActivationInfo ActivationInfo)
 {
 	// For skill shots, we need a position/direction target, not an actor target
 	// This could use a line trace or cursor position target actor
@@ -64,16 +63,16 @@ void UGA_SkillShotAbility::StartTargetSelection(
 	}
 
 	// Start targeting for direction/position
-	Super::StartTargetSelection(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+	Super::StartTargetSelection(Handle, ActorInfo, ActivationInfo);
 }
 
 
-FVector UGA_SkillShotAbility::GetSkillShotDirection(const FGameplayEventData* TriggerEventData) const
+FVector UGA_SkillShotAbility::GetSkillShotDirection() const
 {
-	if (TriggerEventData && TriggerEventData->TargetData.Num() > 0)
+	if (CurrentTargetDataHandle.Num() > 0)
 	{
 		// Get direction from current location to target location
-		const FHitResult* HitResult = TriggerEventData->TargetData.Get(0)->GetHitResult();
+		const FHitResult* HitResult = CurrentTargetDataHandle.Get(0)->GetHitResult();
 		if (HitResult)
 		{
 			FVector StartLocation = GetAvatarActorFromActorInfo()->GetActorLocation();

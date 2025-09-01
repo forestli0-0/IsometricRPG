@@ -37,7 +37,7 @@ protected:
 	UPROPERTY()
 	TObjectPtr<class ANiagaraActor> ActiveAimIndicator;
 
-	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
+	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) override;
 
 	/* 关于这个SkillShot类，对应的应该是Targeted,也就是说，要么是指向目标，要么是指向方向。
 		那么这里的目标选择应该是方向，但是，如果是按基类的流程，又要左键确认目标，暂时没想好快捷施法，
@@ -45,11 +45,10 @@ protected:
 	virtual void StartTargetSelection(
 		const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,
-		const FGameplayAbilityActivationInfo ActivationInfo,
-		const FGameplayEventData* TriggerEventData) override;
+		const FGameplayAbilityActivationInfo ActivationInfo) override;
 
 	// Get the direction from cursor/input
-	virtual FVector GetSkillShotDirection(const FGameplayEventData* TriggerEventData) const;
+	virtual FVector GetSkillShotDirection() const;
 
 	// Execute the skill shot in the given direction
 	virtual void ExecuteSkillShot(const FVector& Direction, const FVector& StartLocation);

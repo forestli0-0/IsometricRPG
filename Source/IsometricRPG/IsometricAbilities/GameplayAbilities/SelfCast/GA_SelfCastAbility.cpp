@@ -70,8 +70,7 @@ void UGA_SelfCastAbility::ApplySelfEffect(const FGameplayAbilitySpecHandle Handl
 void UGA_SelfCastAbility::ExecuteSkill(
     const FGameplayAbilitySpecHandle Handle, 
     const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo, 
-    const FGameplayEventData* TriggerEventData)
+    const FGameplayAbilityActivationInfo ActivationInfo)
 {
     AActor* SelfActor = GetAvatarActorFromActorInfo();
     if (!SelfActor)
