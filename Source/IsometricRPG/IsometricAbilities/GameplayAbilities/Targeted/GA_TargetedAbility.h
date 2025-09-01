@@ -23,16 +23,15 @@ public:
 	virtual void StartTargetSelection(
 		const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,
-		const FGameplayAbilityActivationInfo ActivationInfo,
-		const FGameplayEventData* TriggerEventData) override;
+		const FGameplayAbilityActivationInfo ActivationInfo) override;
 
 	UFUNCTION()
 	void OnReachedTarget();
 	UFUNCTION()
 	void OnFailedToTarget();
 protected:
-	virtual bool OtherCheckBeforeCommit(const FGameplayAbilityTargetDataHandle& Data) override;
-	virtual bool OtherCheckBeforeCommit(const FGameplayEventData* TriggerEventData) override;
+	virtual bool OtherCheckBeforeCommit() override;
+
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayAbilityActivationInfo ActivationInfo,

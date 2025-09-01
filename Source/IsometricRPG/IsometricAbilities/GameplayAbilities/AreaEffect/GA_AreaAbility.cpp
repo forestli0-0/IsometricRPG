@@ -12,19 +12,17 @@ UGA_AreaAbility::UGA_AreaAbility()
 
 
 
-void UGA_AreaAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
+void UGA_AreaAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo)
 {
-   Super::ExecuteSkill(Handle, ActorInfo, ActivationInfo, TriggerEventData);
-
    AActor* SelfActor = ActorInfo->AvatarActor.Get();
-   if (!SelfActor || !TriggerEventData || TriggerEventData->TargetData.Num() == 0 || !TriggerEventData->TargetData.Data[0].IsValid())
-   {
-       UE_LOG(LogTemp, Error, TEXT("%s: Cannot execute area skill - invalid prerequisites."), *GetName());
-       EndAbility(Handle, ActorInfo, ActivationInfo, true, true); // Cancel
-       return;
-   }
-
-   const FGameplayAbilityTargetData* TargetData = TriggerEventData->TargetData.Data[0].Get();
+   //if (!SelfActor || !TriggerEventData || TriggerEventData->TargetData.Num() == 0 || !TriggerEventData->TargetData.Data[0].IsValid())
+    if (!SelfActor || !CurrentTargetDataHandle.IsValid(0))
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: Cannot execute area skill - invalid prerequisites."), *GetName());
+        EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+        return;
+    }
+   const FGameplayAbilityTargetData* TargetData = CurrentTargetDataHandle.Data[0].Get();
    FVector AoECenterLocation = TargetData->GetHitResult() ? FVector(TargetData->GetHitResult()->Location) : FVector(TargetData->GetEndPoint());
 
    UE_LOG(LogTemp, Log, TEXT("%s: Executing area skill at location %s with radius %.2f."), *GetName(), *AoECenterLocation.ToString(), AreaRadius);

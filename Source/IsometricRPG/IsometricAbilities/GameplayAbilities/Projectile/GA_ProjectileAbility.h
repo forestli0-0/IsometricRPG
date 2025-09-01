@@ -33,10 +33,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Projectile")
 	FName MuzzleSocketName = NAME_None;
 
-	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
+	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) override;
     
     // 获取发射位置和旋转
-    virtual void GetLaunchTransform(const FGameplayEventData* TriggerEventData, const AActor* SourceActor, FVector& OutLocation, FRotator& OutRotation) const;
+    virtual void GetLaunchTransform(const AActor* SourceActor, FVector& OutLocation, FRotator& OutRotation) const;
     
     // 生成并初始化投射物
     virtual class AProjectileBase* SpawnProjectile(

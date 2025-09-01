@@ -25,7 +25,7 @@ void UIsometricRPGAttributeSetBase::PostGameplayEffectExecute(const FGameplayEff
 {
    Super::PostGameplayEffectExecute(Data);
    // 添加一个日志，打印出每次被修改的属性
-   UE_LOG(LogTemp, Warning, TEXT("PostGameplayEffectExecute fired for attribute: %s"), *Data.EvaluatedData.Attribute.GetName());
+   //UE_LOG(LogTemp, Warning, TEXT("PostGameplayEffectExecute fired for attribute: %s"), *Data.EvaluatedData.Attribute.GetName());
    // 获取效果上下文，这是找到击杀者的关键
    FGameplayEffectContextHandle Context = Data.EffectSpec.GetContext();
    UAbilitySystemComponent* SourceASC = Context.GetOriginalInstigatorAbilitySystemComponent();
@@ -46,9 +46,8 @@ void UIsometricRPGAttributeSetBase::PostGameplayEffectExecute(const FGameplayEff
                // 2. 创建事件数据 "包裹"
                FGameplayEventData Payload;
                Payload.EventTag = DeathEventTag;
-               Payload.Instigator = SourceActor; // <-- 将击杀者放入包裹
-               Payload.Target = GetOwningActor(); // 死者是自己
-               // 你还可以放入其他数据，比如伤害量、伤害来源等
+               Payload.Instigator = SourceActor;
+               Payload.Target = GetOwningActor(); // 死亡技能的目标是自己
                Payload.EventMagnitude = Data.EvaluatedData.Magnitude;
                // 3. 发送事件给目标ASC (也就是死者自己)
                // HandleGameplayEvent 会自动查找并激活监听此Tag的技能

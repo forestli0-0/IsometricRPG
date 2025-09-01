@@ -27,5 +27,5 @@ protected:
 	// UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Area")
 	// TSubclassOf<class UGameplayEffect> AreaGameplayEffect;
 
-	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
+	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) override;
 };

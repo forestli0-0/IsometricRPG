@@ -98,8 +98,7 @@ protected:
     virtual void ExecuteSkill(
         const FGameplayAbilitySpecHandle Handle, 
         const FGameplayAbilityActorInfo* ActorInfo,
-        const FGameplayAbilityActivationInfo ActivationInfo, 
-        const FGameplayEventData* TriggerEventData);
+        const FGameplayAbilityActivationInfo ActivationInfo);
     
     // 子类可以覆盖的方法：该技能是否需要目标数据
     UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Ability")
@@ -132,17 +131,14 @@ protected:
     virtual void StartTargetSelection(
         const FGameplayAbilitySpecHandle Handle,
         const FGameplayAbilityActorInfo* ActorInfo,
-        const FGameplayAbilityActivationInfo ActivationInfo,
-        const FGameplayEventData* TriggerEventData);
+        const FGameplayAbilityActivationInfo ActivationInfo);
       // 直接执行技能（跳过目标选择）
     virtual void DirectExecuteAbility(
         const FGameplayAbilitySpecHandle Handle,
         const FGameplayAbilityActorInfo* ActorInfo,
-        const FGameplayAbilityActivationInfo ActivationInfo,
-        const FGameplayEventData* TriggerEventData);
+        const FGameplayAbilityActivationInfo ActivationInfo);
 
-    virtual bool OtherCheckBeforeCommit(const FGameplayAbilityTargetDataHandle& Data);
-    virtual bool OtherCheckBeforeCommit(const FGameplayEventData* TriggerEventData);
+    virtual bool OtherCheckBeforeCommit();
     // 播放技能动画
     virtual void PlayAbilityMontage(
         const FGameplayAbilitySpecHandle Handle,
@@ -169,7 +165,7 @@ protected:
     void OnMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
     FGameplayAbilityActivationInfo CurrentActivationInfo;
-    const FGameplayEventData* CurrentTriggerEventData;
+
     FGameplayAbilityTargetDataHandle CurrentTargetDataHandle;
 protected:
         virtual void PostInitProperties() override;

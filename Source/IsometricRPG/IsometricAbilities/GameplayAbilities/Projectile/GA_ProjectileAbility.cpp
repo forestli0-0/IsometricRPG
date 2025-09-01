@@ -29,8 +29,7 @@ UGA_ProjectileAbility::UGA_ProjectileAbility()
 void UGA_ProjectileAbility::ExecuteSkill(
     const FGameplayAbilitySpecHandle Handle, 
     const FGameplayAbilityActorInfo* ActorInfo, 
-    const FGameplayAbilityActivationInfo ActivationInfo, 
-    const FGameplayEventData* TriggerEventData)
+    const FGameplayAbilityActivationInfo ActivationInfo)
 {
     // 获取施法者
     AActor* SelfActor = GetAvatarActorFromActorInfo();
@@ -55,7 +54,7 @@ void UGA_ProjectileAbility::ExecuteSkill(
     FRotator SpawnRotation;
     
     // 使用目标数据确定旋转
-    GetLaunchTransform(TriggerEventData, SelfActor, SpawnLocation, SpawnRotation);
+    GetLaunchTransform(SelfActor, SpawnLocation, SpawnRotation);
     
     // 生成投射物
     AProjectileBase* SpawnedProjectile = SpawnProjectile(SpawnLocation, SpawnRotation, SelfActor, SelfPawn, SourceASC);
@@ -76,7 +75,6 @@ void UGA_ProjectileAbility::ExecuteSkill(
 }
 
 void UGA_ProjectileAbility::GetLaunchTransform(
-    const FGameplayEventData* TriggerEventData,
     const AActor* SourceActor, 
     FVector& OutLocation, 
     FRotator& OutRotation) const
@@ -122,9 +120,11 @@ void UGA_ProjectileAbility::GetLaunchTransform(
     // 确定旋转方向
     FVector TargetLocation = FVector::ZeroVector;
     bool bTargetFound = false;
-    if (TriggerEventData && TriggerEventData->TargetData.Data.Num() > 0) // Check IsValid(index) before Get(index)
+
+    if (CurrentTargetDataHandle.Num() > 0)
     {
-        TargetLocation = TriggerEventData->TargetData.Data[0].ToSharedRef()->GetHitResult()->Location;
+		// TODO: 这里假设目标数据包含一个命中结果，但是由于这个技能类型似乎被遗弃了，暂时不做复杂处理
+        TargetLocation = CurrentTargetDataHandle.Data[0]->GetHitResult()->Location;
         bTargetFound = true;
     }
 
@@ -157,7 +157,7 @@ void UGA_ProjectileAbility::GetLaunchTransform(
     {
         OutRotation = SourceActor->GetActorRotation();
     }
-    else // Absolute fallback
+    else
     {
         OutRotation = FRotator::ZeroRotator;
         UE_LOG(LogTemp, Warning, TEXT("%s: GetLaunchTransform - No target data and SourceActor is null or not a Pawn, defaulting OutRotation to ZeroRotator."), *GetName());

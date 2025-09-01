@@ -40,7 +40,7 @@ UGA_HeroMeleeAttackAbility::UGA_HeroMeleeAttackAbility()
 
 }
 
-void UGA_HeroMeleeAttackAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
+void UGA_HeroMeleeAttackAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo)
 {
     // 打印调试信息
     UE_LOG(LogTemp, Warning, TEXT("使用A键普攻"));
@@ -50,9 +50,9 @@ void UGA_HeroMeleeAttackAbility::ExecuteSkill(const FGameplayAbilitySpecHandle H
     if (!OwnerActor) return;
 
     // 通过TriggerEventData获取目标，再次确认朝向正确
-    if (TriggerEventData && (TriggerEventData->TargetData.Num() > 0))
+    if (CurrentTargetDataHandle.Num() > 0)
     {
-        const FGameplayAbilityTargetDataHandle& TargetDataHandle = TriggerEventData->TargetData;
+        const FGameplayAbilityTargetDataHandle& TargetDataHandle = CurrentTargetDataHandle;
         const FGameplayAbilityTargetData* TargetData = TargetDataHandle.Get(0); // 获取第一个目标数据
 
         if (TargetData)

@@ -20,7 +20,7 @@ public:
 	bool hello() const{ return true; }
 protected:
 	// 重写目标型攻击
-	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
+	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) override;
 
 	virtual bool CheckCost(
 		const FGameplayAbilitySpecHandle Handle,

@@ -38,8 +38,7 @@ UGA_SettUltimate::UGA_SettUltimate()
 
 void UGA_SettUltimate::ExecuteSkill(const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
-	const FGameplayAbilityActivationInfo ActivationInfo,
-	const FGameplayEventData* TriggerEventData)
+	const FGameplayAbilityActivationInfo ActivationInfo)
 {
 	PrimaryTarget = nullptr;
 

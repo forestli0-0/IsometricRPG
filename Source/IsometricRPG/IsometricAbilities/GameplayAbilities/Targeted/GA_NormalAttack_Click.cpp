@@ -35,8 +35,9 @@ UGA_NormalAttack_Click::UGA_NormalAttack_Click()
     ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag("Cooldown.Ability.MeleeAttack"));
 
 }
-void UGA_NormalAttack_Click::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
+void UGA_NormalAttack_Click::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo)
 {
+	// 普攻的命中绑定在动画里，用动画通知触发
     // 打印调试信息
     UE_LOG(LogTemp, Warning, TEXT("使用右键普攻"));
 
@@ -45,9 +46,9 @@ void UGA_NormalAttack_Click::ExecuteSkill(const FGameplayAbilitySpecHandle Handl
     if (!OwnerActor) return;
 
     // 通过TriggerEventData获取目标，再次确认朝向正确
-    if (TriggerEventData && (TriggerEventData->TargetData.Num() > 0))
+    if (CurrentTargetDataHandle.Num() > 0)
     {
-        const FGameplayAbilityTargetDataHandle& TargetDataHandle = TriggerEventData->TargetData;
+        const FGameplayAbilityTargetDataHandle& TargetDataHandle = CurrentTargetDataHandle;
         const FGameplayAbilityTargetData* TargetData = TargetDataHandle.Get(0); // 获取第一个目标数据
 
         if (TargetData)
@@ -68,11 +69,19 @@ void UGA_NormalAttack_Click::ExecuteSkill(const FGameplayAbilitySpecHandle Handl
                     }
                 }
             }
+            else
+            {
+                auto TargetActor = TargetData->GetActors()[0];
+                if (TargetActor.IsValid())
+                {
+                    // 打印目标和自身位置，用于调试
+                    UE_LOG(LogTemp, Verbose, TEXT("攻击目标位置: %s, 自身位置: %s"),
+                        *TargetActor->GetActorLocation().ToString(),
+                        *OwnerActor->GetActorLocation().ToString());
+				}
+            }
         }
     }
-
-    // 注意：此处不需要自己结束技能，因为我们使用了蒙太奇，让蒙太奇完成时自动结束技能
-    // 如果这是一个即时技能(没有蒙太奇)，则需要手动结束
     if (!MontageToPlay)
     {
         EndAbility(Handle, ActorInfo, ActivationInfo, true, false);

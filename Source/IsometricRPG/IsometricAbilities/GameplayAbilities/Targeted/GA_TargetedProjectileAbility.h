@@ -34,17 +34,16 @@ protected:
 	FName MuzzleSocketName = FName("Muzzle");
 
 	// 重写技能执行逻辑，使用投射物
-	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
+	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) override;
 
 	// 获取发射位置和旋转（朝向目标）
-	virtual void GetLaunchTransform(const FGameplayEventData* TriggerEventData, const AActor* SourceActor, FVector& OutLocation, FRotator& OutRotation) const;
-	
+	virtual void GetLaunchTransform(const FGameplayAbilityTargetDataHandle CurrentTargetDataHandle, const AActor* SourceActor, FVector& OutLocation, FRotator& OutRotation) const;
+
 	// 生成并初始化投射物
 	virtual class AProjectileBase* SpawnProjectile(
 		const FVector& SpawnLocation, 
 		const FRotator& SpawnRotation, 
 		AActor* SourceActor, 
 		APawn* SourcePawn,
-		UAbilitySystemComponent* SourceASC,
-		const FGameplayEventData* TriggerEventData);
+		UAbilitySystemComponent* SourceASC);
 };

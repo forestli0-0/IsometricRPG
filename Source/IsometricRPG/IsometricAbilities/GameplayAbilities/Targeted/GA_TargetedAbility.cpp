@@ -15,116 +15,109 @@ UGA_TargetedAbility::UGA_TargetedAbility()
 {
 	RangeToApply = 100.f;
 }
-bool UGA_TargetedAbility::OtherCheckBeforeCommit(const FGameplayAbilityTargetDataHandle& Data)
+
+bool UGA_TargetedAbility::OtherCheckBeforeCommit()
 {
-	// 对于指向性技能，检查目标是否有效
-	if (Data.Num() == 0)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("技能提交前检查：目标为空"));
-		return false;
-	}
-	// 检查是否在施法范围内
-	auto TargetActorLocation = Data.Get(0)->GetHitResult()->GetActor()->GetActorLocation();
-	auto SelfActorLocation = GetCurrentActorInfo()->AvatarActor->GetActorLocation();
-	auto Distance = FVector::Distance(TargetActorLocation, SelfActorLocation);
-	if (Distance > RangeToApply)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("指向性技能 %s 的目标超出施法范围！"), *GetName());
-        // 构造失败的 gameplay event
-        FGameplayEventData FailEventData;
-        FailEventData.EventTag = FGameplayTag::RequestGameplayTag(FName("Ability.Failure.OutOfRange"));
-
-        AActor* SelfActor = GetAvatarActorFromActorInfo();  
-        FailEventData.Instigator = SelfActor;
-
-        AActor* Target = Data.Get(0)->GetHitResult()->GetActor();
-        FailEventData.Target = Target;
-
-        //// 通知自身 ASC
-        //GetAbilitySystemComponentFromActorInfo()->HandleGameplayEvent(FailEventData.EventTag, &FailEventData);
-        auto ThisAbility = const_cast<UGameplayAbility*>(static_cast<const UGameplayAbility*>(this));
-        UAbilityTask_WaitMoveToLocation* MoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToActor(ThisAbility,Target);
-        // Replace the line causing the error with the following code
-        MoveTask->OnMoveFinished.AddDynamic(this, &UGA_TargetedAbility::OnReachedTarget);
-        MoveTask->OnMoveFailed.AddDynamic(this, &UGA_TargetedAbility::OnFailedToTarget);
-		MoveTask->ReadyForActivation();
-        GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Black, TEXT("目标距离太远----来自技能内部"));
-		return false;
-	}
-    else
+    // 1. 检查目标数据有效性，使用卫语句提前退出
+    if (!CurrentTargetDataHandle.IsValid(0))
     {
-        OnReachedTarget();
-	    return true;
-    }
-}
-bool UGA_TargetedAbility::OtherCheckBeforeCommit(const FGameplayEventData* TriggerEventData)
-{
-    // 对于指向性技能，检查目标是否有效
-    if (!TriggerEventData)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("技能提交前检查：目标为空"));
+        UE_LOG(LogTemp, Warning, TEXT("技能提交前检查：目标数据无效或为空。"));
         return false;
     }
-    // 检查是否在施法范围内
-    auto TargetActor = TriggerEventData->Target; 
-    if (!TargetActor) return false;
-    auto MyCharacter = Cast<AIsometricRPGCharacter>(GetAvatarActorFromActorInfo());
-    if (MyCharacter)
+
+    // 2. 声明变量并解析目标数据
+    // 修正了原始代码中变量被重复声明和覆盖的问题
+    AActor* TargetActor = nullptr;
+    FVector TargetLocation = FVector::ZeroVector;
+    bool bSuccessfullyFoundTarget = false;
+
+    const FGameplayAbilityTargetData* Data = CurrentTargetDataHandle.Get(0);
+    // 情况一：目标是 Actor
+    if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_ActorArray::StaticStruct()))
     {
-        MyCharacter->CurrentAbilityTargets.Empty(); // Clear previous
-        if (TargetActor)  
-        {  
-            TWeakObjectPtr<AActor> WeakTargetActor = const_cast<AActor*>(TargetActor.Get());
-            MyCharacter->CurrentAbilityTargets.Add(WeakTargetActor);  
+        const auto* ActorArrayData = static_cast<const FGameplayAbilityTargetData_ActorArray*>(Data);
+        if (ActorArrayData && ActorArrayData->TargetActorArray.Num() > 0)
+        {
+            TargetActor = ActorArrayData->TargetActorArray[0].Get();
+            if (TargetActor)
+            {
+                TargetLocation = TargetActor->GetActorLocation();
+                bSuccessfullyFoundTarget = true;
+                UE_LOG(LogTemp, Log, TEXT("TargetData is an Actor. Location: %s"), *TargetLocation.ToString());
+            }
         }
     }
-    auto TargetActorLocation = TargetActor->GetActorLocation();
-    auto SelfActorLocation = GetAvatarActorFromActorInfo()->GetActorLocation();
-    auto Distance = FVector::Distance(TargetActorLocation, SelfActorLocation);
+    // 情况二：目标是射线检测点
+    else if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
+    {
+        const auto* HitResultData = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(Data);
+        if (HitResultData && HitResultData->GetHitResult())
+        {
+            TargetLocation = HitResultData->GetHitResult()->Location;
+            TargetActor = HitResultData->GetHitResult()->GetActor(); // 尝试获取被击中的Actor
+            bSuccessfullyFoundTarget = true;
+            UE_LOG(LogTemp, Log, TEXT("TargetData is a HitResult. Location: %s"), *TargetLocation.ToString());
+        }
+    }
+
+    // 如果未能从任何已知类型中解析出目标，则检查失败
+    if (!bSuccessfullyFoundTarget)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("技能提交前检查：无法从TargetData中提取有效的目标。"));
+        return false;
+    }
+
+    GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Black, FString::Printf(TEXT("目标位置: %s"), *TargetLocation.ToString()));
+
+    // 3. 保留原始的距离检查和后续逻辑
+    const FVector SelfActorLocation = GetCurrentActorInfo()->AvatarActor->GetActorLocation();
+    const float Distance = FVector::Distance(TargetLocation, SelfActorLocation);
+
     if (Distance > RangeToApply)
     {
+        // 距离过远，创建移动任务并返回 false
         UE_LOG(LogTemp, Warning, TEXT("指向性技能 %s 的目标超出施法范围！"), *GetName());
-        //// 通知自身 ASC
-        //GetAbilitySystemComponentFromActorInfo()->HandleGameplayEvent(FailEventData.EventTag, &FailEventData);
-        auto ThisAbility = const_cast<UGameplayAbility*>(static_cast<const UGameplayAbility*>(this));
-        UAbilityTask_WaitMoveToLocation* MoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToActor(ThisAbility, const_cast<AActor*>(TargetActor.Get()));
-        // Replace the line causing the error with the following code
-        MoveTask->OnMoveFinished.AddDynamic(this, &UGA_TargetedAbility::OnReachedTarget);
-        MoveTask->OnMoveFailed.AddDynamic(this, &UGA_TargetedAbility::OnFailedToTarget);
-        MoveTask->ReadyForActivation();
         GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Black, TEXT("目标距离太远----来自技能内部"));
+
+        // [安全性检查] 确保有有效的目标Actor才能创建WaitMoveToActor任务
+        if (TargetActor)
+        {
+            auto ThisAbility = const_cast<UGameplayAbility*>(static_cast<const UGameplayAbility*>(this));
+            UAbilityTask_WaitMoveToLocation* MoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToActor(ThisAbility, TargetActor);
+            MoveTask->OnMoveFinished.AddDynamic(this, &UGA_TargetedAbility::OnReachedTarget);
+            MoveTask->OnMoveFailed.AddDynamic(this, &UGA_TargetedAbility::OnFailedToTarget);
+            MoveTask->ReadyForActivation();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("目标超出范围，但没有有效Actor可移动，技能检查失败。"));
+        }
+
         return false;
     }
     else
     {
-        //OnReachedTarget();
+        // 距离足够，调用 OnReachedTarget 并返回 true
+        OnReachedTarget();
         return true;
     }
 }
 
 void UGA_TargetedAbility::OnReachedTarget()
 {
+	// 因为已经移动到目标位置，此时主函数已经结束，在这里继续执行后续逻辑
     if (!CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo))
     {
         UE_LOG(LogTemp, Warning, TEXT("%s: Failed to commit ability after target data ready."), *GetName());
-        constexpr bool bReplicateEndAbility = true;
-        constexpr bool bWasCancelled = true;
-        EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, bReplicateEndAbility, bWasCancelled);
+        EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
         return;
     }
 
     // 播放技能动画 (如果有)
     PlayAbilityMontage(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo);
 
-    // 创建 GameplayEventData 并填充目标信息
-    //FGameplayEventData EventData;
-    //if (CurrentTargetDataHandle.Num() > 0 && CurrentTargetDataHandle.Get(0) != nullptr)
-    //{
-    //    EventData.TargetData = CurrentTargetDataHandle;
-    //}
-
     // 执行技能逻辑
-    ExecuteSkill(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, &CurrentEventData);
+    ExecuteSkill(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo);
 }
 void UGA_TargetedAbility::OnFailedToTarget()
 {
@@ -135,8 +128,7 @@ void UGA_TargetedAbility::OnFailedToTarget()
 void UGA_TargetedAbility::StartTargetSelection(
     const FGameplayAbilitySpecHandle Handle,
     const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo,
-    const FGameplayEventData* TriggerEventData)
+    const FGameplayAbilityActivationInfo ActivationInfo)
 {
     if (!TargetActorClass)
     {
