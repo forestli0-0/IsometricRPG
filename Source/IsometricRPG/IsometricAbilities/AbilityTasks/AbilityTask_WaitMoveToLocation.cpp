@@ -97,13 +97,25 @@ void UAbilityTask_WaitMoveToLocation::UpdateMoveToActor()
     float Distance = FVector::Dist(SourceCharacter->GetActorLocation(), TargetActor->GetActorLocation());
     if (Distance <= AcceptanceRadius)
     {
-        SourceCharacter->GetController()->StopMovement();
+        if (SourceCharacter->GetController())
+        {
+            SourceCharacter->GetController()->StopMovement();
+        }
         OnMoveFinished.Broadcast();
         EndTask();
         return;
     }
 
-    UAIBlueprintHelperLibrary::SimpleMoveToActor(SourceCharacter->GetController(), TargetActor);
+    // 仅在以下情况下发起 SimpleMoveTo：
+    // - 角色由AI控制（服务器）；或
+    // - 角色由玩家控制但当前在本地客户端上（非服务器）运行
+    const bool bIsPlayer = SourceCharacter->IsPlayerControlled();
+    const bool bIsServer = SourceCharacter->HasAuthority();
+    const bool bIsLocallyControlled = SourceCharacter->IsLocallyControlled();
+    if (bIsServer || (bIsPlayer && !bIsServer && bIsLocallyControlled))
+    {
+        UAIBlueprintHelperLibrary::SimpleMoveToActor(SourceCharacter->GetController(), TargetActor);
+    }
 }
 
 void UAbilityTask_WaitMoveToLocation::UpdateMoveToLocation()
@@ -118,12 +130,21 @@ void UAbilityTask_WaitMoveToLocation::UpdateMoveToLocation()
     float Distance = FVector::Dist(SourceCharacter->GetActorLocation(), TargetLocation);
     if (Distance <= AcceptanceRadius)
     {
-        AIController->StopMovement();
+        if (SourceCharacter->GetController())
+        {
+            SourceCharacter->GetController()->StopMovement();
+        }
         OnMoveFinished.Broadcast();
         EndTask();
         return;
     }
-    UAIBlueprintHelperLibrary::SimpleMoveToLocation(SourceCharacter->GetController(), TargetLocation);
+    const bool bIsPlayer = SourceCharacter->IsPlayerControlled();
+    const bool bIsServer = SourceCharacter->HasAuthority();
+    const bool bIsLocallyControlled = SourceCharacter->IsLocallyControlled();
+    if (bIsServer || (bIsPlayer && !bIsServer && bIsLocallyControlled))
+    {
+        UAIBlueprintHelperLibrary::SimpleMoveToLocation(SourceCharacter->GetController(), TargetLocation);
+    }
 }
 
 void UAbilityTask_WaitMoveToLocation::OnDestroy(bool bInOwnerFinished)

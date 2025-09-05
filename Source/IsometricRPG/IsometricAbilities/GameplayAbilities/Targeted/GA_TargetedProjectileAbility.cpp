@@ -102,21 +102,36 @@ void UGA_TargetedProjectileAbility::GetLaunchTransform(const FGameplayAbilityTar
 	bool bTargetFound = false;
 	if (inCurrentTargetDataHandle.Num() > 0)
 	{
-		// Todo: 这里目标执行技能，理论上讲，Handle里应该只有Actor数据，所以会返回空指针
+		// 优先使用命中点/指向点，其次再用目标Actor
 		const FHitResult* HitResult = inCurrentTargetDataHandle.Data[0]->GetHitResult();
-		if (HitResult && HitResult->GetActor())
+		if (HitResult)
 		{
-			TargetLocation = HitResult->GetActor()->GetActorLocation();
-			//DrawDebugSphere(GetWorld(), TargetLocation, 20.0f, 12, FColor::Green, false, 5.0f);
-			bTargetFound = true;
+			if (HitResult->bBlockingHit)
+			{
+				TargetLocation = HitResult->ImpactPoint;
+				bTargetFound = true;
+			}
+			else if (!HitResult->Location.IsNearlyZero())
+			{
+				TargetLocation = HitResult->Location;
+				bTargetFound = true;
+			}
+
+			if (!bTargetFound && HitResult->GetActor())
+			{
+				TargetLocation = HitResult->GetActor()->GetActorLocation();
+				bTargetFound = true;
+			}
 		}
-		else
+
+		if (!bTargetFound)
 		{
-			auto TargetActor = inCurrentTargetDataHandle.Data[0]->GetActors()[0].Get();
+			auto TargetActor = inCurrentTargetDataHandle.Data[0]->GetActors().Num() > 0
+				? inCurrentTargetDataHandle.Data[0]->GetActors()[0].Get()
+				: nullptr;
 			if (TargetActor)
 			{
 				TargetLocation = TargetActor->GetActorLocation();
-				//DrawDebugSphere(GetWorld(), TargetLocation, 20.0f, 12, FColor::Green, false, 5.0f);
 				bTargetFound = true;
 			}
 		}

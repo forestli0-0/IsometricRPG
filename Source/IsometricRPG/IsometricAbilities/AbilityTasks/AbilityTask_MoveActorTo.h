@@ -52,4 +52,7 @@ private:
 	// 新增的成员变量
 	EMoveInterpMethod InterpMethod;
 	float ParabolicArcHeight;
+protected:
+	/** 设置该任务是否需要Tick（用于AbilitySystem的任务调度） */
+	void SetTickingTask(bool bShouldTick);// 在cpp文件中实现SetTickingTask方法
 };

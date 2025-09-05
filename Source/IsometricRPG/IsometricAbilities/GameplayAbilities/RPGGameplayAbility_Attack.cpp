@@ -48,37 +48,83 @@ void URPGGameplayAbility_Attack::ActivateAbility(
     const FGameplayEventData* TriggerEventData)
 {
     if (!CommitAbility(Handle, ActorInfo, ActivationInfo)) return;
-    // 保存真正的攻击目标
-    if (TriggerEventData && TriggerEventData->Target && TriggerEventData->Instigator)
+    // 从 TriggerEventData 或 Avatar 角色的暂存 TargetData 中解析攻击目标与施法者
+    AttackTarget = nullptr;
+    Attacker = nullptr;
+
+    // 优先使用 TriggerEventData（若是 GameplayEvent 激活）
+    if (TriggerEventData)
     {
-        // Modify the assignment to cast the const AActor* to AActor*  
-        AttackTarget = const_cast<AActor*>(TriggerEventData->Target.Get());
-        Attacker = const_cast<AActor*>(TriggerEventData->Instigator.Get());
+        if (TriggerEventData->Target)
+        {
+            AttackTarget = const_cast<AActor*>(TriggerEventData->Target.Get());
+        }
+        if (TriggerEventData->Instigator)
+        {
+            Attacker = const_cast<AActor*>(TriggerEventData->Instigator.Get());
+        }
+    }
+
+    // 若未通过事件获得，则尝试从角色的 StoredTargetData 获取
+    if (!AttackTarget || !Attacker)
+    {
+        AIsometricRPGCharacter* RPGChar = Cast<AIsometricRPGCharacter>(GetAvatarActorFromActorInfo());
+        if (RPGChar)
+        {
+            if (!Attacker)
+            {
+                Attacker = RPGChar; // 默认施法者为自身
+            }
+            const FGameplayAbilityTargetDataHandle DataHandle = RPGChar->GetAbilityTargetData();
+            if (DataHandle.Num() > 0 && DataHandle.Data[0].IsValid())
+            {
+                const TSharedPtr<FGameplayAbilityTargetData> DataPtr = DataHandle.Data[0];
+                if (DataPtr->HasHitResult() && DataPtr->GetHitResult())
+                {
+                    AttackTarget = DataPtr->GetHitResult()->GetActor();
+                }
+                if (!AttackTarget && DataPtr->GetActors().Num() > 0 && DataPtr->GetActors()[0].IsValid())
+                {
+                    AttackTarget = DataPtr->GetActors()[0].Get();
+                }
+            }
+        }
     }
 
     // 播放攻击动画
     if (AttackMontage)
     {
+        // 注意：CreatePlayMontageAndWaitProxy 的第5个参数是 StartSectionName（片段名），不是 Slot 名。
+        // 传入不存在的 Section 名可能导致立刻完成/中断，从而表现为“抽动一下就结束”。这里改为不指定片段。
         UAbilityTask_PlayMontageAndWait* Task = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
             this,
             NAME_None,
             AttackMontage,
             1.0f, // 播放速率
-            FName("DefaultSlot"), // 使用默认的蒙太奇片段名称
-            false // 不中断当前播放的蒙太奇
+            NAME_None, // 不指定起始片段
+            true // 当能力结束时停止蒙太奇
         );
 
         if (Task)
         {
             // 绑定完成和中断事件
             Task->OnCompleted.AddDynamic(this, &URPGGameplayAbility_Attack::OnMontageCompleted);
+            Task->OnBlendOut.AddDynamic(this, &URPGGameplayAbility_Attack::OnMontageCompleted);
             Task->OnInterrupted.AddDynamic(this, &URPGGameplayAbility_Attack::OnMontageInterrupted);
             Task->OnCancelled.AddDynamic(this, &URPGGameplayAbility_Attack::OnMontageCancelled);
 
             // 激活任务
             Task->ReadyForActivation();
-
         }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("%s: Failed to create montage task for AttackMontage=%s"), *GetName(), *AttackMontage->GetName());
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s: AttackMontage is null; ending ability immediately."), *GetName());
+        EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
     }
 }
 

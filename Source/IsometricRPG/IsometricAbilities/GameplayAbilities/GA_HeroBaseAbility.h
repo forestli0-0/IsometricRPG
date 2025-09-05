@@ -53,6 +53,18 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ability|Animation")
     UAnimMontage* MontageToPlay;
     
+    // 是否使用基类的“播放蒙太奇并在结束时收尾”的通用流程
+    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ability|Animation")
+    bool bUseBaseMontageFlow = true;
+
+    // 基类蒙太奇完成/BlendOut后，是否自动 EndAbility
+    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ability|Animation")
+    bool bEndAbilityWhenBaseMontageEnds = true;
+
+    // 基类蒙太奇被中断/取消时，是否自动 CancelAbility
+    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ability|Animation")
+    bool bCancelAbilityWhenBaseMontageInterrupted = true;
+    
     // 施法范围
     UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ability|Attribute")
     float RangeToApply = 100.f;
@@ -92,6 +104,12 @@ protected:
         const FGameplayAbilityActivationInfo ActivationInfo,
         bool bReplicateEndAbility,
         bool bWasCancelled) override;
+        
+    virtual void CancelAbility(
+        const FGameplayAbilitySpecHandle Handle,
+        const FGameplayAbilityActorInfo* ActorInfo,
+        const FGameplayAbilityActivationInfo ActivationInfo,
+        bool bReplicateCancelAbility) override;
         
         
     // 子类应该实现的技能执行逻辑    

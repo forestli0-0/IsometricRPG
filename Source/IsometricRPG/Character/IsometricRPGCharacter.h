@@ -35,6 +35,7 @@ public:
     virtual void Tick(float DeltaTime) override;
 
     // IAbilitySystemInterface implementation
+	UFUNCTION(BlueprintCallable, Category = "Abilities")
     virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
 	UFUNCTION(BlueprintPure, Category="Attributes")
@@ -78,8 +79,20 @@ public:
     void SetAbilityTargetData(const FHitResult& HitResult);
     void SetAbilityTargetData(AActor* TargetActor);
 
+    /** 同步到服务器：在客户端激活前调用，确保服务器也拿到相同的目标数据 */
+    UFUNCTION(Server, Reliable)
+    void Server_SetAbilityTargetDataByHit(const FHitResult& HitResult);
+    UFUNCTION(Server, Reliable)
+    void Server_SetAbilityTargetDataByActor(AActor* TargetActor);
+
     /** 供GameplayAbility在激活时调用，用于获取目标数据 */
     FGameplayAbilityTargetDataHandle GetAbilityTargetData() const;
+
+    // 客户端本地表现：用于能力阶段时同步动画与停止行走
+    UFUNCTION(Client, Reliable)
+    void Client_PlayMontage(class UAnimMontage* Montage, float PlayRate = 1.f);
+    UFUNCTION(Client, Reliable)
+    void Client_SetMovementLocked(bool bLocked);
 
 protected:
     /** 技能的目标数据暂存区 */

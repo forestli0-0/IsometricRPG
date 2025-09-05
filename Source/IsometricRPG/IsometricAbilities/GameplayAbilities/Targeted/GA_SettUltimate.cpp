@@ -34,20 +34,65 @@ UGA_SettUltimate::UGA_SettUltimate()
 	// 初始化新增的成员变量
 	bOriginalUseControllerDesiredRotation = false;
 	bOriginalOrientRotationToMovement = false;
+	bCleanupDone = false;
+
+	// 关键：关闭基类的通用蒙太奇流程，避免在该技能分阶段切换蒙太奇时触发基类的自动 End/Cancel
+	bUseBaseMontageFlow = false;
+	bEndAbilityWhenBaseMontageEnds = false;
+	bCancelAbilityWhenBaseMontageInterrupted = false;
 }
 
 void UGA_SettUltimate::ExecuteSkill(const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
 	const FGameplayAbilityActivationInfo ActivationInfo)
 {
+	// 每次激活重置阶段与清理残留状态（防止上一次异常导致卡住/无法移动）
+	CurrentPhase = 0;
+	bCleanupDone = false;
+	if (GetWorld())
+	{
+		GetWorld()->GetTimerManager().ClearTimer(GrabTimer);
+		GetWorld()->GetTimerManager().ClearTimer(JumpTimer);
+		GetWorld()->GetTimerManager().ClearTimer(SlamTimer);
+		GetWorld()->GetTimerManager().ClearTimer(LandingTimer);
+	}
+	if (ActiveAOEWarningEffect)
+	{
+		ActiveAOEWarningEffect->Destroy();
+		ActiveAOEWarningEffect = nullptr;
+	}
+	if (ActiveGrabEffect)
+	{
+		ActiveGrabEffect->Destroy();
+		ActiveGrabEffect = nullptr;
+	}
+	if (ActiveJumpTrailEffect)
+	{
+		ActiveJumpTrailEffect->Destroy();
+		ActiveJumpTrailEffect = nullptr;
+	}
+	if (ActiveLandingEffect)
+	{
+		ActiveLandingEffect->Destroy();
+		ActiveLandingEffect = nullptr;
+	}
 	PrimaryTarget = nullptr;
 
 	if (CurrentTargetDataHandle.IsValid(0))
 	{
 		const FGameplayAbilityTargetData* TargetData = CurrentTargetDataHandle.Get(0);
-		if (TargetData && !TargetData->GetActors().IsEmpty())
+		if (TargetData)
 		{
+			// 优先从 ActorArray 读取
+			if (!TargetData->GetActors().IsEmpty())
+			{
 			PrimaryTarget = TargetData->GetActors()[0].Get();
+		}
+			// 兼容从 HitResult 读取
+			if (!PrimaryTarget && TargetData->HasHitResult() && TargetData->GetHitResult())
+			{
+				PrimaryTarget = TargetData->GetHitResult()->GetActor();
+	}
 		}
 	}
 
@@ -65,9 +110,7 @@ void UGA_SettUltimate::ExecuteSkill(const FGameplayAbilitySpecHandle Handle,
 		return;
 	}
 
-	// --- 【核心修改 2】 ---
-	// 在技能开始时，立即手动让施法者面向目标。
-	// 这确保了技能初始的朝向是正确的。
+	// 仅服务器设置朝向，避免客户端与角色移动组件产生旋转冲突造成抖动
 	FVector DirectionToTarget = PrimaryTarget->GetActorLocation() - Caster->GetActorLocation();
 	DirectionToTarget.Z = 0; // 只关心水平方向
 	Caster->SetActorRotation(DirectionToTarget.Rotation());
@@ -76,7 +119,9 @@ void UGA_SettUltimate::ExecuteSkill(const FGameplayAbilitySpecHandle Handle,
 	CasterCharacter = Cast<ACharacter>(Caster);
 	TargetCharacter = Cast<ACharacter>(PrimaryTarget);
 
-	if (CasterCharacter.IsValid())
+	// 仅在服务器端冻结移动与接管旋转，避免客户端本地改变 Transform 造成分叉
+	const bool bIsAuthority = (GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority());
+	if (CasterCharacter.IsValid() && bIsAuthority)
 	{
 		auto* CMC = CasterCharacter->GetCharacterMovement();
 		CasterOriginalMode = CMC->MovementMode;
@@ -91,7 +136,7 @@ void UGA_SettUltimate::ExecuteSkill(const FGameplayAbilitySpecHandle Handle,
 		CMC->bUseControllerDesiredRotation = false;
 	}
 
-	if (TargetCharacter.IsValid())
+	if (TargetCharacter.IsValid() && bIsAuthority)
 	{
 		auto* CMC = TargetCharacter->GetCharacterMovement();
 		TargetOriginalMode = CMC->MovementMode;
@@ -105,18 +150,31 @@ void UGA_SettUltimate::ExecuteSkill(const FGameplayAbilitySpecHandle Handle,
 
 void UGA_SettUltimate::StartGrabPhase()
 {
+	// 幂等守卫：防止被重复进入
+	if (CurrentPhase >= 1)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("UGA_SettUltimate: StartGrabPhase skipped (CurrentPhase=%d)"), CurrentPhase);
+		return;
+	}
 	CurrentPhase = 1;
 
 	if (!PrimaryTarget || !Caster)
 		return;
 
-	if (GrabMontage)
+	if (GrabMontage && CasterCharacter.IsValid())
 	{
-		CurrentMontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
-			this, TEXT("GrabMontage"), GrabMontage, 1.0f);
-		if (CurrentMontageTask)
+		const bool bIsAuthority = (GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority());
+		if (bIsAuthority)
 		{
-			CurrentMontageTask->ReadyForActivation();
+			CasterCharacter->PlayAnimMontage(GrabMontage, 1.0f);
+			CasterCharacter->ForceNetUpdate();
+		}
+		if (AController* Ctrl = CasterCharacter->GetController())
+		{
+			if (Ctrl->IsLocalController())
+			{
+				CasterCharacter->PlayAnimMontage(GrabMontage, 1.0f);
+	}
 		}
 	}
 
@@ -137,16 +195,62 @@ void UGA_SettUltimate::StartGrabPhase()
 	const float GrabDistance = 100.0f;
 	FVector GrabLocation = Caster->GetActorLocation() + DirectionToTarget * GrabDistance;
 
+	// 只允许服务器驱动“抓取阶段”的目标位移与阶段推进，防止客户端本地移动与服务器状态分叉
+	const bool bIsAuthority = (GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority());
+	if (bIsAuthority)
+	{
 	UAbilityTask_MoveActorTo* MoveTask = UAbilityTask_MoveActorTo::MoveActorTo(
 		this, TEXT("GrabTarget"), PrimaryTarget, GrabLocation, GrabDuration, EMoveInterpMethod::Linear);
 
+		if (!MoveTask)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("UGA_SettUltimate: Failed to create Grab MoveTask on server."));
+		}
+		else
+		{
 	MoveTask->OnFinish.AddDynamic(this, &UGA_SettUltimate::StartJumpPhase);
 	MoveTask->ReadyForActivation();
+			UE_LOG(LogTemp, Verbose, TEXT("UGA_SettUltimate: Server started Grab MoveTask -> %s"), *GrabLocation.ToString());
+}
+
+		// 安全兜底：若任务未触发完成，按时推进到下一阶段并强制放置到抓取点
+		if (GetWorld())
+		{
+			GetWorld()->GetTimerManager().SetTimer(GrabTimer, [this, GrabLocation]()
+			{
+				if (!PrimaryTarget || !Caster) { return; }
+				const float Dist = FVector::Dist(PrimaryTarget->GetActorLocation(), GrabLocation);
+				if (Dist > 10.f)
+				{
+					PrimaryTarget->SetActorLocation(GrabLocation, false, nullptr, ETeleportType::TeleportPhysics);
+					UE_LOG(LogTemp, Warning, TEXT("UGA_SettUltimate: Grab fallback teleported target to %s (dist=%.1f)"), *GrabLocation.ToString(), Dist);
+				}
+				StartJumpPhase();
+			}, GrabDuration + 0.05f, false);
+		}
+	}
+	else
+	{
+		// 客户端不执行位移任务，等待服务器推进到下一阶段（网络复制会同步位置）
+		UE_LOG(LogTemp, Verbose, TEXT("UGA_SettUltimate: Client skipping Grab MoveTask (server-authoritative movement)."));
+	}
 }
 
 void UGA_SettUltimate::StartJumpPhase()
 {
+	// 幂等守卫：防止被重复进入（来自抓取完成与兜底定时器的双触发）
+	if (CurrentPhase >= 2)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("UGA_SettUltimate: StartJumpPhase skipped (CurrentPhase=%d)"), CurrentPhase);
+		return;
+	}
 	CurrentPhase = 2;
+
+	// 进入下一阶段前清理抓取阶段的兜底定时器
+	if (GetWorld())
+	{
+		GetWorld()->GetTimerManager().ClearTimer(GrabTimer);
+	}
 
 	if (!PrimaryTarget || !Caster)
 		return;
@@ -162,12 +266,15 @@ void UGA_SettUltimate::StartJumpPhase()
 	// --- 【核心修改 4】 ---
 	// 在跳跃前，再次锁定施法者和目标的朝向。
 	// 这确保了整个抱摔动作都朝着这个计算出的、正确的方向进行。
+	// 仅服务器设置朝向；客户端依赖复制，避免预测冲突
 	FRotator SlamDirectionRotation = Direction.Rotation();
+	if (GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority())
+	{
 	Caster->SetActorRotation(SlamDirectionRotation);
 	if (TargetCharacter.IsValid())
 	{
-		// 同样设置目标的朝向，使其在空中看起来是同步的
 		TargetCharacter->SetActorRotation(SlamDirectionRotation);
+	}
 	}
 
 	FVector TargetHorizontalLandingPoint = JumpStartLocation + Direction * JumpDistance;
@@ -193,14 +300,51 @@ void UGA_SettUltimate::StartJumpPhase()
 	const float CasterOffsetDistance = 80.0f;
 	FVector CasterLandingLocation = TargetLandingLocation - Direction * CasterOffsetDistance;
 
-	auto Rate = FMath::Max(JumpMontage->GetPlayLength() / JumpUpDuration, 1.f);
-	if (JumpMontage)
+	auto Rate = FMath::Max(JumpMontage ? (JumpMontage->GetPlayLength() / JumpUpDuration) : 1.f, 1.f);
+	if (JumpMontage && CasterCharacter.IsValid())
 	{
-		CurrentMontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
-			this, TEXT("JumpMontage"), JumpMontage, Rate);
-		if (CurrentMontageTask)
+		const bool bIsAuthorityJM = (GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority());
+		if (bIsAuthorityJM)
 		{
-			CurrentMontageTask->ReadyForActivation();
+			CasterCharacter->PlayAnimMontage(JumpMontage, Rate);
+			CasterCharacter->ForceNetUpdate();
+		}
+		if (AController* Ctrl = CasterCharacter->GetController())
+		{
+			if (Ctrl->IsLocalController())
+			{
+				CasterCharacter->PlayAnimMontage(JumpMontage, Rate);
+			}
+		}
+	}
+
+	// 让本地控制的客户端也播放跳跃蒙太奇并锁住移动，避免仍在“行走”状态导致的卡顿和错姿
+	if (CasterCharacter.IsValid())
+	{
+		if (AController* Ctrl = CasterCharacter->GetController())
+		{
+			if (Ctrl->IsLocalController())
+			{
+				const bool bIsAuthority = (GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority());
+
+                if (CasterCharacter.IsValid() && bIsAuthority)
+                {
+                    auto* CMC = CasterCharacter->GetCharacterMovement();
+                    CasterOriginalMode = CMC->MovementMode;
+                    CMC->SetMovementMode(EMovementMode::MOVE_None);
+                    // --- 【核心修改 3】 ---
+                    // 保存原始的旋转设置，然后禁用它们，从而完全接管旋转控制权。
+                    bOriginalOrientRotationToMovement = CMC->bOrientRotationToMovement;
+                    bOriginalUseControllerDesiredRotation = CMC->bUseControllerDesiredRotation;
+                    CMC->bOrientRotationToMovement = false;
+                    CMC->bUseControllerDesiredRotation = false;
+                }
+                // 修正方式：ACharacter 没有 PlayMontage，正确用法是 PlayAnimMontage
+                if (CasterCharacter.IsValid())
+                {
+				CasterCharacter->PlayAnimMontage(JumpMontage, Rate);
+	}
+			}
 		}
 	}
 
@@ -211,18 +355,14 @@ void UGA_SettUltimate::StartJumpPhase()
 		UGameplayStatics::PlaySoundAtLocation(GetWorld(), JumpSound, Caster->GetActorLocation());
 	}
 
-	if (AOEWarningEffectClass)
-	{
-		ActiveAOEWarningEffect = GetWorld()->SpawnActor<ANiagaraActor>(
-			AOEWarningEffectClass, LandingLocation, FRotator::ZeroRotator);
-		if (ActiveAOEWarningEffect && ActiveAOEWarningEffect->GetNiagaraComponent())
-		{
-			ActiveAOEWarningEffect->GetNiagaraComponent()->SetFloatParameter(FName("user_Radius"), AOERadius);
-		}
-	}
+	// 注意：AOE 预警圈改为在落地阶段生成，不在起跳阶段生成
 
 	float TotalJumpDuration = JumpUpDuration;
 
+	// 跳跃阶段的位移同样只在服务器执行；客户端仅播蒙太奇和特效
+	const bool bIsAuthority = (GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority());
+	if (bIsAuthority)
+	{
 	UAbilityTask_MoveActorTo* CasterJumpTask = UAbilityTask_MoveActorTo::MoveActorTo(
 		this, TEXT("CasterParabolicJump"), Caster, CasterLandingLocation, TotalJumpDuration,
 		EMoveInterpMethod::Parabolic, JumpArcHeight, JumpArcCurve);
@@ -231,20 +371,113 @@ void UGA_SettUltimate::StartJumpPhase()
 		this, TEXT("TargetParabolicJump"), PrimaryTarget, TargetLandingLocation, TotalJumpDuration,
 		EMoveInterpMethod::Parabolic, JumpArcHeight, JumpArcCurve);
 
+		if (CasterJumpTask)
+		{
 	CasterJumpTask->OnFinish.AddDynamic(this, &UGA_SettUltimate::StartLandingPhase);
 	CasterJumpTask->ReadyForActivation();
+		}
+		else
+		{
+			// 如果创建失败，直接进入落地阶段，避免卡死
+			UE_LOG(LogTemp, Warning, TEXT("UGA_SettUltimate: CasterJumpTask creation failed on server, forcing StartLandingPhase."));
+			StartLandingPhase();
+		}
+
+		if (TargetJumpTask)
+		{
 	TargetJumpTask->ReadyForActivation();
 }
 
+		// 安全兜底：若跳跃任务未触发完成，按时进入落地阶段
+		if (GetWorld())
+		{
+			GetWorld()->GetTimerManager().SetTimer(JumpTimer, [this]()
+			{
+				StartLandingPhase();
+			}, TotalJumpDuration + 0.05f, false);
+		}
+	}
+	else
+	{
+		// 在本地控制的客户端上执行同样的抛物线插值（纯表现，不改变阶段，不绑定回调）
+		if (CasterCharacter.IsValid())
+		{
+			if (AController* Ctrl = CasterCharacter->GetController())
+			{
+				if (Ctrl->IsLocalController())
+				{
+					UAbilityTask_MoveActorTo* ClientCasterJump = UAbilityTask_MoveActorTo::MoveActorTo(
+						this, TEXT("ClientCasterParabolicJump"), Caster, CasterLandingLocation, TotalJumpDuration,
+						EMoveInterpMethod::Parabolic, JumpArcHeight, JumpArcCurve);
+					if (ClientCasterJump)
+					{
+						ClientCasterJump->ReadyForActivation();
+					}
+				}
+			}
+		}
+		UE_LOG(LogTemp, Verbose, TEXT("UGA_SettUltimate: Client running cosmetic parabolic jump for smoothing."));
+	}
+}
 
 void UGA_SettUltimate::StartLandingPhase()
 {
+	// 幂等守卫：防止被重复进入（来自跳跃完成与兜底定时器的双触发）
+	if (CurrentPhase >= 3)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("UGA_SettUltimate: StartLandingPhase skipped (CurrentPhase=%d)"), CurrentPhase);
+		return;
+	}
 	CurrentPhase = 3;
+
+	// 清理跳跃阶段的兜底定时器
+	if (GetWorld())
+	{
+		GetWorld()->GetTimerManager().ClearTimer(JumpTimer);
+	}
 
 	if (!PrimaryTarget || !Caster)
 		return;
 
 	PlayLandingEffects(LandingLocation);
+
+	// 播放落地动画（用 AbilityTask 驱动施法者）
+	if (LandingMontage && CasterCharacter.IsValid())
+	{
+		const bool bIsAuthorityLM = (GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority());
+		if (bIsAuthorityLM)
+		{
+			CasterCharacter->PlayAnimMontage(LandingMontage, 1.0f);
+			CasterCharacter->ForceNetUpdate();
+		}
+		if (AController* Ctrl = CasterCharacter->GetController())
+		{
+			if (Ctrl->IsLocalController())
+			{
+				CasterCharacter->PlayAnimMontage(LandingMontage, 1.0f);
+			}
+		}
+	}
+
+	// 在落地瞬间生成 AOE 预警圈（仅服务端生成一次并复制），短暂显示后自动消失
+	if (AOEWarningEffectClass)
+	{
+		const bool bIsAuthority = (GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority());
+		if (bIsAuthority)
+		{
+			ActiveAOEWarningEffect = GetWorld()->SpawnActor<ANiagaraActor>(
+				AOEWarningEffectClass, LandingLocation, FRotator::ZeroRotator);
+			if (ActiveAOEWarningEffect)
+			{
+				ActiveAOEWarningEffect->SetReplicates(true);
+				ActiveAOEWarningEffect->SetLifeSpan(1.2f); // 只在落地瞬间短暂显示
+				if (ActiveAOEWarningEffect->GetNiagaraComponent())
+				{
+					ActiveAOEWarningEffect->GetNiagaraComponent()->SetFloatParameter(FName("user_Radius"), AOERadius);
+				}
+			}
+		}
+	}
 
 	if (LandingSound)
 	{
@@ -257,30 +490,79 @@ void UGA_SettUltimate::StartLandingPhase()
 		ActiveAOEWarningEffect = nullptr;
 	}
 
+	// 仅服务端结算伤害与控制计时
+	const bool bIsAuthority = (GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority());
+	if (bIsAuthority)
+	{
 	ApplyPrimaryTargetDamage(PrimaryTarget, Caster);
 	ApplyAOEDamage(LandingLocation, Caster);
-
 	GetWorld()->GetTimerManager().SetTimer(LandingTimer, this, &UGA_SettUltimate::FinishUltimate, LandingStunDuration, false);
+}
 }
 
 void UGA_SettUltimate::FinishUltimate()
 {
-	// --- 【核心修改 5】 ---
+	// 解锁本地移动
 	// 在技能结束时，恢复角色移动组件原始的旋转设置。
 	// 这将旋转控制权安全地交还给常规系统。
 	if (CasterCharacter.IsValid())
 	{
-		auto* CMC = CasterCharacter->GetCharacterMovement();
-		CMC->SetMovementMode(CasterOriginalMode);
-
-		CMC->bOrientRotationToMovement = bOriginalOrientRotationToMovement;
-		CMC->bUseControllerDesiredRotation = bOriginalUseControllerDesiredRotation;
+		if (AController* Ctrl = CasterCharacter->GetController())
+		{
+			if (Ctrl->IsLocalController())
+			{
+                Ctrl->SetIgnoreMoveInput(false);
+			}
+		}
 	}
-	if (TargetCharacter.IsValid())
+
+	CleanupAndRestore(false);
+	// 必须复制 EndAbility，确保客户端能力也进入 End，从而触发各类本地特效清理
+	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
+	}
+
+void UGA_SettUltimate::EndAbility(const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	bool bReplicateEndAbility,
+	bool bWasCancelled)
 	{
-		TargetCharacter->GetCharacterMovement()->SetMovementMode(TargetOriginalMode);
+	CleanupAndRestore(bWasCancelled);
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
+}
+
+void UGA_SettUltimate::CancelAbility(const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	bool bReplicateCancelAbility)
+{
+	CleanupAndRestore(true);
+	Super::CancelAbility(Handle, ActorInfo, ActivationInfo, bReplicateCancelAbility);
+}
+
+void UGA_SettUltimate::CleanupAndRestore(bool bWasCancelled)
+{
+	if (bCleanupDone)
+	{
+		return;
+	}
+	bCleanupDone = true;
+
+	// 清理定时器
+	if (GetWorld())
+	{
+		GetWorld()->GetTimerManager().ClearTimer(GrabTimer);
+		GetWorld()->GetTimerManager().ClearTimer(JumpTimer);
+		GetWorld()->GetTimerManager().ClearTimer(SlamTimer);
+		GetWorld()->GetTimerManager().ClearTimer(LandingTimer);
 	}
 
+	// 清理特效
+	if (ActiveAOEWarningEffect)
+	{
+		ActiveAOEWarningEffect->Destroy();
+		ActiveAOEWarningEffect = nullptr;
+	}
 	if (ActiveGrabEffect)
 	{
 		ActiveGrabEffect->Destroy();
@@ -297,7 +579,28 @@ void UGA_SettUltimate::FinishUltimate()
 		ActiveLandingEffect = nullptr;
 	}
 
-	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, false, false);
+	// 恢复移动/旋转（仅服务器曾修改）
+	const bool bIsAuthority = (GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority());
+	if (CasterCharacter.IsValid() && bIsAuthority)
+	{
+		auto* CMC = CasterCharacter->GetCharacterMovement();
+		if (CMC)
+		{
+			CMC->SetMovementMode(CasterOriginalMode);
+			CMC->bOrientRotationToMovement = bOriginalOrientRotationToMovement;
+			CMC->bUseControllerDesiredRotation = bOriginalUseControllerDesiredRotation;
+		}
+	}
+	if (TargetCharacter.IsValid() && bIsAuthority)
+	{
+		if (auto* TMC = TargetCharacter->GetCharacterMovement())
+		{
+			TMC->SetMovementMode(TargetOriginalMode);
+		}
+	}
+
+	// 重置阶段，允许再次释放
+	CurrentPhase = 0;
 }
 
 float UGA_SettUltimate::CalculatePrimaryTargetDamage(AActor* Target, AActor* tCaster) const
@@ -471,6 +774,12 @@ void UGA_SettUltimate::PlayGrabEffects(AActor* Target)
 	if (!Target || !GetWorld())
 		return;
 
+	// 仅服务端生成一次并复制
+	if (!(GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority()))
+	{
+		return;
+	}
+
 	// 播放抓取特效
 	if (GrabEffectClass)
 	{
@@ -479,6 +788,7 @@ void UGA_SettUltimate::PlayGrabEffects(AActor* Target)
 		
 		if (ActiveGrabEffect)
 		{
+			ActiveGrabEffect->SetReplicates(true);
 			ActiveGrabEffect->AttachToActor(Target, FAttachmentTransformRules::KeepWorldTransform);
 		}
 	}
@@ -495,6 +805,12 @@ void UGA_SettUltimate::PlayJumpEffects(const FVector& startLocation, const FVect
 	if (!GetWorld())
 		return;
 
+	// 仅服务端生成一次并复制
+	if (!(GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority()))
+	{
+		return;
+	}
+
 	// 播放跳跃轨迹特效
 	if (JumpTrailEffectClass)
 	{
@@ -503,6 +819,7 @@ void UGA_SettUltimate::PlayJumpEffects(const FVector& startLocation, const FVect
 		
 		if (ActiveJumpTrailEffect && ActiveJumpTrailEffect->GetNiagaraComponent())
 		{
+			ActiveJumpTrailEffect->SetReplicates(true);
 			// 设置轨迹参数
 			ActiveJumpTrailEffect->GetNiagaraComponent()->SetVectorParameter(FName("StartLocation"), startLocation);
 			ActiveJumpTrailEffect->GetNiagaraComponent()->SetVectorParameter(FName("EndLocation"), EndLocation);
@@ -515,6 +832,12 @@ void UGA_SettUltimate::PlayLandingEffects(const FVector& tLandingLocation)
 	if (!GetWorld())
 		return;
 
+	// 仅服务端生成一次并复制
+	if (!(GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority()))
+	{
+		return;
+	}
+
 	// 播放落地爆炸特效
 	if (LandingExplosionEffectClass)
 	{
@@ -523,6 +846,7 @@ void UGA_SettUltimate::PlayLandingEffects(const FVector& tLandingLocation)
 		
 		if (ActiveLandingEffect && ActiveLandingEffect->GetNiagaraComponent())
 		{
+			ActiveLandingEffect->SetReplicates(true);
 			ActiveLandingEffect->GetNiagaraComponent()->SetFloatParameter(FName("ExplosionRadius"), AOERadius);
 		}
 	}

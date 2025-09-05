@@ -13,6 +13,8 @@ UGA_HeroMeleeAttackAbility::UGA_HeroMeleeAttackAbility()
 {
     NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
     InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
+    // 基础普攻依赖于输入组件提前缓存的 TargetData，不需要在能力内再次走目标选择流程
+    bRequiresTargetData = false;
     // 初始化攻击蒙太奇路径
     static ConstructorHelpers::FObjectFinder<UAnimMontage> AttackMontageObj(TEXT("/Game/Characters/Animations/AM_Attack_Melee"));
     if (AttackMontageObj.Succeeded())
