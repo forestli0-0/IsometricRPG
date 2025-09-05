@@ -4,7 +4,7 @@
 #include "IsometricAbilities/AbilityTasks/AbilityTask_MoveActorTo.h"
 #include "GameFramework/Actor.h"
 #include "Curves/CurveFloat.h"
-
+#include "AbilitySystemComponent.h"
 
 
 UAbilityTask_MoveActorTo* UAbilityTask_MoveActorTo::MoveActorTo(UGameplayAbility* OwningAbility, FName TaskInstanceName, AActor* TargetActor, FVector TargetLocation, float Duration, EMoveInterpMethod InterpMethod, float ParabolicArcHeight, UCurveFloat* MovementCurve)
@@ -38,7 +38,11 @@ void UAbilityTask_MoveActorTo::Activate()
 	// 记录起始位置和时间
 	StartLocation = ActorToMove->GetActorLocation();
 	TimeElapsed = 0.0f;
-	bTickingTask = true;
+	// 确保任务在AbilitySystem中注册Tick（兼容服务端）
+	SetTickingTask(true);
+	UE_LOG(LogTemp, Verbose, TEXT("AbilityTask_MoveActorTo Activate: Actor=%s Target=%s Duration=%.2f Interp=%d (Role=%d)"),
+		*ActorToMove->GetName(), *TargetLocation.ToString(), Duration, (int32)InterpMethod,
+		ActorToMove->GetLocalRole());
 }
 
 void UAbilityTask_MoveActorTo::TickTask(float DeltaTime)
@@ -95,7 +99,15 @@ void UAbilityTask_MoveActorTo::TickTask(float DeltaTime)
 	if (TimeElapsed >= Duration)
 	{
 		ActorToMove->SetActorLocation(TargetLocation, false, nullptr, ETeleportType::TeleportPhysics);
+	UE_LOG(LogTemp, Verbose, TEXT("AbilityTask_MoveActorTo Finished: Actor=%s Reached=%s"), *ActorToMove->GetName(), *TargetLocation.ToString());
 		OnFinish.Broadcast();
 		EndTask();
 	}
+}
+
+
+void UAbilityTask_MoveActorTo::SetTickingTask(bool bShouldTick)
+{
+	// 兼容UE4/UE5的AbilityTask Tick注册方式
+	bTickingTask = bShouldTick;
 }

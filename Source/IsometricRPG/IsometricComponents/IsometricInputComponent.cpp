@@ -113,7 +113,12 @@ void UIsometricInputComponent::HandleSkillInput(EAbilityInputID InputID, const F
     if (!OwnerASC) { OwnerASC = OwnerCharacter->GetAbilitySystemComponent(); }
     if (!OwnerASC) return;
 
+    // 先在本地缓存，再RPC同步给服务器，确保服务器拿到同一份目标数据
     OwnerCharacter->SetAbilityTargetData(TargetData);
+    if (OwnerCharacter->GetLocalRole() < ROLE_Authority)
+    {
+        OwnerCharacter->Server_SetAbilityTargetDataByHit(TargetData);
+    }
     const TSubclassOf<UGameplayAbility>* AbilityClassPtr = SkillInputMappings.Find(InputID);
     if (!AbilityClassPtr || !(*AbilityClassPtr))
     {
@@ -138,22 +143,13 @@ void UIsometricInputComponent::HandleSkillInput(EAbilityInputID InputID, const F
         return;
     }
 
-    const UGA_HeroBaseAbility* GrantedCDO = Cast<UGA_HeroBaseAbility>(FoundSpec->Ability);
-    if (!GrantedCDO || !GrantedCDO->TriggerTag.IsValid())
+    // 直接通过Spec Handle激活（更稳妥），目标数据已缓存在角色上
+	bool bSuccessful = OwnerASC->TryActivateAbility(FoundSpec->Handle);
+    if (OwnerCharacter->HasAuthority())
     {
-        UE_LOG(LogTemp, Warning, TEXT("Granted ability %s has invalid TriggerTag."), *FoundSpec->Ability->GetClass()->GetName());
-        return;
+        UE_LOG(LogTemp, Display, TEXT("TryActivateAbility Tag=%s -> %d"),
+            *FoundSpec->Ability->GetName(), bSuccessful);
     }
-
-    // 构造事件
-    FGameplayEventData EventData;
-    EventData.Instigator = OwnerCharacter;
-    EventData.Target = TargetData.GetActor();
-    EventData.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(TargetData);
-
-    const int32 Count = OwnerASC->HandleGameplayEvent(GrantedCDO->TriggerTag, &EventData);
-    UE_LOG(LogTemp, Display, TEXT("HandleGameplayEvent Tag=%s -> %d"),
-        *GrantedCDO->TriggerTag.ToString(), Count);
 }
 
 void UIsometricInputComponent::RequestMoveToLocation(const FVector& TargetLocation)
@@ -209,11 +205,15 @@ void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor)
         return;
     }
     OwnerCharacter->SetAbilityTargetData(TargetActor);
+    if (OwnerCharacter->GetLocalRole() < ROLE_Authority)
+    {
+        OwnerCharacter->Server_SetAbilityTargetDataByActor(TargetActor);
+    }
     FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.DirBasicAttack"));
     if (BasicAttackAbilityTag.IsValid())
     {
         // 直接通过Tag激活技能，这种方式更通用，无需知道具体技能类
-        if (CurrentASC->TryActivateAbilitiesByTag(FGameplayTagContainer(BasicAttackAbilityTag)))
+        if (CurrentASC->TryActivateAbilitiesByTag(FGameplayTagContainer(BasicAttackAbilityTag), true))
         {
             UE_LOG(LogTemp, Display, TEXT("RequestBasicAttack: Successfully activated Basic Attack ability with tag %s."), *BasicAttackAbilityTag.ToString());
         }

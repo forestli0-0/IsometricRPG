@@ -26,6 +26,19 @@ public:
 	UGA_SettUltimate();
 
 protected:
+	// 确保任意结束路径都能恢复角色状态
+	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo,
+		bool bReplicateEndAbility,
+		bool bWasCancelled) override;
+
+	virtual void CancelAbility(const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo,
+		bool bReplicateCancelAbility) override;
+
+protected:
 	// ==================== 基础伤害配置 ====================
 	// 基础伤害
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SettUlt|Damage")
@@ -160,8 +173,6 @@ protected:
 	UFUNCTION()
 	virtual void StartJumpPhase();
 
-
-
 	// 第四阶段：落地爆炸
 	UFUNCTION()
 	virtual void StartLandingPhase();
@@ -199,6 +210,9 @@ protected:
 
 	// ==================== 状态变量 ====================
 private:
+	// 统一清理函数：恢复移动、清理特效/定时器/阶段
+	void CleanupAndRestore(bool bWasCancelled);
+
 	// 当前技能阶段
 	UPROPERTY()
 	int32 CurrentPhase = 0;
@@ -265,4 +279,7 @@ private:
 		bool bOriginalUseControllerDesiredRotation;
 
 		bool bOriginalOrientRotationToMovement;
+
+		// 防重复清理标记
+		bool bCleanupDone = false;
 }; 

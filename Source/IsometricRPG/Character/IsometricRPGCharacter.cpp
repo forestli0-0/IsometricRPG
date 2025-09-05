@@ -183,3 +183,46 @@ FGameplayAbilityTargetDataHandle AIsometricRPGCharacter::GetAbilityTargetData() 
 {
     return StoredTargetData;
 }
+
+void AIsometricRPGCharacter::Server_SetAbilityTargetDataByHit_Implementation(const FHitResult& HitResult)
+{
+    SetAbilityTargetData(HitResult);
+}
+
+void AIsometricRPGCharacter::Server_SetAbilityTargetDataByActor_Implementation(AActor* TargetActor)
+{
+    SetAbilityTargetData(TargetActor);
+}
+
+void AIsometricRPGCharacter::Client_PlayMontage_Implementation(UAnimMontage* Montage, float PlayRate)
+{
+    if (Montage && GetMesh())
+    {
+        if (UAnimInstance* AnimInst = GetMesh()->GetAnimInstance())
+        {
+            AnimInst->Montage_Play(Montage, PlayRate);
+        }
+    }
+}
+
+void AIsometricRPGCharacter::Client_SetMovementLocked_Implementation(bool bLocked)
+{
+    if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+    {
+        if (bLocked)
+        {
+            CMC->DisableMovement();
+        }
+        else
+        {
+            if (CMC->IsMovingOnGround())
+            {
+                CMC->SetMovementMode(MOVE_Walking);
+            }
+            else
+            {
+                CMC->SetMovementMode(MOVE_Falling);
+            }
+        }
+    }
+}

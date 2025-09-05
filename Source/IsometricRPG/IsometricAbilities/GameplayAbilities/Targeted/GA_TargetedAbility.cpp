@@ -21,7 +21,7 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit()
     // 1. 检查目标数据有效性，使用卫语句提前退出
     if (!CurrentTargetDataHandle.IsValid(0))
     {
-        UE_LOG(LogTemp, Warning, TEXT("技能提交前检查：目标数据无效或为空。"));
+        UE_LOG(LogTemp, Warning, TEXT("检查范围：目标数据无效或为空。"));
         return false;
     }
 
@@ -54,7 +54,13 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit()
         if (HitResultData && HitResultData->GetHitResult())
         {
             TargetLocation = HitResultData->GetHitResult()->Location;
-            TargetActor = HitResultData->GetHitResult()->GetActor(); // 尝试获取被击中的Actor
+            TargetActor = Cast<APawn>(HitResultData->GetHitResult()->GetActor()); // 尝试获取被击中的Actor
+            
+            if (!TargetActor)
+            {
+                CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
+                return false;
+            }
             bSuccessfullyFoundTarget = true;
             UE_LOG(LogTemp, Log, TEXT("TargetData is a HitResult. Location: %s"), *TargetLocation.ToString());
         }
@@ -82,11 +88,40 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit()
         // [安全性检查] 确保有有效的目标Actor才能创建WaitMoveToActor任务
         if (TargetActor)
         {
+            const AActor* Avatar = GetAvatarActorFromActorInfo();
+            const bool bIsServer = (Avatar && Avatar->HasAuthority());
+            const bool bIsLocallyControlled = (GetCurrentActorInfo() && GetCurrentActorInfo()->IsLocallyControlled());
+
+            // 服务器：负责真正的到达判断与提交执行
+            if (bIsServer)
+            {
             auto ThisAbility = const_cast<UGameplayAbility*>(static_cast<const UGameplayAbility*>(this));
-            UAbilityTask_WaitMoveToLocation* MoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToActor(ThisAbility, TargetActor);
+                UAbilityTask_WaitMoveToLocation* MoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToActor(ThisAbility, TargetActor, RangeToApply);
+                if (MoveTask)
+                {
             MoveTask->OnMoveFinished.AddDynamic(this, &UGA_TargetedAbility::OnReachedTarget);
             MoveTask->OnMoveFailed.AddDynamic(this, &UGA_TargetedAbility::OnFailedToTarget);
             MoveTask->ReadyForActivation();
+                    UE_LOG(LogTemp, Verbose, TEXT("%s: Server started WaitMoveToActor (Acceptance=%.1f)."), *GetName(), RangeToApply);
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("%s: Failed to create WaitMoveToActor on server."), *GetName());
+                }
+            }
+
+            // 本地控制的客户端：也创建一个镜像任务用于本地预测和平滑动画；事件回调不做提交
+            if (!bIsServer && bIsLocallyControlled)
+            {
+                auto ThisAbility = const_cast<UGameplayAbility*>(static_cast<const UGameplayAbility*>(this));
+                UAbilityTask_WaitMoveToLocation* ClientMoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToActor(ThisAbility, TargetActor, RangeToApply);
+                if (ClientMoveTask)
+                {
+                    // 不绑定 OnReachedTarget；客户端上的 OnReachedTarget 会被忽略（函数里有 HasAuthority 判断）
+                    ClientMoveTask->ReadyForActivation();
+                    UE_LOG(LogTemp, Verbose, TEXT("%s: Client mirror WaitMoveToActor started for prediction (Acceptance=%.1f)."), *GetName(), RangeToApply);
+                }
+        }
         }
         else
         {
@@ -97,18 +132,24 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit()
     }
     else
     {
-        // 距离足够，调用 OnReachedTarget 并返回 true
-        OnReachedTarget();
         return true;
     }
 }
 
 void UGA_TargetedAbility::OnReachedTarget()
 {
+    // 仅服务器在到达时提交并执行；客户端忽略，等待复制
+    const AActor* Avatar = GetAvatarActorFromActorInfo();
+    if (!(Avatar && Avatar->HasAuthority()))
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("%s: OnReachedTarget (client) ignored."), *GetName());
+        return;
+    }
+     
 	// 因为已经移动到目标位置，此时主函数已经结束，在这里继续执行后续逻辑
     if (!CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo))
     {
-        UE_LOG(LogTemp, Warning, TEXT("%s: Failed to commit ability after target data ready."), *GetName());
+        UE_LOG(LogTemp, Warning, TEXT("%s: Failed to commit ability after reaching target (server)."), *GetName());
         EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
         return;
     }
@@ -234,6 +275,12 @@ void UGA_TargetedAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHand
                     }
             }
         }
+    }
+    // 选中目标后立即移除范围指示圈，避免后续阶段（起跳/移动）仍附着在角色身上
+    if (ActiveRangeIndicatorNiagaraActor && IsValid(ActiveRangeIndicatorNiagaraActor))
+    {
+        ActiveRangeIndicatorNiagaraActor->Destroy();
+        ActiveRangeIndicatorNiagaraActor = nullptr;
     }
     // Call Super if it does important things you want to keep
     Super::OnTargetDataReady(Data);

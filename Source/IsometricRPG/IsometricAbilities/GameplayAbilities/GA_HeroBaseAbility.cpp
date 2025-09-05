@@ -15,6 +15,7 @@
 UGA_HeroBaseAbility::UGA_HeroBaseAbility()
 {
     InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
+    ReplicationPolicy = EGameplayAbilityReplicationPolicy::ReplicateYes;
     TargetActorClass = nullptr;
     // 默认为目标指向型技能
     AbilityType = EHeroAbilityType::Targeted;
@@ -30,7 +31,7 @@ void UGA_HeroBaseAbility::ActivateAbility(
     const FGameplayAbilityActivationInfo ActivationInfo,
     const FGameplayEventData* TriggerEventData)
 {
-	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, FString::Printf(TEXT("ActivateAbility: %s"), *GetName()));
+    if (ActorInfo && ActorInfo->IsNetAuthority()) { GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, FString::Printf(TEXT("ActivateAbility: %s"), *GetName())); }
     // 保存当前技能信息以便子类访问
     CurrentSpecHandle = Handle;
     CurrentActorInfo = ActorInfo;
@@ -75,8 +76,36 @@ void UGA_HeroBaseAbility::ActivateAbility(
     // 根据技能是否需要目标选择来决定执行流程
     if (RequiresTargetData())
     {
+        const FGameplayAbilityTargetData* Data = CurrentTargetDataHandle.Get(0);
+        bool bSuccessfullyFoundTarget = false;
+        // 情况一：目标是 Actor
+        if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_ActorArray::StaticStruct()))
+        {
+            const auto* ActorArrayData = static_cast<const FGameplayAbilityTargetData_ActorArray*>(Data);
+            if (ActorArrayData && ActorArrayData->TargetActorArray.Num() > 0)
+            {
+                auto TargetActor = ActorArrayData->TargetActorArray[0].Get();
+                if (TargetActor)
+                {
+                    bSuccessfullyFoundTarget = true;
+                }
+            }
+        }
+        // 情况二：目标是射线检测点
+        else if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
+        {
+            const auto* HitResultData = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(Data);
+            if (HitResultData && HitResultData->GetHitResult())
+            {
+                auto TargetActor = Cast<APawn>(HitResultData->GetHitResult()->GetActor()); // 尝试获取被击中的Actor
+                if (TargetActor)
+                {
+                    bSuccessfullyFoundTarget = true;
+                }
+            }
+        }
 		// 如果已经有目标数据，直接执行技能(比如按下技能时，鼠标已经指向了一个目标)
-        if (CurrentTargetDataHandle.Num() > 0)
+        if (bSuccessfullyFoundTarget)
         {
             OnTargetDataReady(CurrentTargetDataHandle);
         }
@@ -213,6 +242,7 @@ void UGA_HeroBaseAbility::EndAbility(
     bool bReplicateEndAbility,
     bool bWasCancelled)
 {
+    UE_LOG(LogTemp, Display, TEXT("%s: EndAbility called. bWasCancelled=%s"), *GetName(), bWasCancelled ? TEXT("true") : TEXT("false"));
     if (MontageTask)
     {
         if (MontageTask->IsActive())
@@ -297,6 +327,7 @@ void UGA_HeroBaseAbility::DirectExecuteAbility(
         CancelAbility(Handle, ActorInfo, ActivationInfo, true);
         return;
     }
+    UE_LOG(LogTemp, Verbose, TEXT("%s: CommitAbility OK (DirectExecute). Montage=%s"), *GetName(), MontageToPlay ? *MontageToPlay->GetName() : TEXT("None"));
     
     // 播放技能动画
     PlayAbilityMontage(Handle, ActorInfo, ActivationInfo);
@@ -309,12 +340,6 @@ bool UGA_HeroBaseAbility::OtherCheckBeforeCommit()
 {
     // 基类中的默认实现 - 子类应该重写这个方法
     UE_LOG(LogTemp, Log, TEXT("%s：检查除Cost和Cooldown之外的条件。这应该被子类覆盖."), *GetName());
-    if (!CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo))
-    {
-        UE_LOG(LogTemp, Warning, TEXT("%s: Failed to commit ability for direct execution."), *GetName());
-        CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
-        return false;
-    }
     return true;
 }
 
@@ -339,118 +364,60 @@ void UGA_HeroBaseAbility::PlayAbilityMontage(
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo ActivationInfo)
 {
+    // 如果关闭了基类蒙太奇流程，则不做任何事（由子类自主管理动画与收尾）
+    if (!bUseBaseMontageFlow)
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("%s: Base montage flow disabled, skipping PlayAbilityMontage."), *GetName());
+        return;
+    }
     UAnimInstance* AnimInstance = CurrentActorInfo->GetAnimInstance();
     if (MontageToPlay && IsValid(AnimInstance))
     {
-        // 设置动画蒙太奇的播放速率，对于普攻这类冷却较短的技能，可以根据冷却时间来调整播放速率，防止动画还没播完就结束了
-        float PlayRate = CooldownDuration > 0 && MontageToPlay->GetPlayLength() > 0 ?
-            MontageToPlay->GetPlayLength() / CooldownDuration : 1.0f;
-        PlayRate = FMath::Clamp(PlayRate, 1.f, 5.0f);
-
+        // 设置动画蒙太奇的播放速率：避免过度加速导致动画“抽动”
+        float PlayRate = 1.0f;
+        if (CooldownDuration > 0.f && MontageToPlay->GetPlayLength() > 0.f)
+        {
+            const float DesiredRate = MontageToPlay->GetPlayLength() / CooldownDuration;
+            PlayRate = FMath::Clamp(DesiredRate, 1.f, 3.f);
+        }
         // 播放动画的时候，如果是需要面向目标的技能，可以在这里设置角色的朝向
         TObjectPtr<ACharacter> Character = Cast<ACharacter>(ActorInfo->AvatarActor.Get());
         // TODO:将Pawn按照目标方向旋转，且旋转时间和动画播放时间保持线性关系
-        if (bFaceTarget)
+        if (bFaceTarget && Character)
         {
-            if (Character != nullptr)
-            {
-                if (RequiresTargetData())
-                {
-                    auto TargetDataPtr = CurrentEventData.TargetData.Data[0].ToSharedRef();
-                    if (TargetDataPtr.Get().HasHitResult() && TargetDataPtr->GetHitResult())
-                    {
-                        FVector TargetLocation = TargetDataPtr->GetHitResult()->Location;
-                        //DrawDebugSphere(GetWorld(), TargetLocation, 10.f, 12, FColor::Red, true, 5.f); // Increased segments for a smoother sphere
+            // 改为从 CurrentTargetDataHandle 获取目标信息（该数据来源于角色在按键时暂存的 TargetData）
+            FVector TargetLocation = FVector::ZeroVector;
+            bool bHasTarget = false;
 
-                        if (!TargetLocation.IsZero() && Character) // Added a check for Character validity
+            if (CurrentTargetDataHandle.Num() > 0 && CurrentTargetDataHandle.Data[0].IsValid())
                         {
-                            FVector CharacterLocation = Character->GetActorLocation();
-
-                            // Calculate direction vector in the XY plane (horizontal)
-                            FVector DirectionToTargetHorizontal = TargetLocation - CharacterLocation;
-                            DirectionToTargetHorizontal.Z = 0.0f; // Ignore the Z difference
-
-                            // Check if the direction is not zero to avoid issues with Rotation()
-                            if (!DirectionToTargetHorizontal.IsNearlyZero())
+                const TSharedPtr<FGameplayAbilityTargetData> DataPtr = CurrentTargetDataHandle.Data[0];
+                if (DataPtr->HasHitResult() && DataPtr->GetHitResult())
                             {
-                                FRotator LookAtRotation = DirectionToTargetHorizontal.Rotation();
-                                //DrawDebugLine(GetWorld(), CharacterLocation, CharacterLocation + DirectionToTargetHorizontal.GetSafeNormal() * 100.f, FColor::Cyan, true, 5.f); // Draw line in the horizontal plane for clarity
-                                Character->SetActorRotation(LookAtRotation, ETeleportType::None);
+                    TargetLocation = DataPtr->GetHitResult()->Location;
+                    bHasTarget = true;
                             }
-                        }
-                    }
-                }
-                else
+                else if (DataPtr->GetActors().Num() > 0 && DataPtr->GetActors()[0].IsValid())
                 {
-                    if (CurrentEventData.Target && Cast<APawn>(CurrentEventData.Target))
-                    {
-                        auto TargetLocation = CurrentEventData.Target->GetActorLocation();
-
-                        if (!TargetLocation.IsZero() && Character) // Added a check for Character validity
-                        {
-                            FVector CharacterLocation = Character->GetActorLocation();
-
-                            // Calculate direction vector in the XY plane (horizontal)
-                            FVector DirectionToTargetHorizontal = TargetLocation - CharacterLocation;
-                            DirectionToTargetHorizontal.Z = 0.0f; // Ignore the Z difference
-
-                            // Check if the direction is not zero to avoid issues with Rotation()
-                            if (!DirectionToTargetHorizontal.IsNearlyZero())
-                            {
-                                FRotator LookAtRotation = DirectionToTargetHorizontal.Rotation();
-                                //DrawDebugLine(GetWorld(), CharacterLocation, CharacterLocation + DirectionToTargetHorizontal.GetSafeNormal() * 100.f, FColor::Cyan, true, 5.f); // Draw line in the horizontal plane for clarity
-                                Character->SetActorRotation(LookAtRotation, ETeleportType::None);
-
-                            }
-                            else
-                            {
-                                UE_LOG(LogTemp, Error, TEXT("CurrentEventData.Target is null or invalid."));
+                    TargetLocation = DataPtr->GetActors()[0]->GetActorLocation();
+                    bHasTarget = true;
                             }
                         }
 
-                    }
-                    else
+            if (bHasTarget)
                     {
-                        if (CurrentEventData.TargetData.Data.Num() > 0 && CurrentEventData.TargetData.Data[0].IsValid())
-                        {
-                            auto TargetDataPtr = CurrentEventData.TargetData.Data[0].ToSharedRef();
-
-                            if (TargetDataPtr.Get().HasHitResult() && TargetDataPtr->GetHitResult())
-                            {
-                                FVector TargetLocation = TargetDataPtr->GetHitResult()->Location;
-                                //DrawDebugSphere(GetWorld(), TargetLocation, 10.f, 12, FColor::Red, true, 5.f); // Increased segments for a smoother sphere
-
-                                if (!TargetLocation.IsZero() && Character) // Added a check for Character validity
-                                {
-                                    FVector CharacterLocation = Character->GetActorLocation();
-
-                                    // Calculate direction vector in the XY plane (horizontal)
+                const FVector CharacterLocation = Character->GetActorLocation();
                                     FVector DirectionToTargetHorizontal = TargetLocation - CharacterLocation;
-                                    DirectionToTargetHorizontal.Z = 0.0f; // Ignore the Z difference
-
-                                    // Check if the direction is not zero to avoid issues with Rotation()
+                DirectionToTargetHorizontal.Z = 0.0f; // Ignore vertical
                                     if (!DirectionToTargetHorizontal.IsNearlyZero())
                                     {
-                                        FRotator LookAtRotation = DirectionToTargetHorizontal.Rotation();
-                                        //DrawDebugLine(GetWorld(), CharacterLocation, CharacterLocation + DirectionToTargetHorizontal.GetSafeNormal() * 100.f, FColor::Cyan, true, 5.f); // Draw line in the horizontal plane for clarity
+                    const FRotator LookAtRotation = DirectionToTargetHorizontal.Rotation();
                                         Character->SetActorRotation(LookAtRotation, ETeleportType::None);
                                     }
                                 }
-                            }
-                        }
                         else
                         {
-                            UE_LOG(LogTemp, Error, TEXT("CurrentEventData.TargetData is empty or invalid."));
-						}
-                    }
-
-                }
-
-
-            }
-            else
-            {
-                UE_LOG(LogTemp, Display, TEXT("%s: No montage to play or invalid anim instance."), *GetName());
+                UE_LOG(LogTemp, Verbose, TEXT("%s: No target data to face when playing montage."), *GetName());
             }
         }
 
@@ -459,10 +426,17 @@ void UGA_HeroBaseAbility::PlayAbilityMontage(
             this, NAME_None, MontageToPlay, PlayRate);
         if (MontageTask)
         {
+            UE_LOG(LogTemp, Verbose, TEXT("%s: PlayMontage %s at rate %.2f"), *GetName(), *MontageToPlay->GetName(), PlayRate);
+            if (bEndAbilityWhenBaseMontageEnds)
+            {
             MontageTask->OnCompleted.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageCompleted);
             MontageTask->OnBlendOut.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageCompleted);
+            }
+            if (bCancelAbilityWhenBaseMontageInterrupted)
+            {
             MontageTask->OnInterrupted.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageInterruptedOrCancelled);
             MontageTask->OnCancelled.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageInterruptedOrCancelled);
+            }
             MontageTask->ReadyForActivation();
         }
         else
@@ -506,6 +480,8 @@ void UGA_HeroBaseAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHand
         CancelAbility(Handle, ActorInfo, ActivationInfo, true);
         return;
 	}
+
+    UE_LOG(LogTemp, Verbose, TEXT("%s: CommitAbility OK (OnTargetDataReady). Montage=%s"), *GetName(), MontageToPlay ? *MontageToPlay->GetName() : TEXT("None"));
 	// 播放技能动画
 	PlayAbilityMontage(Handle, ActorInfo, ActivationInfo);
 	// 执行技能逻辑
@@ -527,14 +503,49 @@ void UGA_HeroBaseAbility::OnTargetingCancelled(const FGameplayAbilityTargetDataH
 
 void UGA_HeroBaseAbility::HandleMontageCompleted()
 {
-    UE_LOG(LogTemp, Display, TEXT("%s: Montage completed or blended out. Ending ability."), *GetName());
+    if (!bEndAbilityWhenBaseMontageEnds)
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("%s: Montage completed, but auto-end disabled."), *GetName());
+        return;
+    }
+    UE_LOG(LogTemp, Display, TEXT("%s: Montage completed or blended out. Ending ability (base flow)."), *GetName());
     EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(), GetCurrentActivationInfo(), true, false);
 }
 
 void UGA_HeroBaseAbility::HandleMontageInterruptedOrCancelled()
 {
-    UE_LOG(LogTemp, Display, TEXT("%s: Montage interrupted or cancelled. Cancelling ability."), *GetName());
+    if (!bCancelAbilityWhenBaseMontageInterrupted)
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("%s: Montage interrupted/cancelled, but auto-cancel disabled."), *GetName());
+        return;
+    }
+    UE_LOG(LogTemp, Display, TEXT("%s: Montage interrupted or cancelled. Cancelling ability (base flow)."), *GetName());
     CancelAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(), GetCurrentActivationInfo(), true);
+}
+
+void UGA_HeroBaseAbility::CancelAbility(
+    const FGameplayAbilitySpecHandle Handle,
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo ActivationInfo,
+    bool bReplicateCancelAbility)
+{
+    UE_LOG(LogTemp, Warning, TEXT("%s: CancelAbility invoked. Replicate=%s. MontageTaskActive=%s"),
+        *GetName(), bReplicateCancelAbility ? TEXT("true") : TEXT("false"),
+        (MontageTask && MontageTask->IsActive()) ? TEXT("true") : TEXT("false"));
+
+    if (MontageTask && MontageTask->IsActive())
+    {
+        MontageTask->EndTask();
+    }
+    MontageTask = nullptr;
+
+    if (TargetDataTask && TargetDataTask->IsActive())
+    {
+        TargetDataTask->EndTask();
+    }
+    TargetDataTask = nullptr;
+
+    Super::CancelAbility(Handle, ActorInfo, ActivationInfo, bReplicateCancelAbility);
 }
 
 // =================================================================================================================
