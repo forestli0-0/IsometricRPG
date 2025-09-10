@@ -3,10 +3,18 @@
 
 #include "IsometricAbilities/GameplayAbilities/Targeted/GA_NormalAttack_Click.h"
 #include "GA_NormalAttack_Click.h"
+#include "IsometricAbilities/TargetTrace/GATA_CursorTrace.h"
+#include "Abilities/GameplayAbilityTargetTypes.h"
+#include "IsometricAbilities/TargetTrace/GATA_CursorTrace.h"
+#include "IsometricAbilities/AbilityTasks/AbilityTask_WaitMoveToLocation.h"
+#include "GameFramework/Character.h"
+#include "Components/CapsuleComponent.h"
 
 UGA_NormalAttack_Click::UGA_NormalAttack_Click()
 {
-    bRequiresTargetData = false;
+    // 按标准 Targeted 流程处理：需要目标数据（若已有Actor则直接用，否则进入目标选择）
+    bRequiresTargetData = true;
+    TargetActorClass = AGATA_CursorTrace::StaticClass();
     NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
     InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
     // 初始化攻击蒙太奇路径
@@ -21,7 +29,7 @@ UGA_NormalAttack_Click::UGA_NormalAttack_Click()
         // 可考虑添加调试断言
         checkNoEntry();
     }
-    // 设置触发条件为接收 GameplayEvent，监听 Tag 为 Ability.MeleeAttack
+    // 设置标签/触发
     AbilityTags.AddTag(FGameplayTag::RequestGameplayTag("Ability.Player.DirBasicAttack"));
 
     ActivationOwnedTags.AddTag(FGameplayTag::RequestGameplayTag("Ability.Player.DirBasicAttack"));
@@ -115,4 +123,206 @@ void UGA_NormalAttack_Click::ApplyCooldown(
             ASC->ApplyGameplayEffectSpecToSelf(GESpec);
         }
     }
+}
+
+void UGA_NormalAttack_Click::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data)
+{
+    // 缓存一次目标数据（Actor 或 位置）
+    CachedTargetActor = nullptr;
+    CachedTargetLocation = FVector::ZeroVector;
+
+    if (Data.Num() > 0 && Data.Data[0].IsValid())
+    {
+        const TSharedPtr<FGameplayAbilityTargetData> D = Data.Data[0];
+        if (D->HasHitResult() && D->GetHitResult())
+        {
+            CachedTargetLocation = D->GetHitResult()->Location;
+            if (AActor* HRActor = D->GetHitResult()->GetActor())
+            {
+                CachedTargetActor = HRActor;
+            }
+        }
+        else if (D->GetActors().Num() > 0 && D->GetActors()[0].IsValid())
+        {
+            CachedTargetActor = D->GetActors()[0].Get();
+            if (CachedTargetActor.IsValid())
+            {
+                CachedTargetLocation = CachedTargetActor->GetActorLocation();
+            }
+        }
+    }
+
+    // 交回基类，继续原有流程（会调用 OtherCheckBeforeCommit → Commit/移动任务）
+    Super::OnTargetDataReady(Data);
+}
+
+static float CalcEffectiveAcceptanceRadius(ACharacter* SelfChar, AActor* TargetActor, float SkillRange)
+{
+    float SelfCapsuleR = 0.f;
+    if (SelfChar && SelfChar->GetCapsuleComponent())
+    {
+        SelfCapsuleR = SelfChar->GetCapsuleComponent()->GetScaledCapsuleRadius();
+    }
+    float TargetCapsuleR = 0.f;
+    if (ACharacter* TargetChar = Cast<ACharacter>(TargetActor))
+    {
+        if (TargetChar->GetCapsuleComponent())
+        {
+            TargetCapsuleR = TargetChar->GetCapsuleComponent()->GetScaledCapsuleRadius();
+        }
+    }
+    const float Buffer = 10.f;
+    return SkillRange + SelfCapsuleR + TargetCapsuleR + Buffer;
+}
+
+bool UGA_NormalAttack_Click::OtherCheckBeforeCommit()
+{
+    // 解析当前数据（若缺失则尝试用缓存推断）
+    AActor* TargetActor = nullptr;
+    FVector TargetLocation = FVector::ZeroVector;
+
+    const FGameplayAbilityTargetData* Data = CurrentTargetDataHandle.Get(0);
+    if (Data)
+    {
+        if (const FGameplayAbilityTargetData_SingleTargetHit* HR = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(
+                Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()) ? Data : nullptr))
+        {
+            if (HR->GetHitResult())
+            {
+                TargetLocation = HR->GetHitResult()->Location;
+                TargetActor = HR->GetHitResult()->GetActor();
+            }
+        }
+        else if (const FGameplayAbilityTargetData_ActorArray* AA = static_cast<const FGameplayAbilityTargetData_ActorArray*>(
+                     Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_ActorArray::StaticStruct()) ? Data : nullptr))
+        {
+            if (AA->TargetActorArray.Num() > 0)
+            {
+                TargetActor = AA->TargetActorArray[0].Get();
+                if (TargetActor)
+                {
+                    TargetLocation = TargetActor->GetActorLocation();
+                }
+            }
+        }
+    }
+
+    if (!TargetActor && CachedTargetActor.IsValid())
+    {
+        TargetActor = CachedTargetActor.Get();
+    }
+    if (TargetLocation.IsNearlyZero() && !CachedTargetLocation.IsNearlyZero())
+    {
+        TargetLocation = CachedTargetLocation;
+    }
+
+    if (!TargetActor && TargetLocation.IsNearlyZero())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s: 没有有效目标可用于检查。"), *GetName());
+        return false;
+    }
+
+    ACharacter* SelfChar = Cast<ACharacter>(GetAvatarActorFromActorInfo());
+    if (!SelfChar)
+    {
+        return false;
+    }
+
+    const float Distance = FVector::Distance(SelfChar->GetActorLocation(), TargetLocation);
+    const float EffectiveAcceptance = CalcEffectiveAcceptanceRadius(SelfChar, TargetActor, RangeToApply);
+    if (Distance > EffectiveAcceptance)
+    {
+        const bool bIsServer = SelfChar->HasAuthority();
+        const bool bIsLocallyControlled = GetCurrentActorInfo() && GetCurrentActorInfo()->IsLocallyControlled();
+
+        auto ThisAbility = const_cast<UGameplayAbility*>(static_cast<const UGameplayAbility*>(this));
+        if (TargetActor)
+        {
+            if (bIsServer)
+            {
+                if (auto* MoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToActor(ThisAbility, TargetActor, EffectiveAcceptance))
+                {
+                    MoveTask->OnMoveFinished.AddDynamic(this, &UGA_NormalAttack_Click::OnReachedTarget);
+                    MoveTask->OnMoveFailed.AddDynamic(this, &UGA_NormalAttack_Click::OnFailedToTarget);
+                    MoveTask->ReadyForActivation();
+                }
+            }
+            if (!bIsServer && bIsLocallyControlled)
+            {
+                if (auto* ClientMoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToActor(ThisAbility, TargetActor, EffectiveAcceptance))
+                {
+                    ClientMoveTask->OnMoveFinished.AddDynamic(this, &UGA_NormalAttack_Click::OnReachedTarget);
+                    ClientMoveTask->OnMoveFailed.AddDynamic(this, &UGA_NormalAttack_Click::OnFailedToTarget);
+                    ClientMoveTask->ReadyForActivation();
+                }
+            }
+        }
+        else
+        {
+            if (bIsServer)
+            {
+                if (auto* MoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToLocation(ThisAbility, TargetLocation, EffectiveAcceptance))
+                {
+                    MoveTask->OnMoveFinished.AddDynamic(this, &UGA_NormalAttack_Click::OnReachedTarget);
+                    MoveTask->OnMoveFailed.AddDynamic(this, &UGA_NormalAttack_Click::OnFailedToTarget);
+                    MoveTask->ReadyForActivation();
+                }
+            }
+            if (!bIsServer && bIsLocallyControlled)
+            {
+                if (auto* ClientMoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToLocation(ThisAbility, TargetLocation, EffectiveAcceptance))
+                {
+                    ClientMoveTask->OnMoveFinished.AddDynamic(this, &UGA_NormalAttack_Click::OnReachedTarget);
+                    ClientMoveTask->OnMoveFailed.AddDynamic(this, &UGA_NormalAttack_Click::OnFailedToTarget);
+                    ClientMoveTask->ReadyForActivation();
+                }
+            }
+        }
+
+        return false;
+    }
+
+    return true;
+}
+
+void UGA_NormalAttack_Click::OnReachedTarget()
+{
+    if (!GetAvatarActorFromActorInfo() || !GetAvatarActorFromActorInfo()->HasAuthority()) return;
+    // 如果当前 TargetData 在移动过程中丢失，这里用缓存重建
+    if (!CurrentTargetDataHandle.IsValid(0))
+    {
+        FGameplayAbilityTargetDataHandle Rebuilt;
+        if (CachedTargetActor.IsValid())
+        {
+            FGameplayAbilityTargetData_ActorArray* Arr = new FGameplayAbilityTargetData_ActorArray();
+            Arr->TargetActorArray.Add(CachedTargetActor);
+            Rebuilt.Add(Arr);
+        }
+        else if (!CachedTargetLocation.IsNearlyZero())
+        {
+            FHitResult HR;
+            HR.Location = CachedTargetLocation;
+            FGameplayAbilityTargetData_SingleTargetHit* HitData = new FGameplayAbilityTargetData_SingleTargetHit(HR);
+            Rebuilt.Add(HitData);
+        }
+        if (Rebuilt.Num() > 0)
+        {
+            CurrentTargetDataHandle = Rebuilt;
+        }
+    }
+
+    // 若仍无有效目标数据，则按失败处理
+    if (!CurrentTargetDataHandle.IsValid(0))
+    {
+        UGA_TargetedAbility::OnFailedToTarget();
+        return;
+    }
+    // 继续基类：提交与执行
+    Super::OnReachedTarget();
+}
+
+void UGA_NormalAttack_Click::OnFailedToTarget()
+{
+    // 失败沿用父类的取消逻辑
+    UGA_TargetedAbility::OnFailedToTarget();
 }

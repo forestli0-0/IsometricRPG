@@ -163,18 +163,15 @@ void UGA_SettUltimate::StartGrabPhase()
 
 	if (GrabMontage && CasterCharacter.IsValid())
 	{
-		const bool bIsAuthority = (GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority());
-		if (bIsAuthority)
+		// 使用 GAS 的蒙太奇任务，确保拥有者客户端也能本地播放并与服务器同步
+		UAbilityTask_PlayMontageAndWait* GrabMontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
+			this,
+			NAME_None,
+			GrabMontage,
+			1.0f);
+		if (GrabMontageTask)
 		{
-			CasterCharacter->PlayAnimMontage(GrabMontage, 1.0f);
-			CasterCharacter->ForceNetUpdate();
-		}
-		if (AController* Ctrl = CasterCharacter->GetController())
-		{
-			if (Ctrl->IsLocalController())
-			{
-				CasterCharacter->PlayAnimMontage(GrabMontage, 1.0f);
-	}
+			GrabMontageTask->ReadyForActivation();
 		}
 	}
 
@@ -303,50 +300,24 @@ void UGA_SettUltimate::StartJumpPhase()
 	auto Rate = FMath::Max(JumpMontage ? (JumpMontage->GetPlayLength() / JumpUpDuration) : 1.f, 1.f);
 	if (JumpMontage && CasterCharacter.IsValid())
 	{
-		const bool bIsAuthorityJM = (GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority());
-		if (bIsAuthorityJM)
-		{
-			CasterCharacter->PlayAnimMontage(JumpMontage, Rate);
-			CasterCharacter->ForceNetUpdate();
-		}
-		if (AController* Ctrl = CasterCharacter->GetController())
-		{
-			if (Ctrl->IsLocalController())
-			{
-				CasterCharacter->PlayAnimMontage(JumpMontage, Rate);
+
+		UAbilityTask_PlayMontageAndWait* JumpMontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
+			this,
+			NAME_None,
+			JumpMontage,
+			Rate);
+
+		if (JumpMontageTask)
+                {
+			// 在服务端打印
+			if (GetAvatarActorFromActorInfo() && !(GetAvatarActorFromActorInfo()->HasAuthority()))
+                {
+				GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, TEXT("UGA_SettUltimate: Playing JumpMontage"));
+	}
+			JumpMontageTask->ReadyForActivation();
 			}
 		}
-	}
 
-	// 让本地控制的客户端也播放跳跃蒙太奇并锁住移动，避免仍在“行走”状态导致的卡顿和错姿
-	if (CasterCharacter.IsValid())
-	{
-		if (AController* Ctrl = CasterCharacter->GetController())
-		{
-			if (Ctrl->IsLocalController())
-			{
-				const bool bIsAuthority = (GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority());
-
-                if (CasterCharacter.IsValid() && bIsAuthority)
-                {
-                    auto* CMC = CasterCharacter->GetCharacterMovement();
-                    CasterOriginalMode = CMC->MovementMode;
-                    CMC->SetMovementMode(EMovementMode::MOVE_None);
-                    // --- 【核心修改 3】 ---
-                    // 保存原始的旋转设置，然后禁用它们，从而完全接管旋转控制权。
-                    bOriginalOrientRotationToMovement = CMC->bOrientRotationToMovement;
-                    bOriginalUseControllerDesiredRotation = CMC->bUseControllerDesiredRotation;
-                    CMC->bOrientRotationToMovement = false;
-                    CMC->bUseControllerDesiredRotation = false;
-                }
-                // 修正方式：ACharacter 没有 PlayMontage，正确用法是 PlayAnimMontage
-                if (CasterCharacter.IsValid())
-                {
-				CasterCharacter->PlayAnimMontage(JumpMontage, Rate);
-	}
-			}
-		}
-	}
 
 	PlayJumpEffects(JumpStartLocation, TargetLandingLocation);
 
@@ -355,7 +326,6 @@ void UGA_SettUltimate::StartJumpPhase()
 		UGameplayStatics::PlaySoundAtLocation(GetWorld(), JumpSound, Caster->GetActorLocation());
 	}
 
-	// 注意：AOE 预警圈改为在落地阶段生成，不在起跳阶段生成
 
 	float TotalJumpDuration = JumpUpDuration;
 
@@ -444,18 +414,14 @@ void UGA_SettUltimate::StartLandingPhase()
 	// 播放落地动画（用 AbilityTask 驱动施法者）
 	if (LandingMontage && CasterCharacter.IsValid())
 	{
-		const bool bIsAuthorityLM = (GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority());
-		if (bIsAuthorityLM)
+		UAbilityTask_PlayMontageAndWait* LandingMontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
+			this,
+			NAME_None,
+			LandingMontage,
+			1.0f);
+		if (LandingMontageTask)
 		{
-			CasterCharacter->PlayAnimMontage(LandingMontage, 1.0f);
-			CasterCharacter->ForceNetUpdate();
-		}
-		if (AController* Ctrl = CasterCharacter->GetController())
-		{
-			if (Ctrl->IsLocalController())
-			{
-				CasterCharacter->PlayAnimMontage(LandingMontage, 1.0f);
-			}
+			LandingMontageTask->ReadyForActivation();
 		}
 	}
 

@@ -77,4 +77,12 @@ public:
 private:
 	int SlotIndex = 0; // 用于跟踪当前技能槽的索引
     void OnAssetsLoadedForUI();
+
+    // --- Slot/Index 映射与工具 ---
+    // 有些默认技能（如基础攻击/被动）可能不在技能栏显示，但仍需授予。
+    // 约定：
+    // - ESkillSlot::Invalid 表示“不在技能栏”，但允许授予（仅不占用栏位）。
+    // - ESkillSlot::MAX 仅作枚举边界哨兵，永远不参与逻辑。
+    int32 GetSkillBarSlotCount() const;                    // 技能栏槽位数量（不包含 Invalid / MAX）
+    int32 IndexFromSlot(ESkillSlot Slot) const;            // 将枚举槽转换为0基索引；非栏位返回 INDEX_NONE
 };

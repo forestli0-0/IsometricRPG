@@ -110,14 +110,16 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit()
                 }
             }
 
-            // 本地控制的客户端：也创建一个镜像任务用于本地预测和平滑动画；事件回调不做提交
+        // 本地控制的客户端：也创建一个镜像任务用于本地预测和平滑动画；
+        // 注意：客户端也绑定完成/失败回调，用于在到达时本地播放动画与进入技能阶段（不做提交/结算）。
             if (!bIsServer && bIsLocallyControlled)
             {
                 auto ThisAbility = const_cast<UGameplayAbility*>(static_cast<const UGameplayAbility*>(this));
                 UAbilityTask_WaitMoveToLocation* ClientMoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToActor(ThisAbility, TargetActor, RangeToApply);
                 if (ClientMoveTask)
                 {
-                    // 不绑定 OnReachedTarget；客户端上的 OnReachedTarget 会被忽略（函数里有 HasAuthority 判断）
+            ClientMoveTask->OnMoveFinished.AddDynamic(this, &UGA_TargetedAbility::OnReachedTarget);
+            ClientMoveTask->OnMoveFailed.AddDynamic(this, &UGA_TargetedAbility::OnFailedToTarget);
                     ClientMoveTask->ReadyForActivation();
                     UE_LOG(LogTemp, Verbose, TEXT("%s: Client mirror WaitMoveToActor started for prediction (Acceptance=%.1f)."), *GetName(), RangeToApply);
                 }
@@ -134,18 +136,17 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit()
     {
         return true;
     }
+    
 }
 
 void UGA_TargetedAbility::OnReachedTarget()
 {
-    // 仅服务器在到达时提交并执行；客户端忽略，等待复制
+    // 服务器负责提交与最终结算；客户端负责本地表现与阶段进入
     const AActor* Avatar = GetAvatarActorFromActorInfo();
-    if (!(Avatar && Avatar->HasAuthority()))
-    {
-        UE_LOG(LogTemp, Verbose, TEXT("%s: OnReachedTarget (client) ignored."), *GetName());
-        return;
-    }
+    const bool bIsServer = (Avatar && Avatar->HasAuthority());
      
+    if (bIsServer)
+    {
 	// 因为已经移动到目标位置，此时主函数已经结束，在这里继续执行后续逻辑
     if (!CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo))
     {
@@ -153,11 +154,12 @@ void UGA_TargetedAbility::OnReachedTarget()
         EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
         return;
     }
+    }
 
-    // 播放技能动画 (如果有)
+    // 无论服务端还是拥有者客户端，均进入技能阶段：
+    // - 服务端：继续推进阶段并进行权威位移/伤害
+    // - 客户端：仅播放蒙太奇/特效与本地阶段表现（权威逻辑在服务端）
     PlayAbilityMontage(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo);
-
-    // 执行技能逻辑
     ExecuteSkill(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo);
 }
 void UGA_TargetedAbility::OnFailedToTarget()

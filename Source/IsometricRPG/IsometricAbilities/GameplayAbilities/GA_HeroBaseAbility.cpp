@@ -79,7 +79,7 @@ void UGA_HeroBaseAbility::ActivateAbility(
         const FGameplayAbilityTargetData* Data = CurrentTargetDataHandle.Get(0);
         bool bSuccessfullyFoundTarget = false;
         // 情况一：目标是 Actor
-        if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_ActorArray::StaticStruct()))
+        if (Data && Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_ActorArray::StaticStruct()))
         {
             const auto* ActorArrayData = static_cast<const FGameplayAbilityTargetData_ActorArray*>(Data);
             if (ActorArrayData && ActorArrayData->TargetActorArray.Num() > 0)
@@ -92,7 +92,7 @@ void UGA_HeroBaseAbility::ActivateAbility(
             }
         }
         // 情况二：目标是射线检测点
-        else if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
+        else if (Data && Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
         {
             const auto* HitResultData = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(Data);
             if (HitResultData && HitResultData->GetHitResult())

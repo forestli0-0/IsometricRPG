@@ -21,52 +21,17 @@ void UIsometricInputComponent::BeginPlay()
 {
     Super::BeginPlay();
     OwnerCharacter = Cast<AIsometricRPGCharacter>(GetOwner());
-    if (OwnerCharacter)
-    {
-        OwnerASC = OwnerCharacter->GetAbilitySystemComponent();
-
-        CachedPlayerController = Cast<APlayerController>(OwnerCharacter->GetController()); 
-        if (!CachedPlayerController)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("UIsometricInputComponent: CachedPlayerController is null in BeginPlay. Input binding might fail or be delayed."));
-            return;
-        }
-        UInputComponent* PCInputComponent = CachedPlayerController->InputComponent;
-        if (!PCInputComponent)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("UIsometricInputComponent: PlayerController's InputComponent is null in BeginPlay. GAS Input Binding cannot occur yet."));
-            return;
-        }
-        // 获取 UEnum*
-        UEnum* EnumBinds = StaticEnum<EAbilityInputID>();
-        if (!EnumBinds)
-        {
-            UE_LOG(LogTemp, Error, TEXT("UIsometricInputComponent: StaticEnum<EAbilityInputID>() failed. Ensure EAbilityInputID is correctly defined in a header and UHT has run."));
-            return;
-        }
-        FTopLevelAssetPath EnumPath = FTopLevelAssetPath(TEXT("/Script/IsometricRPG.EAbilityInputID"));
-        FString ConfirmCommand = TEXT("");
-        FString CancelCommand = TEXT("");
-        FGameplayAbilityInputBinds BindInfo(
-            ConfirmCommand,      // 项目输入设置中用于“确认”的 Action Mapping 名称
-            CancelCommand,       // 项目输入设置中用于“取消”的 Action Mapping 名称
-            EnumPath,
-            (int32)EAbilityInputID::Confirm, // 对应枚举中的 Confirm
-            (int32)EAbilityInputID::Cancel   // 对应枚举中的 Cancel
-        );
-        OwnerASC->BindAbilityActivationToInputComponent(CachedPlayerController->InputComponent, BindInfo);
-    }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("UIsometricInputComponent owned by non-AIsometricRPGCharacter or null owner."));
-    }
-
 }
 
 
 void UIsometricInputComponent::HandleLeftClick(const FHitResult& HitResult)
 {
-    if (!OwnerCharacter || !OwnerASC) return; // CachedPlayerController no longer needed for HitResult
+    if (!OwnerCharacter) return;
+    if (!OwnerASC) // ASC 可能尚未复制到客户端，允许照常进行选取逻辑，只是无法发送 Confirm 输入
+    {
+        OwnerASC = OwnerCharacter->GetAbilitySystemComponent();
+        if (OwnerASC == nullptr) return;
+    }
 
     SendConfirmTargetInput();
 
@@ -86,17 +51,23 @@ void UIsometricInputComponent::HandleLeftClick(const FHitResult& HitResult)
 
 void UIsometricInputComponent::HandleRightClickTriggered(const FHitResult& HitResult, TWeakObjectPtr<AActor> LastHitActor)
 {
-    if (!OwnerCharacter || !OwnerASC) return;
+    if (!OwnerCharacter) return; // 允许在 ASC 未就绪前移动
+    if (!OwnerASC)
+    {
+        OwnerASC = OwnerCharacter->GetAbilitySystemComponent();
+        if (OwnerASC == nullptr) return;
+    }
 
     // 总是取消上一次的目标选择状态
     SendCancelTargetInput(); 
 
     AActor* CurrentHitActor = HitResult.GetActor();
-
     // 判断当前鼠标下的目标
     if (CurrentHitActor && CurrentHitActor != OwnerCharacter && CurrentHitActor->ActorHasTag(FName("Enemy"))) 
+    //if (CurrentHitActor && CurrentHitActor != OwnerCharacter)
     {
         // 如果当前目标是敌人，则请求攻击
+        OwnerCharacter->SetAbilityTargetDataByHit(HitResult);
         RequestBasicAttack(CurrentHitActor);
     }
     else if (HitResult.bBlockingHit)    
@@ -114,7 +85,7 @@ void UIsometricInputComponent::HandleSkillInput(EAbilityInputID InputID, const F
     if (!OwnerASC) return;
 
     // 先在本地缓存，再RPC同步给服务器，确保服务器拿到同一份目标数据
-    OwnerCharacter->SetAbilityTargetData(TargetData);
+    OwnerCharacter->SetAbilityTargetDataByHit(TargetData);
     if (OwnerCharacter->GetLocalRole() < ROLE_Authority)
     {
         OwnerCharacter->Server_SetAbilityTargetDataByHit(TargetData);
@@ -204,7 +175,7 @@ void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor)
         Server_RequestBasicAttack(TargetActor);
         return;
     }
-    OwnerCharacter->SetAbilityTargetData(TargetActor);
+    OwnerCharacter->SetAbilityTargetDataByActor(TargetActor);
     if (OwnerCharacter->GetLocalRole() < ROLE_Authority)
     {
         OwnerCharacter->Server_SetAbilityTargetDataByActor(TargetActor);

@@ -8,6 +8,7 @@
 #include "Animation/ABP_MyCharacterAnimInstance.h"
 #include "Character/IsometricRPGAttributeSetBase.h"
 #include "ExperienceOrb.h"
+#include <Character/IsometricRPGCharacter.h>
 UGA_Death::UGA_Death()
 {
     // 设定为立即生效的技能
@@ -103,11 +104,11 @@ void UGA_Death::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const F
             if (AnimInstance)
             {
                 // 尝试将通用的 AnimInstance 转换为你的特定动画蓝图类
-                auto CharacterAnimBP = Cast<UABP_MyCharacterAnimInstance>(AnimInstance);
-                if (CharacterAnimBP)
+                auto MyCharacter = Cast<AIsometricRPGCharacter>(Character);
+                if (MyCharacter)
                 {
-                    CharacterAnimBP->SetIsDead(true); // 通过函数设置死亡标志
-                    Character->SetLifeSpan(3.f);
+                    MyCharacter->SetIsDead(true); // 通过函数设置死亡标志
+                    MyCharacter->SetLifeSpan(3.f);
                 }
                 else
                 {

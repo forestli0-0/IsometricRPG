@@ -12,6 +12,7 @@
 #include "TimerManager.h"
 #include "Engine/AssetManager.h"
 #include "IsometricAbilities/GameplayAbilities/GA_HeroBaseAbility.h"
+#include "IsometricRPGCharacter.h"
 
 AIsoPlayerState::AIsoPlayerState()
 {
@@ -35,6 +36,45 @@ void AIsoPlayerState::BeginPlay()
         InitializeAttributes(); // 先初始化属性
         InitAbilities(); // 再初始化技能
     }
+    if (AbilitySystemComponent)
+    {
+        UE_LOG(LogTemp, Log, TEXT("UIsometricInputComponent: OwnerCharacter and OwnerASC cached in BeginPlay."));
+        // 绑定输入
+        auto CachedPlayerController = Cast<APlayerController>(GetOwningController());
+        if (!CachedPlayerController)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("UIsometricInputComponent: CachedPlayerController is null in BeginPlay. Input binding might fail or be delayed."));
+            return;
+        }
+        UInputComponent* PCInputComponent = CachedPlayerController->InputComponent;
+        if (!PCInputComponent)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("UIsometricInputComponent: PlayerController's InputComponent is null in BeginPlay. GAS Input Binding cannot occur yet."));
+            return;
+        }
+        // 获取 UEnum*
+        UEnum* EnumBinds = StaticEnum<EAbilityInputID>();
+        if (!EnumBinds)
+        {
+            UE_LOG(LogTemp, Error, TEXT("UIsometricInputComponent: StaticEnum<EAbilityInputID>() failed. Ensure EAbilityInputID is correctly defined in a header and UHT has run."));
+            return;
+        }
+        FTopLevelAssetPath EnumPath = FTopLevelAssetPath(TEXT("/Script/IsometricRPG.EAbilityInputID"));
+        FString ConfirmCommand = TEXT("");
+        FString CancelCommand = TEXT("");
+        FGameplayAbilityInputBinds BindInfo(
+            ConfirmCommand,      // 项目输入设置中用于“确认”的 Action Mapping 名称
+            CancelCommand,       // 项目输入设置中用于“取消”的 Action Mapping 名称
+            EnumPath,
+            (int32)EAbilityInputID::Confirm, // 对应枚举中的 Confirm
+            (int32)EAbilityInputID::Cancel   // 对应枚举中的 Cancel
+        );
+        AbilitySystemComponent->BindAbilityActivationToInputComponent(CachedPlayerController->InputComponent, BindInfo);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("UIsometricInputComponent owned by non-AIsometricRPGCharacter or null owner."));
+    }
 }
 
 void AIsoPlayerState::InitializeAttributes()
@@ -57,22 +97,45 @@ UAbilitySystemComponent* AIsoPlayerState::GetAbilitySystemComponent() const
     return AbilitySystemComponent;
 }
 
+int32 AIsoPlayerState::GetSkillBarSlotCount() const
+{
+    // 显示在技能栏的真实槽位：Passive, Q, W, E, R, D, F -> 7 个
+    return 7;
+}
+
+int32 AIsoPlayerState::IndexFromSlot(ESkillSlot Slot) const
+{
+    // 将枚举槽位转换为 0 基索引，仅对真实技能栏槽位有效
+    switch (Slot)
+    {
+    case ESkillSlot::Skill_Passive: return 0;
+    case ESkillSlot::Skill_Q:       return 1;
+    case ESkillSlot::Skill_W:       return 2;
+    case ESkillSlot::Skill_E:       return 3;
+    case ESkillSlot::Skill_R:       return 4;
+    case ESkillSlot::Skill_D:       return 5;
+    case ESkillSlot::Skill_F:       return 6;
+    default:                        return INDEX_NONE; // Invalid 或 MAX
+    }
+}
+
 FEquippedAbilityInfo AIsoPlayerState::GetEquippedAbilityInfo(ESkillSlot Slot) const
 {
-    if (EquippedAbilities.IsValidIndex(static_cast<int32>(Slot)))
-    {
-        return EquippedAbilities[static_cast<int32>(Slot)];
-    }
+    const int32 Index = IndexFromSlot(Slot);
+    if (EquippedAbilities.IsValidIndex(Index))
+        return EquippedAbilities[Index];
     return FEquippedAbilityInfo();
 }
 
 void AIsoPlayerState::Server_EquipAbilityToSlot_Implementation(TSubclassOf<UGameplayAbility> NewAbilityClass, ESkillSlot Slot)
 {
-    if (!NewAbilityClass || Slot == ESkillSlot::Invalid)
+    if (!NewAbilityClass || Slot == ESkillSlot::Invalid || Slot == ESkillSlot::MAX)
         return;
-    if (!EquippedAbilities.IsValidIndex(static_cast<int32>(Slot)))
-        EquippedAbilities.SetNum(static_cast<int32>(ESkillSlot::Invalid));
-    FEquippedAbilityInfo& Info = EquippedAbilities[static_cast<int32>(Slot)];
+    const int32 Index = IndexFromSlot(Slot);
+    if (Index == INDEX_NONE) return;
+    if (!EquippedAbilities.IsValidIndex(Index))
+        EquippedAbilities.SetNum(GetSkillBarSlotCount());
+    FEquippedAbilityInfo& Info = EquippedAbilities[Index];
     Info.AbilityClass = NewAbilityClass;
     Info.Slot = Slot;
     GrantAbilityInternal(Info, true);
@@ -83,9 +146,10 @@ void AIsoPlayerState::Server_EquipAbilityToSlot_Implementation(TSubclassOf<UGame
 
 void AIsoPlayerState::Server_UnequipAbilityFromSlot_Implementation(ESkillSlot Slot)
 {
-    if (!EquippedAbilities.IsValidIndex(static_cast<int32>(Slot)))
+    const int32 Index = IndexFromSlot(Slot);
+    if (!EquippedAbilities.IsValidIndex(Index))
         return;
-    FEquippedAbilityInfo& Info = EquippedAbilities[static_cast<int32>(Slot)];
+    FEquippedAbilityInfo& Info = EquippedAbilities[Index];
     ClearAbilityInternal(Info);
     Info = FEquippedAbilityInfo();
     OnRep_EquippedAbilities();
@@ -168,12 +232,26 @@ void AIsoPlayerState::InitAbilities()
     if (GetLocalRole() != ROLE_Authority || !AbilitySystemComponent || DefaultAbilities.Num() == 0 || bAbilitiesInitialized)
         return;
     EquippedAbilities.Empty();
-	EquippedAbilities.SetNum(static_cast<int32>(ESkillSlot::Skill_F)); // 这里技能槽数量暂时是F键，也就是7个技能槽
+    EquippedAbilities.SetNum(GetSkillBarSlotCount());
+
     for (const FEquippedAbilityInfo& AbilityInfo : DefaultAbilities)
     {
-        if (AbilityInfo.AbilityClass && AbilityInfo.Slot != ESkillSlot::MAX)
+        if (!AbilityInfo.AbilityClass)
+            continue;
+
+        if (AbilityInfo.Slot == ESkillSlot::MAX)
+            continue; // 保护：MAX 永远不应被使用
+
+        const int32 Index = IndexFromSlot(AbilityInfo.Slot);
+        if (Index == INDEX_NONE)
         {
-            FEquippedAbilityInfo& NewEquippedInfo = EquippedAbilities[static_cast<int32>(AbilityInfo.Slot) - 1];
+            // Slot=Invalid：授予但不占用技能栏（如基础攻击/某些被动）
+            FEquippedAbilityInfo TempInfo = AbilityInfo;
+            GrantAbilityInternal(TempInfo, true);
+        }
+        else
+        {
+            FEquippedAbilityInfo& NewEquippedInfo = EquippedAbilities[Index];
             NewEquippedInfo = AbilityInfo;
             GrantAbilityInternal(NewEquippedInfo, true);
         }
