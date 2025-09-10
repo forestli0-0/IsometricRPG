@@ -19,6 +19,26 @@ public:
 	UGA_HeroMeleeAttackAbility();
 	bool hello() const{ return true; }
 protected:
+	// 仅该技能内使用的缓存：跨越移动阶段后重建目标数据
+	UPROPERTY()
+	TWeakObjectPtr<AActor> CachedTargetActor;
+	UPROPERTY()
+	FVector CachedTargetLocation = FVector::ZeroVector;
+
+	// 缓存目标数据并交给父类继续推进
+
+	virtual void OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data) override;
+
+	// 使用“扩展到达半径”与移动任务；不调用父类该检查
+	virtual bool OtherCheckBeforeCommit() override;
+
+	// 到达后若发现当前 TargetData 失效则用缓存重建，再交给父类提交/执行
+
+	void OnReachedTarget();
+
+
+	void OnFailedToTarget();
+
 	// 重写目标型攻击
 	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) override;
 

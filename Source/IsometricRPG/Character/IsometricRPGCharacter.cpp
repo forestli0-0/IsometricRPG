@@ -28,6 +28,7 @@ AIsometricRPGCharacter::AIsometricRPGCharacter()
 	GetCharacterMovement()->bSnapToPlaneAtStart = true;
 
 	TeamId = FGenericTeamId(1);
+    bReplicates = true;
 }
 // 实现GetGenericTeamId函数，直接返回我们的TeamId变量
 FGenericTeamId AIsometricRPGCharacter::GetGenericTeamId() const
@@ -141,6 +142,16 @@ float AIsometricRPGCharacter::GetMaxHealth() const
     }
     return 0.f;
 }
+void AIsometricRPGCharacter::SetIsDead(bool NewValue)
+{
+    bIsDead = NewValue;
+}
+void AIsometricRPGCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+    DOREPLIFETIME(AIsometricRPGCharacter, bIsDead);
+}
 
 void AIsometricRPGCharacter::OnRep_PlayerState()
 {
@@ -159,13 +170,13 @@ void AIsometricRPGCharacter::InitAbilityActorInfo()
     }
 }
 
-void AIsometricRPGCharacter::SetAbilityTargetData(const FHitResult& HitResult)
+void AIsometricRPGCharacter::SetAbilityTargetDataByHit(const FHitResult& HitResult)
 {
     // 将FHitResult打包成GAS可以理解的FGameplayAbilityTargetDataHandle
     StoredTargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(HitResult);
 }
 
-void AIsometricRPGCharacter::SetAbilityTargetData(AActor* TargetActor)
+void AIsometricRPGCharacter::SetAbilityTargetDataByActor(AActor* TargetActor)
 {
     if (TargetActor)
     {
@@ -186,12 +197,12 @@ FGameplayAbilityTargetDataHandle AIsometricRPGCharacter::GetAbilityTargetData() 
 
 void AIsometricRPGCharacter::Server_SetAbilityTargetDataByHit_Implementation(const FHitResult& HitResult)
 {
-    SetAbilityTargetData(HitResult);
+    SetAbilityTargetDataByHit(HitResult);
 }
 
 void AIsometricRPGCharacter::Server_SetAbilityTargetDataByActor_Implementation(AActor* TargetActor)
 {
-    SetAbilityTargetData(TargetActor);
+    SetAbilityTargetDataByActor(TargetActor);
 }
 
 void AIsometricRPGCharacter::Client_PlayMontage_Implementation(UAnimMontage* Montage, float PlayRate)

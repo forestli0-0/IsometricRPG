@@ -52,7 +52,13 @@ public:
     // 初始化技能系统
     virtual void PossessedBy(AController* NewController) override;
 
+    UPROPERTY(BlueprintReadOnly, Replicated, Category = "Character State")
+    bool bIsDead = false;
 
+    UFUNCTION(BlueprintCallable, Category = "Character State")
+    void SetIsDead(bool NewValue);
+
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 protected:
     // 当PlayerState在客户端上被复制时调用
     virtual void OnRep_PlayerState() override;
@@ -76,8 +82,10 @@ public:
 
 public:
     /** 由InputComponent在激活技能前调用，用于暂存目标数据 */
-    void SetAbilityTargetData(const FHitResult& HitResult);
-    void SetAbilityTargetData(AActor* TargetActor);
+    UFUNCTION(BlueprintCallable, meta = (DisplayName = "SetAbilityTargetDataByHit"))
+    void SetAbilityTargetDataByHit(const FHitResult& HitResult);
+    UFUNCTION(BlueprintCallable, meta = (DisplayName = "SetAbilityTargetDataByActor"))
+    void SetAbilityTargetDataByActor(AActor* TargetActor);
 
     /** 同步到服务器：在客户端激活前调用，确保服务器也拿到相同的目标数据 */
     UFUNCTION(Server, Reliable)
@@ -96,5 +104,6 @@ public:
 
 protected:
     /** 技能的目标数据暂存区 */
+    UPROPERTY(Replicated)
     FGameplayAbilityTargetDataHandle StoredTargetData;
 };
