@@ -72,3 +72,11 @@ Plugins/**/Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
+
+Plugins/Puerts
+Typing/
+Content/JavaScript/
+
+enc_temp_folder/
+node_modules/
+ts_file_versions_info.json
