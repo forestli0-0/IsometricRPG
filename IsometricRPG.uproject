@@ -13,7 +13,8 @@
 				"Niagara",
 				"Engine",
 				"CoreUObject",
-				"UMG"
+				"UMG",
+				"AIModule"
 			]
 		}
 	],
