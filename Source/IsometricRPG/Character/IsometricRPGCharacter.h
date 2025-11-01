@@ -52,11 +52,17 @@ public:
     // 初始化技能系统
     virtual void PossessedBy(AController* NewController) override;
 
-    UPROPERTY(BlueprintReadOnly, Replicated, Category = "Character State")
+    UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_IsDead, Category = "Character State")
     bool bIsDead = false;
 
     UFUNCTION(BlueprintCallable, Category = "Character State")
     void SetIsDead(bool NewValue);
+
+    UFUNCTION()
+    void OnRep_IsDead();
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Character State")
+    void OnDeathStateChanged(bool bNewValue);
 
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 protected:
@@ -64,6 +70,7 @@ protected:
     virtual void OnRep_PlayerState() override;
     // 初始化GAS组件的辅助函数
     void InitAbilityActorInfo();
+    void HandleDeathStateChanged();
 public:
     // 输入组件
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Input")
@@ -104,6 +111,6 @@ public:
 
 protected:
     /** 技能的目标数据暂存区 */
-    UPROPERTY(Replicated)
+    UPROPERTY()
     FGameplayAbilityTargetDataHandle StoredTargetData;
 };

@@ -3,6 +3,7 @@
 
 #include "Character/IsometricRPGAttributeSetBase.h"
 #include "GameplayEffectExtension.h"
+#include "GameplayEffectTypes.h"
 #include "IsometricAbilities/GameplayAbilities/Death/GA_Death.h"
 #include "Gameframework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -139,6 +140,11 @@ void UIsometricRPGAttributeSetBase::PostGameplayEffectExecute(const FGameplayEff
                                     SetHealth(GetMaxHealth());
                                     SetMana(GetMaxMana());
                                 }
+                                if (ASC && RowData->SkillPointsAwarded > 0)
+                                {
+                                    ASC->ApplyModToAttribute(GetTotalSkillPointAttribute(), EGameplayModOp::Additive, RowData->SkillPointsAwarded);
+                                    ASC->ApplyModToAttribute(GetUnUsedSkillPointAttribute(), EGameplayModOp::Additive, RowData->SkillPointsAwarded);
+                                }
                             }
                     }
                 }
@@ -149,6 +155,19 @@ void UIsometricRPGAttributeSetBase::PostGameplayEffectExecute(const FGameplayEff
                 OnExperienceChanged.Broadcast(this, GetExperience(), GetExperienceToNextLevel());
             }
         }
+    }
+
+    if (Data.EvaluatedData.Attribute == GetTotalSkillPointAttribute())
+    {
+        SetTotalSkillPoint(FMath::Max(0.f, GetTotalSkillPoint()));
+        OnTotalSkillPointChanged.Broadcast(this, GetTotalSkillPoint());
+    }
+
+    if (Data.EvaluatedData.Attribute == GetUnUsedSkillPointAttribute())
+    {
+        const float ClampedUnused = FMath::Clamp(GetUnUsedSkillPoint(), 0.f, GetTotalSkillPoint());
+        SetUnUsedSkillPoint(ClampedUnused);
+        OnUnUsedSkillPointChanged.Broadcast(this, ClampedUnused);
     }
 }
 
@@ -254,7 +273,16 @@ void UIsometricRPGAttributeSetBase::OnRep_ExperienceToNextLevel(const FGameplayA
     GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, ExperienceToNextLevel, OldValue);
 
 }
-void UIsometricRPGAttributeSetBase::OnRep_TotalSkillPoint(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, TotalSkillPoint, OldValue); }
-void UIsometricRPGAttributeSetBase::OnRep_UnUsedSkillPoint(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, UnUsedSkillPoint, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_TotalSkillPoint(const FGameplayAttributeData& OldValue)
+{
+    GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, TotalSkillPoint, OldValue);
+    OnTotalSkillPointChanged.Broadcast(this, GetTotalSkillPoint());
+}
+
+void UIsometricRPGAttributeSetBase::OnRep_UnUsedSkillPoint(const FGameplayAttributeData& OldValue)
+{
+    GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, UnUsedSkillPoint, OldValue);
+    OnUnUsedSkillPointChanged.Broadcast(this, GetUnUsedSkillPoint());
+}
 
 

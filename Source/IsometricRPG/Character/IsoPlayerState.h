@@ -6,11 +6,17 @@
 #include "GameFramework/PlayerState.h"
 #include "AbilitySystemInterface.h"
 #include "IsometricAbilities/Types/EquippedAbilityInfo.h"
+#include "IsometricAbilities/Types/HeroAbilityTypes.h"
+#include "Inventory/InventoryTypes.h"
+#include "Equipment/EquipmentTypes.h"
 #include "IsoPlayerState.generated.h"
 
 class UAbilitySystemComponent;
 class UIsometricRPGAttributeSetBase;
 class UGameplayAbility;
+class UInventoryComponent;
+class UEquipmentComponent;
+class USkillTreeComponent;
 /**
  * 
  */
@@ -34,6 +40,12 @@ public:
 
     UPROPERTY(VisibleAnywhere, ReplicatedUsing=OnRep_EquippedAbilities, Category = "Abilities")
     TArray<FEquippedAbilityInfo> EquippedAbilities;
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Abilities")
+    void HandleAbilitySlotEquipped(ESkillSlot Slot, const FEquippedAbilityInfo& Info);
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Abilities")
+    void HandleAbilitySlotUnequipped(ESkillSlot Slot, const FEquippedAbilityInfo& Info);
 
     UFUNCTION(BlueprintCallable, Category = "Abilities")
     FEquippedAbilityInfo GetEquippedAbilityInfo(ESkillSlot Slot) const;
@@ -68,6 +80,30 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Attributes")
     TSubclassOf<class UGameplayEffect> DefaultAttributesEffect;
     void InitializeAttributes();
+
+    UFUNCTION(BlueprintPure, Category = "Inventory")
+    UInventoryComponent* GetInventoryComponent() const { return InventoryComponent; }
+
+    UFUNCTION(BlueprintPure, Category = "Equipment")
+    UEquipmentComponent* GetEquipmentComponent() const { return EquipmentComponent; }
+
+    UFUNCTION(BlueprintPure, Category = "Skill Tree")
+    USkillTreeComponent* GetSkillTreeComponent() const { return SkillTreeComponent; }
+
+    UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Inventory")
+    void Server_MoveInventoryItem(int32 FromIndex, int32 ToIndex);
+
+    UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Inventory")
+    void Server_RemoveInventoryItem(int32 InSlotIndex, int32 Quantity = 1);
+
+    UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Inventory")
+    void Server_UseInventoryItem(int32 InSlotIndex);
+
+    UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Equipment")
+    void Server_EquipInventoryItem(int32 InventorySlotIndex, EEquipmentSlot EquipmentSlot);
+
+    UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Equipment")
+    void Server_UnequipItem(EEquipmentSlot EquipmentSlot, bool bReturnToInventory = true);
     
     // UI初始化相关
     bool bUIInitialized = false;
@@ -85,4 +121,22 @@ private:
     // - ESkillSlot::MAX 仅作枚举边界哨兵，永远不参与逻辑。
     int32 GetSkillBarSlotCount() const;                    // 技能栏槽位数量（不包含 Invalid / MAX）
     int32 IndexFromSlot(ESkillSlot Slot) const;            // 将枚举槽转换为0基索引；非栏位返回 INDEX_NONE
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory", meta = (AllowPrivateAccess = "true"))
+    TObjectPtr<UInventoryComponent> InventoryComponent;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment", meta = (AllowPrivateAccess = "true"))
+    TObjectPtr<UEquipmentComponent> EquipmentComponent;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Skill Tree", meta = (AllowPrivateAccess = "true"))
+    TObjectPtr<USkillTreeComponent> SkillTreeComponent;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Inventory", meta = (AllowPrivateAccess = "true"))
+    TArray<FInventoryItemStack> DefaultInventoryItems;
+
+    void InitializeInventory();
+
+    void RefreshInputMappings();
+    static EAbilityInputID TryMapSlotToInputID(ESkillSlot Slot);
+    static FText GetInputHintForSlot(ESkillSlot Slot);
 };

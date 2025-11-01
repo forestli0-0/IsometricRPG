@@ -22,6 +22,7 @@ public:
         , Icon(nullptr)
         , CooldownRemaining(0.f)
         , CooldownDuration(0.f)
+        , InputHint(FText::GetEmpty())
     {
     }
 
@@ -40,5 +41,9 @@ public:
     // 冷却总时长
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     float CooldownDuration;
+
+    // 对应输入提示（可用于 UI 显示快捷键）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    FText InputHint;
 };
 

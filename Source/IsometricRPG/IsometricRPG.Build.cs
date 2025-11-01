@@ -8,14 +8,35 @@ public class IsometricRPG : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-        PublicIncludePaths.AddRange(
-        	new string[] {
-                "IsometricRPG"
-        	}
-    	);
-        PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "GameplayAbilities", "AIModule", "NavigationSystem", "GameplayTags", "AnimationBlueprintLibrary", "GameplayTasks", "AnimGraphRuntime", "UMG" });
+	    PublicIncludePaths.AddRange(
+	    	new string[]
+	    	{
+	            "IsometricRPG"
+	    	}
+		);
 
-		PrivateDependencyModuleNames.AddRange(new string[] {  });
+		PublicDependencyModuleNames.AddRange(new string[]
+		{
+		    "Core",
+		    "CoreUObject",
+		    "Engine",
+		    "InputCore",
+		    "EnhancedInput",
+		    "GameplayAbilities",
+		    "AIModule",
+		    "NavigationSystem",
+		    "GameplayTags",
+		    "AnimationBlueprintLibrary",
+		    "GameplayTasks",
+		    "AnimGraphRuntime",
+		    "UMG"
+		});
+
+		PrivateDependencyModuleNames.AddRange(new string[]
+		{
+		    "Slate",
+		    "SlateCore"
+		});
 
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

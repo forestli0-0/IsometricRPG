@@ -13,6 +13,12 @@
 #include "Engine/AssetManager.h"
 #include "IsometricAbilities/GameplayAbilities/GA_HeroBaseAbility.h"
 #include "IsometricRPGCharacter.h"
+#include "Inventory/InventoryComponent.h"
+#include "Inventory/InventoryItemData.h"
+#include "Equipment/EquipmentComponent.h"
+#include "SkillTree/SkillTreeComponent.h"
+#include "UI/PlayerHUDWidget.h"
+#include "IsometricAbilities/Types/HeroAbilityTypes.h"
 
 AIsoPlayerState::AIsoPlayerState()
 {
@@ -23,6 +29,10 @@ AIsoPlayerState::AIsoPlayerState()
 
     // 创建AttributeSet
     AttributeSet = CreateDefaultSubobject<UIsometricRPGAttributeSetBase>("AttributeSet");
+
+    InventoryComponent = CreateDefaultSubobject<UInventoryComponent>("InventoryComponent");
+    EquipmentComponent = CreateDefaultSubobject<UEquipmentComponent>("EquipmentComponent");
+    SkillTreeComponent = CreateDefaultSubobject<USkillTreeComponent>("SkillTreeComponent");
 
     // 网络更新频率设置，可以根据需要调整
     NetUpdateFrequency = 100.0f;
@@ -35,6 +45,7 @@ void AIsoPlayerState::BeginPlay()
     {
         InitializeAttributes(); // 先初始化属性
         InitAbilities(); // 再初始化技能
+        InitializeInventory();
     }
     if (AbilitySystemComponent)
     {
@@ -135,10 +146,20 @@ void AIsoPlayerState::Server_EquipAbilityToSlot_Implementation(TSubclassOf<UGame
     if (Index == INDEX_NONE) return;
     if (!EquippedAbilities.IsValidIndex(Index))
         EquippedAbilities.SetNum(GetSkillBarSlotCount());
-    FEquippedAbilityInfo& Info = EquippedAbilities[Index];
+        FEquippedAbilityInfo& Info = EquippedAbilities[Index];
+        FEquippedAbilityInfo PreviousInfo = Info;
     Info.AbilityClass = NewAbilityClass;
     Info.Slot = Slot;
     GrantAbilityInternal(Info, true);
+        if (PreviousInfo.AbilityClass != Info.AbilityClass && !PreviousInfo.AbilityClass.IsNull())
+        {
+            HandleAbilitySlotUnequipped(PreviousInfo.Slot, PreviousInfo);
+        }
+        if (Info.Slot != ESkillSlot::Invalid && Info.Slot != ESkillSlot::MAX)
+        {
+            HandleAbilitySlotEquipped(Info.Slot, Info);
+        }
+    RefreshInputMappings();
     //FTimerHandle InitialDelayHandle;
     //GetWorld()->GetTimerManager().SetTimer(InitialDelayHandle, this, &AIsoPlayerState::OnRep_EquippedAbilities, 3.0f, false);
     //OnRep_EquippedAbilities();
@@ -149,10 +170,16 @@ void AIsoPlayerState::Server_UnequipAbilityFromSlot_Implementation(ESkillSlot Sl
     const int32 Index = IndexFromSlot(Slot);
     if (!EquippedAbilities.IsValidIndex(Index))
         return;
-    FEquippedAbilityInfo& Info = EquippedAbilities[Index];
-    ClearAbilityInternal(Info);
-    Info = FEquippedAbilityInfo();
+        FEquippedAbilityInfo& Info = EquippedAbilities[Index];
+        const FEquippedAbilityInfo PreviouslyEquipped = Info;
+        ClearAbilityInternal(Info);
+        Info = FEquippedAbilityInfo();
     OnRep_EquippedAbilities();
+        if (PreviouslyEquipped.Slot != ESkillSlot::Invalid && PreviouslyEquipped.Slot != ESkillSlot::MAX)
+        {
+            HandleAbilitySlotUnequipped(PreviouslyEquipped.Slot, PreviouslyEquipped);
+        }
+    RefreshInputMappings();
 }
 
 void AIsoPlayerState::OnRep_EquippedAbilities()
@@ -254,6 +281,10 @@ void AIsoPlayerState::InitAbilities()
             FEquippedAbilityInfo& NewEquippedInfo = EquippedAbilities[Index];
             NewEquippedInfo = AbilityInfo;
             GrantAbilityInternal(NewEquippedInfo, true);
+                if (NewEquippedInfo.Slot != ESkillSlot::Invalid && NewEquippedInfo.Slot != ESkillSlot::MAX)
+                {
+                    HandleAbilitySlotEquipped(NewEquippedInfo.Slot, NewEquippedInfo);
+                }
         }
     }
 
@@ -263,6 +294,7 @@ void AIsoPlayerState::InitAbilities()
     AbilitySystemComponent->TryActivateAbilitiesByTag(PassiveTags);
     
     bAbilitiesInitialized = true;
+    RefreshInputMappings();
 }
 
 
@@ -311,16 +343,44 @@ void AIsoPlayerState::OnAssetsLoadedForUI()
                     SlotData.CooldownRemaining = 0.f;
                 }
 
+                SlotData.InputHint = GetInputHintForSlot(Info.Slot);
+
                 TargetSlot->UpdateSlot(SlotData);
             }
         }
     }
+
+    RefreshInputMappings();
+        for (const FEquippedAbilityInfo& Info : EquippedAbilities)
+        {
+            if (Info.Slot == ESkillSlot::Invalid || Info.Slot == ESkillSlot::MAX)
+            {
+                continue;
+            }
+
+            if (Info.AbilityClass.IsNull())
+            {
+                HandleAbilitySlotUnequipped(Info.Slot, Info);
+            }
+            else
+            {
+                HandleAbilitySlotEquipped(Info.Slot, Info);
+            }
+        }
 }
 
 void AIsoPlayerState::OnUIInitialized()
 {
     bUIInitialized = true;
     UE_LOG(LogTemp, Log, TEXT("UI initialized in PlayerState"));
+
+    if (AIsometricPlayerController* PC = Cast<AIsometricPlayerController>(GetPlayerController()))
+    {
+        if (UPlayerHUDWidget* HUD = Cast<UPlayerHUDWidget>(PC->PlayerHUDInstance))
+        {
+            HUD->InitializePanels(this);
+        }
+    }
     
     // 如果有待处理的UI更新，现在执行
     if (bPendingUIUpdate)
@@ -342,6 +402,8 @@ void AIsoPlayerState::UpdateUIWhenReady()
         UE_LOG(LogTemp, Warning, TEXT("UI still not ready in UpdateUIWhenReady"));
         return;
     }
+
+    HUD->InitializePanels(this);
     
     // 现在可以安全地遍历并更新UI了
     for (int32 i = 0; i < EquippedAbilities.Num(); ++i)
@@ -373,14 +435,156 @@ void AIsoPlayerState::UpdateUIWhenReady()
                     SlotData.CooldownRemaining = 0.f;
                 }
 
+                SlotData.InputHint = GetInputHintForSlot(Info.Slot);
+
                 TargetSlot->UpdateSlot(SlotData);
             }
         }
     }
+
+    RefreshInputMappings();
 }
 
 void AIsoPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
     DOREPLIFETIME(AIsoPlayerState, EquippedAbilities);
+}
+
+void AIsoPlayerState::Server_MoveInventoryItem_Implementation(int32 FromIndex, int32 ToIndex)
+{
+    if (InventoryComponent)
+    {
+        InventoryComponent->MoveItem(FromIndex, ToIndex);
+    }
+}
+
+void AIsoPlayerState::Server_RemoveInventoryItem_Implementation(int32 InSlotIndex, int32 Quantity)
+{
+    if (InventoryComponent)
+    {
+        InventoryComponent->RemoveItemAtIndex(InSlotIndex, Quantity);
+    }
+}
+
+void AIsoPlayerState::Server_UseInventoryItem_Implementation(int32 InSlotIndex)
+{
+    if (InventoryComponent)
+    {
+        InventoryComponent->UseItemAtIndex(InSlotIndex);
+    }
+}
+
+void AIsoPlayerState::Server_EquipInventoryItem_Implementation(int32 InInventorySlotIndex, EEquipmentSlot InEquipmentSlot)
+{
+    if (EquipmentComponent)
+    {
+        EquipmentComponent->EquipItemFromInventory(InInventorySlotIndex, InEquipmentSlot);
+    }
+}
+
+void AIsoPlayerState::Server_UnequipItem_Implementation(EEquipmentSlot InEquipmentSlot, bool bReturnToInventory)
+{
+    if (EquipmentComponent)
+    {
+        EquipmentComponent->UnequipSlot(InEquipmentSlot, bReturnToInventory);
+    }
+}
+
+void AIsoPlayerState::InitializeInventory()
+{
+    if (!InventoryComponent)
+    {
+        return;
+    }
+
+    for (const FInventoryItemStack& Stack : DefaultInventoryItems)
+    {
+        if (Stack.Quantity <= 0 || Stack.ItemData.IsNull())
+        {
+            continue;
+        }
+
+        UInventoryItemData* ItemData = Stack.ItemData.IsValid()
+            ? Stack.ItemData.Get()
+            : Stack.ItemData.LoadSynchronous();
+
+        if (!ItemData)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[IsoPlayerState] Failed to load default inventory item for %s"), *GetName());
+            continue;
+        }
+
+        const int32 Remaining = InventoryComponent->AddItem(ItemData, Stack.Quantity);
+        if (Remaining > 0)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[IsoPlayerState] Not enough space to add default item %s (Remaining=%d)"), *ItemData->GetName(), Remaining);
+        }
+    }
+}
+
+void AIsoPlayerState::RefreshInputMappings()
+{
+    if (!AbilitySystemComponent)
+    {
+        return;
+    }
+
+    for (const FEquippedAbilityInfo& Info : EquippedAbilities)
+    {
+        if (!Info.AbilitySpecHandle.IsValid())
+        {
+            continue;
+        }
+
+        const EAbilityInputID InputID = TryMapSlotToInputID(Info.Slot);
+        if (InputID == EAbilityInputID::None)
+        {
+            continue;
+        }
+
+        FGameplayAbilitySpec* Spec = AbilitySystemComponent->FindAbilitySpecFromHandle(Info.AbilitySpecHandle);
+        if (!Spec)
+        {
+            continue;
+        }
+
+        const int32 DesiredInputID = static_cast<int32>(InputID);
+        if (Spec->InputID != DesiredInputID)
+        {
+            Spec->InputID = DesiredInputID;
+            AbilitySystemComponent->MarkAbilitySpecDirty(*Spec);
+        }
+    }
+}
+
+EAbilityInputID AIsoPlayerState::TryMapSlotToInputID(ESkillSlot Slot)
+{
+    switch (Slot)
+    {
+    case ESkillSlot::Skill_Q: return EAbilityInputID::Ability_Q;
+    case ESkillSlot::Skill_W: return EAbilityInputID::Ability_W;
+    case ESkillSlot::Skill_E: return EAbilityInputID::Ability_E;
+    case ESkillSlot::Skill_R: return EAbilityInputID::Ability_R;
+    case ESkillSlot::Skill_D: return EAbilityInputID::Ability_Summoner1;
+    case ESkillSlot::Skill_F: return EAbilityInputID::Ability_Summoner2;
+    default:
+        return EAbilityInputID::None;
+    }
+}
+
+FText AIsoPlayerState::GetInputHintForSlot(ESkillSlot Slot)
+{
+    switch (Slot)
+    {
+    case ESkillSlot::Skill_Q: return NSLOCTEXT("IsometricRPG", "SkillInput_Q", "Q");
+    case ESkillSlot::Skill_W: return NSLOCTEXT("IsometricRPG", "SkillInput_W", "W");
+    case ESkillSlot::Skill_E: return NSLOCTEXT("IsometricRPG", "SkillInput_E", "E");
+    case ESkillSlot::Skill_R: return NSLOCTEXT("IsometricRPG", "SkillInput_R", "R");
+    case ESkillSlot::Skill_D: return NSLOCTEXT("IsometricRPG", "SkillInput_D", "D");
+    case ESkillSlot::Skill_F: return NSLOCTEXT("IsometricRPG", "SkillInput_F", "F");
+    case ESkillSlot::Skill_Passive: return NSLOCTEXT("IsometricRPG", "SkillInput_Passive", "Passive");
+    default:
+        return FText::GetEmpty();
+    }
 }

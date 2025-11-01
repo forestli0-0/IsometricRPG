@@ -10,6 +10,12 @@
 /**
  * 
  */
+class AIsoPlayerState;
+class UInventoryPanelWidget;
+class UCharacterStatsPanelWidget;
+class USkillTreeWidget;
+class USettingsMenuWidget;
+
 UCLASS()
 class ISOMETRICRPG_API UPlayerHUDWidget : public UUserWidget
 {
@@ -19,4 +25,19 @@ public:
     // 变量名 "SkillBar" 必须和你在WBP_PlayerHUD设计器里给WBP_SkillBar控件起的名字完全一样！
     UPROPERTY(meta = (BindWidget))
     USkillBarWidget* SkillBar;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    UInventoryPanelWidget* InventoryPanel;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    UCharacterStatsPanelWidget* CharacterStatsPanel;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    USkillTreeWidget* SkillTreePanel;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    USettingsMenuWidget* SettingsMenu;
+
+    UFUNCTION(BlueprintCallable, Category = "HUD")
+    void InitializePanels(AIsoPlayerState* PlayerState);
 };

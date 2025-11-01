@@ -19,6 +19,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FManaChangedEvent, UIsometricRPGAtt
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FExperienceChangedEvent, UIsometricRPGAttributeSetBase*, AttributeSet, float, NewExperience, float, NewMaxExperience);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FLevelChangedEvent, UIsometricRPGAttributeSetBase*, AttributeSet, float, NewLevel);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FSkillPointChangedEvent, UIsometricRPGAttributeSetBase*, AttributeSet, float, NewValue);
 /**
 * 
 */
@@ -157,6 +158,12 @@ public:
 	
 	UPROPERTY(BlueprintAssignable)
 	FLevelChangedEvent OnLevelChanged;
+
+	UPROPERTY(BlueprintAssignable)
+	FSkillPointChangedEvent OnTotalSkillPointChanged;
+
+	UPROPERTY(BlueprintAssignable)
+	FSkillPointChangedEvent OnUnUsedSkillPointChanged;
 	//~====================================================================================
 	//~ Overrides
 	//~====================================================================================

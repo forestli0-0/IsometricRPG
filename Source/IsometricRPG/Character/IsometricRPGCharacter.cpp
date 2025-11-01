@@ -12,6 +12,9 @@
 #include "IsometricAbilities/Types/EquippedAbilityInfo.h"
 #include "IsometricRPGAttributeSetBase.h"
 #include <AbilitySystemBlueprintLibrary.h>
+#include "AbilitySystemComponent.h"
+#include "Animation/ABP_MyCharacterAnimInstance.h"
+#include "GameFramework/PlayerController.h"
 // 设置默认值
 AIsometricRPGCharacter::AIsometricRPGCharacter()
 {
@@ -144,13 +147,29 @@ float AIsometricRPGCharacter::GetMaxHealth() const
 }
 void AIsometricRPGCharacter::SetIsDead(bool NewValue)
 {
+    if (GetLocalRole() != ROLE_Authority)
+    {
+        return;
+    }
+
+    if (bIsDead == NewValue)
+    {
+        return;
+    }
+
     bIsDead = NewValue;
+    HandleDeathStateChanged();
 }
 void AIsometricRPGCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
     DOREPLIFETIME(AIsometricRPGCharacter, bIsDead);
+}
+
+void AIsometricRPGCharacter::OnRep_IsDead()
+{
+    HandleDeathStateChanged();
 }
 
 void AIsometricRPGCharacter::OnRep_PlayerState()
@@ -168,6 +187,67 @@ void AIsometricRPGCharacter::InitAbilityActorInfo()
             ASC->InitAbilityActorInfo(PS, this);
         }
     }
+}
+
+void AIsometricRPGCharacter::HandleDeathStateChanged()
+{
+    if (HasAuthority())
+    {
+        if (bIsDead)
+        {
+            if (UAbilitySystemComponent* ASC = GetAbilitySystemComponent())
+            {
+                ASC->CancelAllAbilities();
+            }
+        }
+    }
+
+    if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+    {
+        if (bIsDead)
+        {
+            CMC->StopMovementImmediately();
+            CMC->DisableMovement();
+        }
+        else
+        {
+            if (CMC->MovementMode == MOVE_None)
+            {
+                CMC->SetMovementMode(MOVE_Walking);
+            }
+        }
+    }
+
+    if (Controller)
+    {
+        Controller->SetIgnoreMoveInput(bIsDead);
+        Controller->SetIgnoreLookInput(bIsDead);
+    }
+
+    if (bIsDead)
+    {
+        CurrentAbilityTargets.Empty();
+        SetActorEnableCollision(false);
+    }
+    else
+    {
+        SetActorEnableCollision(true);
+    }
+
+    if (IRPGInputComponent && bIsDead)
+    {
+        IRPGInputComponent->OnTargetClearedForUI();
+    }
+
+    if (USkeletalMeshComponent* MeshComponent = GetMesh())
+    {
+        if (UABP_MyCharacterAnimInstance* AnimInstance = Cast<UABP_MyCharacterAnimInstance>(MeshComponent->GetAnimInstance()))
+        {
+            AnimInstance->SetIsDead(bIsDead);
+        }
+    }
+
+    OnDeathStateChanged(bIsDead);
 }
 
 void AIsometricRPGCharacter::SetAbilityTargetDataByHit(const FHitResult& HitResult)
