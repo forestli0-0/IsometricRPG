@@ -117,3 +117,6 @@ Plugins/**/Content/**/Audio/**
 Plugins/**/Content/**/Sound*/**
 Plugins/**/Content/**/Music/**
 ts_file_versions_info.json
+
+# Project-specific: exclude one oversized asset confirmed as unnecessary
+Content/MyAssets/jj/b7332adcc05b97561c5bbda42b44edec.uasset
