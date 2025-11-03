@@ -6,6 +6,16 @@ Content/**
 !Content/Blueprints/**
 !Content/UI/
 !Content/UI/**
+
+# Node / TypeScript
+node_modules/
+Typing/
+dist/
+out/
+*.tsbuildinfo
+ts_file_versions_info.json
+
+# Optional: editor/OS noise (already present above for .vs/.vscode/Thumbs etc.)
 /Plugins/*/Content/
 /Binaries/
 /DerivedDataCache/
