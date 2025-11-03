@@ -15,6 +15,10 @@ out/
 *.tsbuildinfo
 ts_file_versions_info.json
 
+# Unreal Plugins: 忽略 puerts 插件
+Plugins/Puerts/**
+Plugins/puerts/**
+
 # Optional: editor/OS noise (already present above for .vs/.vscode/Thumbs etc.)
 /Plugins/*/Content/
 /Binaries/
