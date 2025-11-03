@@ -1,4 +1,11 @@
-/Content/
+# Unreal: 默认忽略全部 Content 下的资源，但保留部分白名单（Blueprints、UI 等）
+# 先忽略 Content 下所有内容，再逐级反忽略白名单目录
+Content/**
+!Content/
+!Content/Blueprints/
+!Content/Blueprints/**
+!Content/UI/
+!Content/UI/**
 /Plugins/*/Content/
 /Binaries/
 /DerivedDataCache/
