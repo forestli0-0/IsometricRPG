@@ -79,4 +79,41 @@ Content/JavaScript/
 
 enc_temp_folder/
 node_modules/
+
+# ------------------------------
+# Unreal: prefer code + Blueprints; ignore heavy asset folders
+# ------------------------------
+
+# Levels (maps)
+*.umap
+
+# Heavier asset folders inside Content
+Content/**/Animations/**
+Content/**/Anim*/**
+Content/**/Meshes/**
+Content/**/Mesh*/**
+Content/**/Materials/**
+Content/**/Material*/**
+Content/**/Textures/**
+Content/**/Texture*/**
+Content/**/Audio/**
+Content/**/Sound*/**
+Content/**/Music/**
+
+# Vendor/sample content
+Content/StarterContent/**
+Content/ParagonGideon/**
+
+# Plugins: apply the same heavy-folder exclusions under plugin Content
+Plugins/**/Content/**/Animations/**
+Plugins/**/Content/**/Anim*/**
+Plugins/**/Content/**/Meshes/**
+Plugins/**/Content/**/Mesh*/**
+Plugins/**/Content/**/Materials/**
+Plugins/**/Content/**/Material*/**
+Plugins/**/Content/**/Textures/**
+Plugins/**/Content/**/Texture*/**
+Plugins/**/Content/**/Audio/**
+Plugins/**/Content/**/Sound*/**
+Plugins/**/Content/**/Music/**
 ts_file_versions_info.json
