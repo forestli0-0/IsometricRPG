@@ -3,6 +3,7 @@
 
 #include "AI/BTTask_MeleeAttack.h"
 #include "AIController.h"
+
 UBTTask_MeleeAttack::UBTTask_MeleeAttack()
 {
     // 默认情况下，我们假设任务是脚本驱动的，可能包含异步逻辑。
@@ -14,7 +15,7 @@ UBTTask_MeleeAttack::UBTTask_MeleeAttack()
 
 EBTNodeResult::Type UBTTask_MeleeAttack::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)
 {
-    // 调用脚本层的 ReceiveExecuteAI
+    // 调用脚本层的 ReceiveExecuteAI（来自父类 UBTTask_BlueprintBase 的Blueprint事件）
     ReceiveExecuteAI(OwnerComp.GetAIOwner(), OwnerComp.GetAIOwner() ? OwnerComp.GetAIOwner()->GetPawn() : nullptr);
 
     // 返回InProgress，意味着任务正在执行，等待脚本逻辑调用`FinishExecute`来决定最终结果。
@@ -23,12 +24,15 @@ EBTNodeResult::Type UBTTask_MeleeAttack::ExecuteTask(UBehaviorTreeComponent& Own
 
 void UBTTask_MeleeAttack::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, float DeltaSeconds)
 {
-    // 调用脚本层的 ReceiveTickAI
+    // 调用脚本层的 ReceiveTickAI（来自父类 UBTTask_BlueprintBase 的Blueprint事件）
     ReceiveTickAI(OwnerComp.GetAIOwner(), OwnerComp.GetAIOwner() ? OwnerComp.GetAIOwner()->GetPawn() : nullptr, DeltaSeconds);
 }
 
 void UBTTask_MeleeAttack::OnTaskFinished(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, EBTNodeResult::Type TaskResult)
 {
-    // 调用脚本层的 ReceiveFinishAI，用于处理任务被中断等情况
-    ReceiveFinishAI(OwnerComp.GetAIOwner(), OwnerComp.GetAIOwner() ? OwnerComp.GetAIOwner()->GetPawn() : nullptr, TaskResult);
+    // 若任务被中断，调用脚本层的 ReceiveAbortAI（父类事件）。正常完成则无需调用。
+    if (TaskResult == EBTNodeResult::Aborted)
+    {
+        ReceiveAbortAI(OwnerComp.GetAIOwner(), OwnerComp.GetAIOwner() ? OwnerComp.GetAIOwner()->GetPawn() : nullptr);
+    }
 }
