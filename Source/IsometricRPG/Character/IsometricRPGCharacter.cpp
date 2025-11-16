@@ -166,6 +166,9 @@ void AIsometricRPGCharacter::InitAbilityActorInfo()
         if (UAbilitySystemComponent* ASC = PS->GetAbilitySystemComponent())
         {
             ASC->InitAbilityActorInfo(PS, this);
+            UE_LOG(LogTemp, Log, TEXT("[PassiveDebug][Character] ASC InitAbilityActorInfo on %s (Role=%d Local=%d)"),
+                *GetName(), GetRemoteRole(), GetLocalRole());
+            PS->NotifyAbilityActorInfoReady();
         }
     }
 }

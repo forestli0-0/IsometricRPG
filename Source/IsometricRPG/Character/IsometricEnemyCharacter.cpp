@@ -5,6 +5,8 @@
 AIsometricEnemyCharacter::AIsometricEnemyCharacter()
 {
     AbilitySystemComponent = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
+    AbilitySystemComponent->SetIsReplicated(true);
+    AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
     AttributeSet = CreateDefaultSubobject<UIsometricRPGAttributeSetBase>(TEXT("AttributeSet"));
 }
 
@@ -21,6 +23,11 @@ UIsometricRPGAttributeSetBase* AIsometricEnemyCharacter::GetAttributeSet() const
 void AIsometricEnemyCharacter::BeginPlay()
 {
     Super::BeginPlay();
+
+    if (AbilitySystemComponent)
+    {
+        AbilitySystemComponent->InitAbilityActorInfo(this, this);
+    }
 
     if (HasAuthority())
     {
