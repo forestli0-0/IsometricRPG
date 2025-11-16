@@ -16,7 +16,7 @@ URPGGameplayAbility_Attack::URPGGameplayAbility_Attack()
 	// 设定为立即生效的技能
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 	// 用蓝图路径初始化GE
-	static ConstructorHelpers::FClassFinder<UGameplayEffect> DamageEffectObj(TEXT("/Game/Blueprint/GameEffects/GE_AttackDamage"));
+	static ConstructorHelpers::FClassFinder<UGameplayEffect> DamageEffectObj(TEXT("/Game/Blueprints/GameEffects/GE_AttackDamage"));
 	if (DamageEffectObj.Succeeded())
 	{
 		DamageEffect = DamageEffectObj.Class;
