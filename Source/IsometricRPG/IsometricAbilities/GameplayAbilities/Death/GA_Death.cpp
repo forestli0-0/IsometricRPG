@@ -66,7 +66,7 @@ void UGA_Death::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const F
                         FRotator SpawnRotation = ActorInfo->AvatarActor->GetActorRotation();
 
                         // 动态加载经验球蓝图类
-                        FString OrbBPPath = TEXT("/Game/Blueprint/BP_ExperienceOrb.BP_ExperienceOrb_C");
+                        FString OrbBPPath = TEXT("/Game/Blueprints/Prefab/BP_ExperienceOrb.BP_ExperienceOrb_C");
                         TSubclassOf<AExperienceOrb> OrbClass = Cast<UClass>(StaticLoadObject(UClass::StaticClass(), nullptr, *OrbBPPath));
 
                         if (OrbClass)
