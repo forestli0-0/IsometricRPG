@@ -5,6 +5,7 @@
 #include "IsometricRPG/Character/IsometricRPGAttributeSetBase.h"
 #include "IsometricRPG/Player/IsometricPlayerController.h"
 #include "IsometricAbilities/Types/EquippedAbilityInfo.h"
+#include "GameplayTagContainer.h"
 #include "GameplayAbilitySpec.h"
 #include "Net/UnrealNetwork.h"
 #include "GameplayEffect.h"
@@ -13,7 +14,8 @@
 #include "Engine/AssetManager.h"
 #include "IsometricAbilities/GameplayAbilities/GA_HeroBaseAbility.h"
 #include "IsometricRPGCharacter.h"
-
+#include "UI/HUD/HUDRootWidget.h"
+#include "UI/SkillLoadout/HUDSkillSlotWidget.h"
 AIsoPlayerState::AIsoPlayerState()
 {
     // 创建ASC
@@ -25,7 +27,10 @@ AIsoPlayerState::AIsoPlayerState()
     AttributeSet = CreateDefaultSubobject<UIsometricRPGAttributeSetBase>("AttributeSet");
 
     // 网络更新频率设置，可以根据需要调整
-    NetUpdateFrequency = 100.0f;
+    SetNetUpdateFrequency(100.0f);
+
+    CachedCurrencyValues.Add(TEXT("Gold"), 0);
+    CachedCurrencyValues.Add(TEXT("Crystal"), 0);
 }
 
 void AIsoPlayerState::BeginPlay()
@@ -100,7 +105,7 @@ UAbilitySystemComponent* AIsoPlayerState::GetAbilitySystemComponent() const
 int32 AIsoPlayerState::GetSkillBarSlotCount() const
 {
     // 显示在技能栏的真实槽位：Passive, Q, W, E, R, D, F -> 7 个
-    return 7;
+    return 8;
 }
 
 int32 AIsoPlayerState::IndexFromSlot(ESkillSlot Slot) const
@@ -200,10 +205,14 @@ void AIsoPlayerState::OnRep_EquippedAbilities()
 
 void AIsoPlayerState::GrantAbilityInternal(FEquippedAbilityInfo& Info, bool bRemoveExistingFirst)
 {
-    if (GetLocalRole() != ROLE_Authority || !AbilitySystemComponent || !Info.AbilityClass)
+    if (GetLocalRole() != ROLE_Authority || !AbilitySystemComponent)
         return;
     if (bRemoveExistingFirst && Info.AbilitySpecHandle.IsValid())
         ClearAbilityInternal(Info);
+
+    // 关键：判断是否存在资源路径，而不是是否已加载对象
+    if (Info.AbilityClass.ToSoftObjectPath().IsNull())
+        return;
 
     // 从软引用加载类。因为这是在服务器上授权技能，通常可以接受同步加载。
     TSubclassOf<UGameplayAbility> LoadedAbilityClass = Info.AbilityClass.LoadSynchronous();
@@ -215,6 +224,8 @@ void AIsoPlayerState::GrantAbilityInternal(FEquippedAbilityInfo& Info, bool bRem
         // -1 是一个特殊值，代表“没有绑定到任何直接输入”。
         FGameplayAbilitySpec Spec(LoadedAbilityClass, 1, -1, this);
         Info.AbilitySpecHandle = AbilitySystemComponent->GiveAbility(Spec);
+        UE_LOG(LogTemp, Log, TEXT("[PassiveDebug][Grant] Granted %s -> HandleValid=%d Slot=%d"),
+            *GetNameSafe(LoadedAbilityClass), Info.AbilitySpecHandle.IsValid(), static_cast<int32>(Info.Slot));
     }
 }
 
@@ -236,11 +247,15 @@ void AIsoPlayerState::InitAbilities()
 
     for (const FEquippedAbilityInfo& AbilityInfo : DefaultAbilities)
     {
-        if (!AbilityInfo.AbilityClass)
+        auto a = AbilityInfo;
+        // 使用软路径判空，避免未加载时被跳过
+        if (AbilityInfo.AbilityClass.ToSoftObjectPath().IsNull())
             continue;
-
         if (AbilityInfo.Slot == ESkillSlot::MAX)
             continue; // 保护：MAX 永远不应被使用
+
+        UE_LOG(LogTemp, Log, TEXT("[PassiveDebug][Init] 授予默认技能 %s 给 槽 %d (Invalid=%d)"),
+            *GetNameSafe(AbilityInfo.AbilityClass.Get()), static_cast<int32>(AbilityInfo.Slot), AbilityInfo.Slot == ESkillSlot::Invalid);
 
         const int32 Index = IndexFromSlot(AbilityInfo.Slot);
         if (Index == INDEX_NONE)
@@ -257,63 +272,124 @@ void AIsoPlayerState::InitAbilities()
         }
     }
 
-    // 在授予技能后，激活被动技能
-    FGameplayTagContainer PassiveTags;
-    PassiveTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Regen.Basic")));
-    AbilitySystemComponent->TryActivateAbilitiesByTag(PassiveTags);
-    
     bAbilitiesInitialized = true;
+    bPendingPassiveActivation = true;
+    UE_LOG(LogTemp, Log, TEXT("[PassiveDebug][Init] 已授予默认技能组, 等待激活被动技能"));
+    LogActivatableAbilities();
+    TryActivatePassiveAbilities();
+}
+
+
+void AIsoPlayerState::NotifyAbilityActorInfoReady()
+{
+    bAbilityActorInfoInitialized = true;
+    UE_LOG(LogTemp, Log, TEXT("[PassiveDebug][ActorInfo] ASC actor info ready for %s"), *GetName());
+
+    if (!HasAuthority() && AbilitySystemComponent && AbilitySystemComponent->GetOwnerRole() == ROLE_AutonomousProxy)
+    {
+        bPendingPassiveActivation = true;
+    }
+
+    TryActivatePassiveAbilities();
+}
+
+void AIsoPlayerState::TryActivatePassiveAbilities()
+{
+    if (!AbilitySystemComponent)
+    {
+        return;
+    }
+
+    const bool bIsAuthority = HasAuthority();
+    const ENetRole OwnerRole = AbilitySystemComponent->GetOwnerRole();
+    const bool bIsAutonomousProxy = OwnerRole == ROLE_AutonomousProxy;
+
+    UE_LOG(LogTemp, Verbose, TEXT("[PassiveDebug][TryActivate] Authority=%d AutoProxy=%d OwnerRole=%d AbilitiesInit=%d ActorInfoInit=%d Pending=%d"),
+        bIsAuthority, bIsAutonomousProxy, OwnerRole, bAbilitiesInitialized, bAbilityActorInfoInitialized, bPendingPassiveActivation);
+
+    if (!bIsAuthority && !bIsAutonomousProxy)
+    {
+        return;
+    }
+
+    if (bIsAuthority && !bAbilitiesInitialized)
+    {
+        bPendingPassiveActivation = true;
+        return;
+    }
+
+    if (!bAbilityActorInfoInitialized)
+    {
+        bPendingPassiveActivation = true;
+        return;
+    }
+
+    if (!bPendingPassiveActivation)
+    {
+        return;
+    }
+
+    const FGameplayTag PassiveTag = FGameplayTag::RequestGameplayTag(FName("Ability.Regen.Basic"), false);
+    if (!PassiveTag.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[PassiveDebug][TryActivate] 被动标签 Ability.Regen.Basic 未找到"));
+        bPendingPassiveActivation = false;
+        return;
+    }
+
+    FGameplayTagContainer PassiveTags;
+    PassiveTags.AddTag(PassiveTag);
+    const bool bAllowRemoteActivation = !bIsAuthority;
+    const bool bActivated = AbilitySystemComponent->TryActivateAbilitiesByTag(PassiveTags, bAllowRemoteActivation);
+    UE_LOG(LogTemp, Log, TEXT("[PassiveDebug][TryActivate] 尝试激活 -> %d (AllowRemote=%d)"), bActivated, bAllowRemoteActivation);
+    bPendingPassiveActivation = false;
+}
+
+void AIsoPlayerState::LogActivatableAbilities() const
+{
+    if (!AbilitySystemComponent)
+    {
+        return;
+    }
+
+    const TArray<FGameplayAbilitySpec>& Specs = AbilitySystemComponent->GetActivatableAbilities();
+    for (const FGameplayAbilitySpec& Spec : Specs)
+    {
+        const UGameplayAbility* AbilityCDO = Spec.Ability;
+        const FString AbilityName = GetNameSafe(AbilityCDO);
+        const FString TagString = AbilityCDO ? AbilityCDO->AbilityTags.ToStringSimple() : TEXT("<NoTags>");
+        UE_LOG(LogTemp, Log, TEXT("[PassiveDebug][Spec] %s Tags=%s HandleValid=%d"),
+            *AbilityName,
+            *TagString,
+            Spec.Handle.IsValid());
+    }
 }
 
 
 void AIsoPlayerState::OnAssetsLoadedForUI()
 {
-    // 安全区域：现在所有在PathsToLoad里的资源都已加载完毕
     AIsometricPlayerController* PC = Cast<AIsometricPlayerController>(GetPlayerController());
-    if (!PC) return;
-	UE_LOG(LogTemp, Log, TEXT("OnAssetsLoadedForUI called in PlayerState"));
-    UPlayerHUDWidget* HUD = Cast<UPlayerHUDWidget>(PC->PlayerHUDInstance);
-    if (!HUD || !HUD->SkillBar) 
+    if (!PC)
     {
-        // UI还未初始化，标记需要更新
-        bPendingUIUpdate = true;
-        UE_LOG(LogTemp, Warning, TEXT("UI not initialized yet, marking for pending update"));
         return;
     }
 
-    // 现在可以安全地遍历并更新UI了
-    for (int32 i = 0; i < EquippedAbilities.Num(); ++i)
+    EnsureAttributeDelegatesBound();
+
+    if (!bUIInitialized)
     {
-        if (HUD->SkillBar->SkillSlots.IsValidIndex(i))
-        {
-            USkillSlotWidget* TargetSlot = HUD->SkillBar->SkillSlots[i];
-            if (TargetSlot)
-            {
-                const FEquippedAbilityInfo& Info = EquippedAbilities[i];
-                FSkillSlotData SlotData;
+        bPendingUIUpdate = true;
+        return;
+    }
 
-                // 使用 .Get() 从软引用获取已加载的类，现在它不会是nullptr
-                UClass* LoadedAbilityClass = Info.AbilityClass.Get();
-                SlotData.AbilityClass = LoadedAbilityClass;
-                SlotData.Icon = Info.Icon.Get();
-                if (LoadedAbilityClass)
-                {
-                    const UGA_HeroBaseAbility* AbilityCDO = Cast<UGA_HeroBaseAbility>(LoadedAbilityClass->GetDefaultObject());
-                    if (AbilityCDO)
-                    {
-                        SlotData.CooldownDuration = AbilityCDO->CooldownDuration;
-                        SlotData.CooldownRemaining = 0.f;
-                    }
-                }
-                else
-                {
-                    SlotData.CooldownDuration = 0.f;
-                    SlotData.CooldownRemaining = 0.f;
-                }
-
-                TargetSlot->UpdateSlot(SlotData);
-            }
-        }
+    if (UHUDRootWidget* HUD = PC->PlayerHUDInstance)
+    {
+        RefreshEntireHUD(*HUD);
+        bPendingUIUpdate = false;
+    }
+    else
+    {
+        bPendingUIUpdate = true;
     }
 }
 
@@ -321,61 +397,318 @@ void AIsoPlayerState::OnUIInitialized()
 {
     bUIInitialized = true;
     UE_LOG(LogTemp, Log, TEXT("UI initialized in PlayerState"));
-    
-    // 如果有待处理的UI更新，现在执行
-    if (bPendingUIUpdate)
-    {
-        UE_LOG(LogTemp, Log, TEXT("Processing pending UI update"));
-        UpdateUIWhenReady();
-        bPendingUIUpdate = false;
-    }
+    EnsureAttributeDelegatesBound();
+    UpdateUIWhenReady();
 }
 
 void AIsoPlayerState::UpdateUIWhenReady()
 {
+    EnsureAttributeDelegatesBound();
+
     AIsometricPlayerController* PC = Cast<AIsometricPlayerController>(GetPlayerController());
     if (!PC) return;
-    
-    UPlayerHUDWidget* HUD = Cast<UPlayerHUDWidget>(PC->PlayerHUDInstance);
-    if (!HUD || !HUD->SkillBar) 
+
+    if (UHUDRootWidget* HUD = PC->PlayerHUDInstance)
     {
-        UE_LOG(LogTemp, Warning, TEXT("UI still not ready in UpdateUIWhenReady"));
-        return;
+        RefreshEntireHUD(*HUD);
+        bPendingUIUpdate = false;
     }
-    
-    // 现在可以安全地遍历并更新UI了
-    for (int32 i = 0; i < EquippedAbilities.Num(); ++i)
+    else
     {
-        if (HUD->SkillBar->SkillSlots.IsValidIndex(i))
+        UE_LOG(LogTemp, Verbose, TEXT("UI still not ready in UpdateUIWhenReady"));
+        bPendingUIUpdate = true;
+    }
+}
+
+void AIsoPlayerState::RefreshActionBar(UHUDRootWidget& HUD)
+{
+    static const ESkillSlot DisplayableSlots[] = {
+        ESkillSlot::Skill_Passive,
+        ESkillSlot::Skill_Q,
+        ESkillSlot::Skill_W,
+        ESkillSlot::Skill_E,
+        ESkillSlot::Skill_R,
+        ESkillSlot::Skill_D,
+        ESkillSlot::Skill_F
+    };
+
+    HUD.ClearAllAbilitySlots();
+
+    for (ESkillSlot Slot : DisplayableSlots)
+    {
+        const FEquippedAbilityInfo* FoundInfo = nullptr;
+        for (const FEquippedAbilityInfo& Info : EquippedAbilities)
         {
-            USkillSlotWidget* TargetSlot = HUD->SkillBar->SkillSlots[i];
-            if (TargetSlot)
+            if (Info.Slot == Slot)
             {
-                const FEquippedAbilityInfo& Info = EquippedAbilities[i];
-                FSkillSlotData SlotData;
-
-                // 使用 .Get() 从软引用获取已加载的类，现在它不会是nullptr
-                UClass* LoadedAbilityClass = Info.AbilityClass.Get();
-                SlotData.AbilityClass = LoadedAbilityClass;
-                SlotData.Icon = Info.Icon.Get();
-                if (LoadedAbilityClass)
-                {
-                    const UGA_HeroBaseAbility* AbilityCDO = Cast<UGA_HeroBaseAbility>(LoadedAbilityClass->GetDefaultObject());
-                    if (AbilityCDO)
-                    {
-                        SlotData.CooldownDuration = AbilityCDO->CooldownDuration;
-                        SlotData.CooldownRemaining = 0.f;
-                    }
-                }
-                else
-                {
-                    SlotData.CooldownDuration = 0.f;
-                    SlotData.CooldownRemaining = 0.f;
-                }
-
-                TargetSlot->UpdateSlot(SlotData);
+                FoundInfo = &Info;
+                break;
             }
         }
+
+        const FHUDSkillSlotViewModel ViewModel = FoundInfo ? BuildSlotViewModel(*FoundInfo)
+                                                           : BuildEmptySlotViewModel(Slot);
+        HUD.SetAbilitySlot(ViewModel);
+    }
+}
+
+void AIsoPlayerState::RefreshEntireHUD(UHUDRootWidget& HUD)
+{
+    RefreshActionBar(HUD);
+    PushHUDSnapshot(HUD);
+}
+
+void AIsoPlayerState::PushHUDSnapshot(UHUDRootWidget& HUD)
+{
+    if (!AttributeSet)
+    {
+        return;
+    }
+
+    const float CurrentHealth = AttributeSet->GetHealth();
+    const float MaxHealth = AttributeSet->GetMaxHealth();
+    const float ShieldValue = 0.f;
+
+    HUD.UpdateHealth(CurrentHealth, MaxHealth, ShieldValue);
+    FGameplayTagContainer OwnedTags;
+    if (AbilitySystemComponent)
+    {
+        AbilitySystemComponent->GetOwnedGameplayTags(OwnedTags);
+    }
+
+    bool bIsInCombat = false;
+    if (AbilitySystemComponent)
+    {
+        static const FGameplayTag CombatTag = FGameplayTag::RequestGameplayTag(FName("State.Combat"), false);
+        if (CombatTag.IsValid())
+        {
+            bIsInCombat = OwnedTags.HasTagExact(CombatTag);
+        }
+    }
+
+    TArray<FGameplayTag> OwnedTagArray;
+    OwnedTags.GetGameplayTagArray(OwnedTagArray);
+
+    TArray<FName> TagNameArray;
+    TagNameArray.Reserve(OwnedTagArray.Num());
+    for (const FGameplayTag& Tag : OwnedTagArray)
+    {
+        TagNameArray.Add(Tag.GetTagName());
+    }
+
+    HUD.UpdateStatusEffects(TagNameArray);
+
+    const bool bHasPendingLevelUp = AttributeSet->GetUnUsedSkillPoint() > 0.f;
+    HUD.UpdatePortrait(nullptr, bIsInCombat, bHasPendingLevelUp);
+
+    const float CurrentMana = AttributeSet->GetMana();
+    const float MaxMana = AttributeSet->GetMaxMana();
+    HUD.UpdateResources(CurrentMana, MaxMana, 0.f, 0.f);
+
+    const int32 CurrentLevel = FMath::FloorToInt(AttributeSet->GetLevel());
+    const float CurrentXP = AttributeSet->GetExperience();
+    const float RequiredXP = AttributeSet->GetExperienceToNextLevel();
+    HUD.UpdateExperience(CurrentLevel, CurrentXP, RequiredXP);
+
+    HUD.UpdateCurrencies(CachedCurrencyValues);
+}
+
+void AIsoPlayerState::EnsureAttributeDelegatesBound()
+{
+    if (bAttributeDelegatesBound || !AttributeSet)
+    {
+        return;
+    }
+
+    AttributeSet->OnHealthChanged.AddDynamic(this, &AIsoPlayerState::HandleHealthChanged);
+    AttributeSet->OnManaChanged.AddDynamic(this, &AIsoPlayerState::HandleManaChanged);
+    AttributeSet->OnExperienceChanged.AddDynamic(this, &AIsoPlayerState::HandleExperienceChanged);
+    AttributeSet->OnLevelChanged.AddDynamic(this, &AIsoPlayerState::HandleLevelChanged);
+
+    bAttributeDelegatesBound = true;
+}
+
+UHUDRootWidget* AIsoPlayerState::ResolveHUDWidget() const
+{
+    if (AIsometricPlayerController* PC = Cast<AIsometricPlayerController>(GetPlayerController()))
+    {
+        if (!PC->IsLocalController())
+        {
+            return nullptr;
+        }
+
+        return PC->PlayerHUDInstance;
+    }
+
+    return nullptr;
+}
+
+void AIsoPlayerState::HandleHealthChanged(UIsometricRPGAttributeSetBase* AttributeSetChanged, float NewHealth)
+{
+    if (!AttributeSet || AttributeSetChanged != AttributeSet)
+    {
+        return;
+    }
+
+    if (UHUDRootWidget* HUD = ResolveHUDWidget())
+    {
+        PushHUDSnapshot(*HUD);
+    }
+    else
+    {
+        bPendingUIUpdate = true;
+    }
+}
+
+void AIsoPlayerState::HandleManaChanged(UIsometricRPGAttributeSetBase* AttributeSetChanged, float NewMana)
+{
+    if (!AttributeSet || AttributeSetChanged != AttributeSet)
+    {
+        return;
+    }
+
+    if (UHUDRootWidget* HUD = ResolveHUDWidget())
+    {
+        PushHUDSnapshot(*HUD);
+    }
+    else
+    {
+        bPendingUIUpdate = true;
+    }
+}
+
+void AIsoPlayerState::HandleExperienceChanged(UIsometricRPGAttributeSetBase* AttributeSetChanged, float NewExperience, float NewMaxExperience)
+{
+    if (!AttributeSet || AttributeSetChanged != AttributeSet)
+    {
+        return;
+    }
+
+    if (UHUDRootWidget* HUD = ResolveHUDWidget())
+    {
+        PushHUDSnapshot(*HUD);
+    }
+    else
+    {
+        bPendingUIUpdate = true;
+    }
+}
+
+void AIsoPlayerState::HandleLevelChanged(UIsometricRPGAttributeSetBase* AttributeSetChanged, float NewLevel)
+{
+    if (!AttributeSet || AttributeSetChanged != AttributeSet)
+    {
+        return;
+    }
+
+    if (UHUDRootWidget* HUD = ResolveHUDWidget())
+    {
+        PushHUDSnapshot(*HUD);
+    }
+    else
+    {
+        bPendingUIUpdate = true;
+    }
+}
+
+FHUDSkillSlotViewModel AIsoPlayerState::BuildSlotViewModel(const FEquippedAbilityInfo& Info) const
+{
+    FHUDSkillSlotViewModel ViewModel = BuildEmptySlotViewModel(Info.Slot);
+
+    if (!ShouldDisplaySlot(Info.Slot))
+    {
+        return ViewModel;
+    }
+
+    ViewModel.bIsUnlocked = true;
+
+    UClass* AbilityClass = Info.AbilityClass.Get();
+    ViewModel.AbilityClass = AbilityClass;
+    ViewModel.Icon = Info.Icon.Get();
+    ViewModel.bIsEquipped = AbilityClass != nullptr;
+
+    if (AbilityClass)
+    {
+        if (const UGameplayAbility* AbilityCDO = AbilityClass->GetDefaultObject<UGameplayAbility>())
+        {
+            if (const UGA_HeroBaseAbility* HeroCDO = Cast<UGA_HeroBaseAbility>(AbilityCDO))
+            {
+                ViewModel.DisplayName = HeroCDO->GetAbilityDisplayNameText();
+                ViewModel.ResourceCost = HeroCDO->GetResourceCost();
+                ViewModel.CooldownDuration = HeroCDO->CooldownDuration;
+                ViewModel.CooldownRemaining = 0.f; // TODO: query ASC for active cooldowns
+            }
+            else
+            {
+                ViewModel.DisplayName = FText::FromName(AbilityClass->GetFName());
+            }
+
+            if (ViewModel.DisplayName.IsEmpty())
+            {
+                ViewModel.DisplayName = FText::FromName(AbilityClass->GetFName());
+            }
+
+            FGameplayTagContainer AssetTags;
+            AssetTags = AbilityCDO->GetAssetTags();
+            if (!AssetTags.IsEmpty())
+            {
+                TArray<FGameplayTag> LocalTags;
+                AssetTags.GetGameplayTagArray(LocalTags);
+                if (LocalTags.Num() > 0)
+                {
+                    ViewModel.AbilityPrimaryTag = LocalTags[0];
+                }
+            }
+        }
+    }
+
+    return ViewModel;
+}
+
+FHUDSkillSlotViewModel AIsoPlayerState::BuildEmptySlotViewModel(ESkillSlot Slot) const
+{
+    FHUDSkillSlotViewModel ViewModel;
+    ViewModel.Slot = Slot;
+    ViewModel.bIsUnlocked = ShouldDisplaySlot(Slot);
+    ViewModel.bIsEquipped = false;
+    ViewModel.DisplayName = FText::GetEmpty();
+    ViewModel.HotkeyLabel = BuildHotkeyLabel(Slot);
+    ViewModel.Icon = nullptr;
+    ViewModel.ResourceCost = 0.f;
+    ViewModel.CooldownDuration = 0.f;
+    ViewModel.CooldownRemaining = 0.f;
+    return ViewModel;
+}
+
+bool AIsoPlayerState::ShouldDisplaySlot(ESkillSlot Slot) const
+{
+    switch (Slot)
+    {
+    case ESkillSlot::Skill_Passive:
+    case ESkillSlot::Skill_Q:
+    case ESkillSlot::Skill_W:
+    case ESkillSlot::Skill_E:
+    case ESkillSlot::Skill_R:
+    case ESkillSlot::Skill_D:
+    case ESkillSlot::Skill_F:
+        return true;
+    default:
+        return false;
+    }
+}
+
+FText AIsoPlayerState::BuildHotkeyLabel(ESkillSlot Slot) const
+{
+    switch (Slot)
+    {
+    case ESkillSlot::Skill_Passive: return FText::FromString(TEXT("Passive"));
+    case ESkillSlot::Skill_Q: return FText::FromString(TEXT("Q"));
+    case ESkillSlot::Skill_W: return FText::FromString(TEXT("W"));
+    case ESkillSlot::Skill_E: return FText::FromString(TEXT("E"));
+    case ESkillSlot::Skill_R: return FText::FromString(TEXT("R"));
+    case ESkillSlot::Skill_D: return FText::FromString(TEXT("D"));
+    case ESkillSlot::Skill_F: return FText::FromString(TEXT("F"));
+    default: return FText::GetEmpty();
     }
 }
 

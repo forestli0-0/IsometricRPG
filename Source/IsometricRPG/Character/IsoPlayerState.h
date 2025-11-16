@@ -11,6 +11,8 @@
 class UAbilitySystemComponent;
 class UIsometricRPGAttributeSetBase;
 class UGameplayAbility;
+class UHUDRootWidget;
+struct FHUDSkillSlotViewModel;
 /**
  * 
  */
@@ -22,10 +24,8 @@ public:
     AIsoPlayerState();
 
     // --- 实现 IAbilitySystemInterface ---
-    // 这是让GAS系统能找到ASC的关键函数
     virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
-    // --- 公开你的AttributeSet ---
     UIsometricRPGAttributeSetBase* GetAttributeSet() const { return AttributeSet; }
 
     // 技能相关属性
@@ -62,6 +62,10 @@ protected:
 
     bool bAbilitiesInitialized = false;
     void InitAbilities();
+    void TryActivatePassiveAbilities();
+    bool bAbilityActorInfoInitialized = false;
+    bool bPendingPassiveActivation = false;
+    void LogActivatableAbilities() const;
 
 public:
     // 属性初始化
@@ -74,9 +78,30 @@ public:
     bool bPendingUIUpdate = false;
     void OnUIInitialized();
     void UpdateUIWhenReady();
+    void NotifyAbilityActorInfoReady();
 private:
 	int SlotIndex = 0; // 用于跟踪当前技能槽的索引
     void OnAssetsLoadedForUI();
+
+    void RefreshEntireHUD(UHUDRootWidget& HUD);
+    void PushHUDSnapshot(UHUDRootWidget& HUD);
+    void EnsureAttributeDelegatesBound();
+    UHUDRootWidget* ResolveHUDWidget() const;
+
+    UFUNCTION()
+    void HandleHealthChanged(UIsometricRPGAttributeSetBase* AttributeSetChanged, float NewHealth);
+
+    UFUNCTION()
+    void HandleManaChanged(UIsometricRPGAttributeSetBase* AttributeSetChanged, float NewMana);
+
+    UFUNCTION()
+    void HandleExperienceChanged(UIsometricRPGAttributeSetBase* AttributeSetChanged, float NewExperience, float NewMaxExperience);
+
+    UFUNCTION()
+    void HandleLevelChanged(UIsometricRPGAttributeSetBase* AttributeSetChanged, float NewLevel);
+
+    bool bAttributeDelegatesBound = false;
+    TMap<FName, int32> CachedCurrencyValues;
 
     // --- Slot/Index 映射与工具 ---
     // 有些默认技能（如基础攻击/被动）可能不在技能栏显示，但仍需授予。
@@ -85,4 +110,10 @@ private:
     // - ESkillSlot::MAX 仅作枚举边界哨兵，永远不参与逻辑。
     int32 GetSkillBarSlotCount() const;                    // 技能栏槽位数量（不包含 Invalid / MAX）
     int32 IndexFromSlot(ESkillSlot Slot) const;            // 将枚举槽转换为0基索引；非栏位返回 INDEX_NONE
+
+    void RefreshActionBar(UHUDRootWidget& HUD);
+    FHUDSkillSlotViewModel BuildSlotViewModel(const FEquippedAbilityInfo& Info) const;
+    FHUDSkillSlotViewModel BuildEmptySlotViewModel(ESkillSlot Slot) const;
+    bool ShouldDisplaySlot(ESkillSlot Slot) const;
+    FText BuildHotkeyLabel(ESkillSlot Slot) const;
 };
