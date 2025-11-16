@@ -8,7 +8,7 @@
 #include "Character/IsometricRPGCharacter.h"
 #include "Character/IsoPlayerState.h"
 #include "IsometricComponents/IsometricInputComponent.h"
-#include "Blueprint/UserWidget.h"
+#include "UI/HUD/HUDRootWidget.h"
 AIsometricPlayerController::AIsometricPlayerController()
 {
     // 设置使用自定义的PlayerCameraManager
@@ -51,7 +51,7 @@ void AIsometricPlayerController::BeginPlay()
 	if (IsLocalController() && PlayerHUDClass)
 	{
 		UE_LOG(LogTemp, Log, TEXT("[PC] Creating PlayerHUD on %s"), *GetName());
-		PlayerHUDInstance = CreateWidget<UUserWidget>(this, PlayerHUDClass);
+		PlayerHUDInstance = CreateWidget<UHUDRootWidget>(this, PlayerHUDClass);
 		if (PlayerHUDInstance)
 		{
 			PlayerHUDInstance->AddToViewport();
