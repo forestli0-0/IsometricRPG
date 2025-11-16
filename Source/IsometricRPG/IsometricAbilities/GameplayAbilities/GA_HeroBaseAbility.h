@@ -44,6 +44,18 @@ public:
     // 冷却时间
     UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ability|Cooldown")
     float CooldownDuration = 1.f;
+
+    // 设计时可配置的技能显示名称，供 UI 使用
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability")
+    FText AbilityDisplayName;
+
+    /** Returns the localized display name, falling back to the class name when unset. */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Ability")
+    FText GetAbilityDisplayNameText() const;
+
+    /** Returns the configured resource cost for UI or external systems. */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Ability|Cost")
+    float GetResourceCost() const;
 protected:
     // 技能类型
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Type")

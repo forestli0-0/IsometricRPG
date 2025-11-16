@@ -21,6 +21,21 @@ UGA_HeroBaseAbility::UGA_HeroBaseAbility()
     AbilityType = EHeroAbilityType::Targeted;
 }
 
+FText UGA_HeroBaseAbility::GetAbilityDisplayNameText() const
+{
+    if (!AbilityDisplayName.IsEmpty())
+    {
+        return AbilityDisplayName;
+    }
+
+    return GetClass() ? GetClass()->GetDisplayNameText() : FText::FromString(GetName());
+}
+
+float UGA_HeroBaseAbility::GetResourceCost() const
+{
+    return CostMagnitude;
+}
+
 // =================================================================================================================
 // Gampelay Ability Core
 // =================================================================================================================
