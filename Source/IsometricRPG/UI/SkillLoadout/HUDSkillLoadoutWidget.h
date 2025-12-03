@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "IsometricRPG/IsometricAbilities/Types/EquippedAbilityInfo.h"
 #include "HUDSkillLoadoutWidget.generated.h"
 
 struct FHUDSkillSlotViewModel;
@@ -16,6 +17,8 @@ class ISOMETRICRPG_API UHUDSkillLoadoutWidget : public UUserWidget
     GENERATED_BODY()
 
 public:
+    virtual void NativeConstruct() override;
+
     /** Registers a slot (called from UMG designer to wire slot widgets). */
     UFUNCTION(BlueprintCallable, Category = "SkillLoadout")
     void RegisterSlot(UHUDSkillSlotWidget* InSlot);
@@ -34,6 +37,31 @@ public:
     const TArray<TObjectPtr<UHUDSkillSlotWidget>>& GetSlots() const { return SkillSlots; }
 
 protected:
+    void RegisterDesignerSlots();
+
+    /** Passive slot (always-on ability icon). */
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UHUDSkillSlotWidget> Slot_Passive;
+
+    /** Individual skill slots keyed by enum, bound inside the loadout blueprint. */
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UHUDSkillSlotWidget> Slot_Q;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UHUDSkillSlotWidget> Slot_W;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UHUDSkillSlotWidget> Slot_E;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UHUDSkillSlotWidget> Slot_R;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UHUDSkillSlotWidget> Slot_D;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UHUDSkillSlotWidget> Slot_F;
+
     UPROPERTY(VisibleAnywhere, Category = "SkillLoadout")
     TArray<TObjectPtr<UHUDSkillSlotWidget>> SkillSlots;
 };
