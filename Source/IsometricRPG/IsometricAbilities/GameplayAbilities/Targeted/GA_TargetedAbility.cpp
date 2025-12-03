@@ -26,7 +26,6 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit()
     }
 
     // 2. 声明变量并解析目标数据
-    // 修正了原始代码中变量被重复声明和覆盖的问题
     AActor* TargetActor = nullptr;
     FVector TargetLocation = FVector::ZeroVector;
     bool bSuccessfullyFoundTarget = false;
@@ -73,7 +72,7 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit()
         return false;
     }
 
-    GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Black, FString::Printf(TEXT("目标位置: %s"), *TargetLocation.ToString()));
+    //GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Black, FString::Printf(TEXT("目标位置: %s"), *TargetLocation.ToString()));
 
     // 3. 保留原始的距离检查和后续逻辑
     const FVector SelfActorLocation = GetCurrentActorInfo()->AvatarActor->GetActorLocation();
@@ -95,13 +94,13 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit()
             // 服务器：负责真正的到达判断与提交执行
             if (bIsServer)
             {
-            auto ThisAbility = const_cast<UGameplayAbility*>(static_cast<const UGameplayAbility*>(this));
+                auto ThisAbility = const_cast<UGameplayAbility*>(static_cast<const UGameplayAbility*>(this));
                 UAbilityTask_WaitMoveToLocation* MoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToActor(ThisAbility, TargetActor, RangeToApply);
                 if (MoveTask)
                 {
-            MoveTask->OnMoveFinished.AddDynamic(this, &UGA_TargetedAbility::OnReachedTarget);
-            MoveTask->OnMoveFailed.AddDynamic(this, &UGA_TargetedAbility::OnFailedToTarget);
-            MoveTask->ReadyForActivation();
+                    MoveTask->OnMoveFinished.AddDynamic(this, &UGA_TargetedAbility::OnReachedTarget);
+                    MoveTask->OnMoveFailed.AddDynamic(this, &UGA_TargetedAbility::OnFailedToTarget);
+                    MoveTask->ReadyForActivation();
                     UE_LOG(LogTemp, Verbose, TEXT("%s: Server started WaitMoveToActor (Acceptance=%.1f)."), *GetName(), RangeToApply);
                 }
                 else
@@ -111,15 +110,14 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit()
             }
 
         // 本地控制的客户端：也创建一个镜像任务用于本地预测和平滑动画；
-        // 注意：客户端也绑定完成/失败回调，用于在到达时本地播放动画与进入技能阶段（不做提交/结算）。
             if (!bIsServer && bIsLocallyControlled)
             {
                 auto ThisAbility = const_cast<UGameplayAbility*>(static_cast<const UGameplayAbility*>(this));
                 UAbilityTask_WaitMoveToLocation* ClientMoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToActor(ThisAbility, TargetActor, RangeToApply);
                 if (ClientMoveTask)
                 {
-            ClientMoveTask->OnMoveFinished.AddDynamic(this, &UGA_TargetedAbility::OnReachedTarget);
-            ClientMoveTask->OnMoveFailed.AddDynamic(this, &UGA_TargetedAbility::OnFailedToTarget);
+                    ClientMoveTask->OnMoveFinished.AddDynamic(this, &UGA_TargetedAbility::OnReachedTarget);
+                    ClientMoveTask->OnMoveFailed.AddDynamic(this, &UGA_TargetedAbility::OnFailedToTarget);
                     ClientMoveTask->ReadyForActivation();
                     UE_LOG(LogTemp, Verbose, TEXT("%s: Client mirror WaitMoveToActor started for prediction (Acceptance=%.1f)."), *GetName(), RangeToApply);
                 }

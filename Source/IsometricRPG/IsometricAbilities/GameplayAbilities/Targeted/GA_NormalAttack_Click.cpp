@@ -1,11 +1,10 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "IsometricAbilities/GameplayAbilities/Targeted/GA_NormalAttack_Click.h"
+//#include "IsometricAbilities/GameplayAbilities/Targeted/GA_NormalAttack_Click.h"
 #include "GA_NormalAttack_Click.h"
 #include "IsometricAbilities/TargetTrace/GATA_CursorTrace.h"
 #include "Abilities/GameplayAbilityTargetTypes.h"
-#include "IsometricAbilities/TargetTrace/GATA_CursorTrace.h"
 #include "IsometricAbilities/AbilityTasks/AbilityTask_WaitMoveToLocation.h"
 #include "GameFramework/Character.h"
 #include "Components/CapsuleComponent.h"
@@ -53,43 +52,20 @@ void UGA_NormalAttack_Click::ExecuteSkill(const FGameplayAbilitySpecHandle Handl
 
     if (!OwnerActor) return;
 
-    // 通过TriggerEventData获取目标，再次确认朝向正确
-    if (CurrentTargetDataHandle.Num() > 0)
+    // 使用缓存的目标数据进行调试打印，避免重复解析
+    if (CachedTargetActor.IsValid())
     {
-        const FGameplayAbilityTargetDataHandle& TargetDataHandle = CurrentTargetDataHandle;
-        const FGameplayAbilityTargetData* TargetData = TargetDataHandle.Get(0); // 获取第一个目标数据
-
-        if (TargetData)
-        {
-            const FHitResult* HitResult = TargetData->GetHitResult();
-            if (HitResult)
-            {
-                const TWeakObjectPtr<UObject> TargetObject = HitResult->GetActor();
-                if (TargetObject.IsValid())
-                {
-                    AActor* TargetActor = Cast<AActor>(TargetObject.Get());
-                    if (TargetActor)
-                    {
-                        // 打印目标和自身位置，用于调试
-                        UE_LOG(LogTemp, Verbose, TEXT("攻击目标位置: %s, 自身位置: %s"),
-                            *TargetActor->GetActorLocation().ToString(),
-                            *OwnerActor->GetActorLocation().ToString());
-                    }
-                }
-            }
-            else
-            {
-                auto TargetActor = TargetData->GetActors()[0];
-                if (TargetActor.IsValid())
-                {
-                    // 打印目标和自身位置，用于调试
-                    UE_LOG(LogTemp, Verbose, TEXT("攻击目标位置: %s, 自身位置: %s"),
-                        *TargetActor->GetActorLocation().ToString(),
-                        *OwnerActor->GetActorLocation().ToString());
-				}
-            }
-        }
+        UE_LOG(LogTemp, Verbose, TEXT("攻击目标位置: %s, 自身位置: %s"),
+            *CachedTargetActor->GetActorLocation().ToString(),
+            *OwnerActor->GetActorLocation().ToString());
     }
+    else if (!CachedTargetLocation.IsNearlyZero())
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("攻击目标位置: %s, 自身位置: %s"),
+            *CachedTargetLocation.ToString(),
+            *OwnerActor->GetActorLocation().ToString());
+    }
+
     if (!MontageToPlay)
     {
         EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
@@ -123,6 +99,8 @@ void UGA_NormalAttack_Click::ApplyCooldown(
             ASC->ApplyGameplayEffectSpecToSelf(GESpec);
         }
     }
+    // 确保通知系统冷却已触发（UI刷新等依赖此通知）
+    NotifyCooldownTriggered(Handle, ActorInfo);
 }
 
 void UGA_NormalAttack_Click::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data)
@@ -177,44 +155,9 @@ static float CalcEffectiveAcceptanceRadius(ACharacter* SelfChar, AActor* TargetA
 
 bool UGA_NormalAttack_Click::OtherCheckBeforeCommit()
 {
-    // 解析当前数据（若缺失则尝试用缓存推断）
-    AActor* TargetActor = nullptr;
-    FVector TargetLocation = FVector::ZeroVector;
-
-    const FGameplayAbilityTargetData* Data = CurrentTargetDataHandle.Get(0);
-    if (Data)
-    {
-        if (const FGameplayAbilityTargetData_SingleTargetHit* HR = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(
-                Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()) ? Data : nullptr))
-        {
-            if (HR->GetHitResult())
-            {
-                TargetLocation = HR->GetHitResult()->Location;
-                TargetActor = HR->GetHitResult()->GetActor();
-            }
-        }
-        else if (const FGameplayAbilityTargetData_ActorArray* AA = static_cast<const FGameplayAbilityTargetData_ActorArray*>(
-                     Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_ActorArray::StaticStruct()) ? Data : nullptr))
-        {
-            if (AA->TargetActorArray.Num() > 0)
-            {
-                TargetActor = AA->TargetActorArray[0].Get();
-                if (TargetActor)
-                {
-                    TargetLocation = TargetActor->GetActorLocation();
-                }
-            }
-        }
-    }
-
-    if (!TargetActor && CachedTargetActor.IsValid())
-    {
-        TargetActor = CachedTargetActor.Get();
-    }
-    if (TargetLocation.IsNearlyZero() && !CachedTargetLocation.IsNearlyZero())
-    {
-        TargetLocation = CachedTargetLocation;
-    }
+    // 直接使用 OnTargetDataReady 中解析并缓存的数据，避免重复解析 CurrentTargetDataHandle
+    AActor* TargetActor = CachedTargetActor.Get();
+    FVector TargetLocation = CachedTargetLocation;
 
     if (!TargetActor && TargetLocation.IsNearlyZero())
     {
