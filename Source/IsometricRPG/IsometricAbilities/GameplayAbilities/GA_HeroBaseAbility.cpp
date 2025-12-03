@@ -11,6 +11,7 @@
 #include "Abilities/GameplayAbilityTargetActor_SingleLineTrace.h"
 #include "AbilitySystemGlobals.h" 
 #include <Character/IsometricRPGCharacter.h>
+#include "Character/IsoPlayerState.h"
 
 UGA_HeroBaseAbility::UGA_HeroBaseAbility()
 {
@@ -221,33 +222,37 @@ void UGA_HeroBaseAbility::ApplyCooldown(
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo ActivationInfo) const
 {
-    // 使用自定义冷却效果类或退回到基类实现
+    bool bAppliedCustomCooldown = false;
+
     if (CooldownGameplayEffectClass)
     {
-        UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
-        if (ASC)
+        if (UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get())
         {
             FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CooldownGameplayEffectClass, GetAbilityLevel());
             if (SpecHandle.Data.IsValid())
             {
                 FGameplayEffectSpec& GESpec = *SpecHandle.Data.Get();
-                
+
                 // 寻找冷却时间标签
-                FGameplayTag CooldownDurationTag = FGameplayTag::RequestGameplayTag(TEXT("Data.Cooldown.Duration"));
+                const FGameplayTag CooldownDurationTag = FGameplayTag::RequestGameplayTag(TEXT("Data.Cooldown.Duration"));
                 if (CooldownDurationTag.IsValid())
                 {
                     // 设置冷却时间
                     GESpec.SetSetByCallerMagnitude(CooldownDurationTag, CooldownDuration);
                 }
-                
+
                 ASC->ApplyGameplayEffectSpecToSelf(GESpec);
-                return;
+                bAppliedCustomCooldown = true;
             }
         }
     }
-    
-    // 退回到基类实现
-    Super::ApplyCooldown(Handle, ActorInfo, ActivationInfo);
+
+    if (!bAppliedCustomCooldown)
+    {
+        Super::ApplyCooldown(Handle, ActorInfo, ActivationInfo);
+    }
+
+    NotifyCooldownTriggered(Handle, ActorInfo);
 }
 
 void UGA_HeroBaseAbility::EndAbility(
@@ -561,6 +566,34 @@ void UGA_HeroBaseAbility::CancelAbility(
     TargetDataTask = nullptr;
 
     Super::CancelAbility(Handle, ActorInfo, ActivationInfo, bReplicateCancelAbility);
+}
+
+void UGA_HeroBaseAbility::NotifyCooldownTriggered(const FGameplayAbilitySpecHandle& Handle, const FGameplayAbilityActorInfo* ActorInfo) const
+{
+    if (!ActorInfo || CooldownDuration <= 0.f)
+    {
+        return;
+    }
+
+    AIsoPlayerState* IsoPlayerState = nullptr;
+
+    if (const APawn* Pawn = Cast<APawn>(ActorInfo->AvatarActor.Get()))
+    {
+        IsoPlayerState = Pawn->GetPlayerState<AIsoPlayerState>();
+    }
+
+    if (!IsoPlayerState)
+    {
+        if (const AController* Controller = Cast<AController>(ActorInfo->PlayerController.Get()))
+        {
+            IsoPlayerState = Controller->GetPlayerState<AIsoPlayerState>();
+        }
+    }
+
+    if (IsoPlayerState)
+    {
+        IsoPlayerState->HandleAbilityCooldownTriggered(Handle, CooldownDuration);
+    }
 }
 
 // =================================================================================================================
