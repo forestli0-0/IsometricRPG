@@ -9,12 +9,14 @@
 #include "GameplayAbilitySpec.h"
 #include "Net/UnrealNetwork.h"
 #include "GameplayEffect.h"
+#include "GameplayEffectTypes.h"
 #include "Abilities/GameplayAbility.h"
 #include "TimerManager.h"
 #include "Engine/AssetManager.h"
 #include "IsometricAbilities/GameplayAbilities/GA_HeroBaseAbility.h"
 #include "IsometricRPGCharacter.h"
 #include "UI/HUD/HUDRootWidget.h"
+#include "UI/HUD/HUDViewModelTypes.h"
 #include "UI/SkillLoadout/HUDSkillSlotWidget.h"
 AIsoPlayerState::AIsoPlayerState()
 {
@@ -29,8 +31,6 @@ AIsoPlayerState::AIsoPlayerState()
     // 网络更新频率设置，可以根据需要调整
     SetNetUpdateFrequency(100.0f);
 
-    CachedCurrencyValues.Add(TEXT("Gold"), 0);
-    CachedCurrencyValues.Add(TEXT("Crystal"), 0);
 }
 
 void AIsoPlayerState::BeginPlay()
@@ -401,6 +401,85 @@ void AIsoPlayerState::OnUIInitialized()
     UpdateUIWhenReady();
 }
 
+TArray<FHUDBuffIconViewModel> AIsoPlayerState::BuildBuffViewModels(const FGameplayTagContainer& OwnedTags) const
+{
+    TArray<FHUDBuffIconViewModel> Result;
+    if (BuffIconMap.Num() == 0)
+    {
+        return Result;
+    }
+
+    const UAbilitySystemComponent* ASC = AbilitySystemComponent;
+    const float WorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+
+    for (const TPair<FGameplayTag, TSoftObjectPtr<UTexture2D>>& Pair : BuffIconMap)
+    {
+        const FGameplayTag& DisplayTag = Pair.Key;
+        if (!DisplayTag.IsValid())
+        {
+            continue;
+        }
+        // Show if any owned tag matches or is child of the display tag
+        if (!OwnedTags.HasTag(DisplayTag))
+        {
+            continue;
+        }
+
+        // Ensure texture loaded (soft reference may not yet be resolved client-side)
+        UTexture2D* IconTex = Pair.Value.Get();
+        if (!IconTex)
+        {
+            IconTex = Pair.Value.LoadSynchronous();
+            if (!IconTex)
+            {
+                UE_LOG(LogTemp, Verbose, TEXT("[BuffIcons] Texture still null for tag %s"), *DisplayTag.ToString());
+                continue; // Skip null to avoid white box
+            }
+        }
+
+        int32 MaxStackCount = 0;
+        float BestTimeRemaining = -1.f;
+        float BestTotalDuration = -1.f;
+
+        if (ASC)
+        {
+            FGameplayTagContainer QueryTags;
+            QueryTags.AddTag(DisplayTag);
+            const FGameplayEffectQuery Query = FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(QueryTags);
+
+            TArray<FActiveGameplayEffectHandle> MatchingEffects;
+            ASC->GetActiveEffects(Query);
+
+            for (const FActiveGameplayEffectHandle& Handle : MatchingEffects)
+            {
+                if (const FActiveGameplayEffect* ActiveEffect = ASC->GetActiveGameplayEffect(Handle))
+                {
+                    MaxStackCount = FMath::Max(MaxStackCount, ActiveEffect->Spec.GetStackCount());
+
+                    const float Duration = ActiveEffect->GetDuration();
+                    const float Remaining = ActiveEffect->GetTimeRemaining(WorldTime);
+                    if (Duration > KINDA_SMALL_NUMBER && Remaining >= 0.f && Remaining > BestTimeRemaining)
+                    {
+                        BestTimeRemaining = Remaining;
+                        BestTotalDuration = Duration;
+                    }
+                }
+            }
+        }
+
+        FHUDBuffIconViewModel VM;
+        VM.TagName = DisplayTag.GetTagName();
+        VM.Icon = IconTex;
+        VM.StackCount = MaxStackCount;
+        VM.bIsDebuff = false;
+        VM.TimeRemaining = BestTimeRemaining;
+        VM.TotalDuration = BestTotalDuration;
+        Result.Add(VM);
+    }
+
+    return Result;
+}
+
 void AIsoPlayerState::UpdateUIWhenReady()
 {
     EnsureAttributeDelegatesBound();
@@ -470,6 +549,19 @@ void AIsoPlayerState::PushHUDSnapshot(UHUDRootWidget& HUD)
     const float ShieldValue = 0.f;
 
     HUD.UpdateHealth(CurrentHealth, MaxHealth, ShieldValue);
+
+    // --- Champion stats summary for status panel ---
+    FHUDChampionStatsViewModel ChampionStats;
+    ChampionStats.AttackDamage = AttributeSet->GetAttackDamage();
+    ChampionStats.AbilityPower = AttributeSet->GetAbilityPower();
+    ChampionStats.Armor = AttributeSet->GetPhysicalDefense();
+    ChampionStats.MagicResist = AttributeSet->GetMagicDefense();
+    ChampionStats.AttackSpeed = AttributeSet->GetAttackSpeed();
+    ChampionStats.CritChance = AttributeSet->GetCriticalChance();
+    ChampionStats.MoveSpeed = AttributeSet->GetMoveSpeed();
+    HUD.UpdateChampionStats(ChampionStats);
+
+    // -- Owned Gameplay Tags to HUD (debug/optional) --
     FGameplayTagContainer OwnedTags;
     if (AbilitySystemComponent)
     {
@@ -486,17 +578,22 @@ void AIsoPlayerState::PushHUDSnapshot(UHUDRootWidget& HUD)
         }
     }
 
-    TArray<FGameplayTag> OwnedTagArray;
-    OwnedTags.GetGameplayTagArray(OwnedTagArray);
+    // Curated buff icons (preferred)
+    HUD.UpdateStatusBuffs(BuildBuffViewModels(OwnedTags));
 
-    TArray<FName> TagNameArray;
-    TagNameArray.Reserve(OwnedTagArray.Num());
-    for (const FGameplayTag& Tag : OwnedTagArray)
+    // Optional debug text badges
+    if (bShowOwnedTagsOnHUD)
     {
-        TagNameArray.Add(Tag.GetTagName());
+        TArray<FGameplayTag> OwnedTagArray;
+        OwnedTags.GetGameplayTagArray(OwnedTagArray);
+        TArray<FName> TagNameArray;
+        TagNameArray.Reserve(OwnedTagArray.Num());
+        for (const FGameplayTag& Tag : OwnedTagArray)
+        {
+            TagNameArray.Add(Tag.GetTagName());
+        }
+        HUD.UpdateStatusEffects(TagNameArray);
     }
-
-    HUD.UpdateStatusEffects(TagNameArray);
 
     const bool bHasPendingLevelUp = AttributeSet->GetUnUsedSkillPoint() > 0.f;
     HUD.UpdatePortrait(nullptr, bIsInCombat, bHasPendingLevelUp);
@@ -510,7 +607,7 @@ void AIsoPlayerState::PushHUDSnapshot(UHUDRootWidget& HUD)
     const float RequiredXP = AttributeSet->GetExperienceToNextLevel();
     HUD.UpdateExperience(CurrentLevel, CurrentXP, RequiredXP);
 
-    HUD.UpdateCurrencies(CachedCurrencyValues);
+    HUD.UpdateUtilityButtons(BuildUtilityButtonViewModels());
 }
 
 void AIsoPlayerState::EnsureAttributeDelegatesBound()
@@ -611,6 +708,38 @@ void AIsoPlayerState::HandleLevelChanged(UIsometricRPGAttributeSetBase* Attribut
     }
 }
 
+void AIsoPlayerState::HandleAbilityCooldownTriggered(const FGameplayAbilitySpecHandle& SpecHandle, float DurationSeconds)
+{
+    if (!SpecHandle.IsValid() || DurationSeconds <= 0.f)
+    {
+        return;
+    }
+
+    const FEquippedAbilityInfo* FoundInfo = FindEquippedInfoByHandle(SpecHandle);
+    if (!FoundInfo || FoundInfo->Slot == ESkillSlot::Invalid || FoundInfo->Slot == ESkillSlot::MAX)
+    {
+        return;
+    }
+
+    if (UHUDRootWidget* HUD = ResolveHUDWidget())
+    {
+        HUD->UpdateAbilityCooldown(FoundInfo->Slot, DurationSeconds, DurationSeconds);
+    }
+}
+
+const FEquippedAbilityInfo* AIsoPlayerState::FindEquippedInfoByHandle(const FGameplayAbilitySpecHandle& SpecHandle) const
+{
+    for (const FEquippedAbilityInfo& Info : EquippedAbilities)
+    {
+        if (Info.AbilitySpecHandle.IsValid() && Info.AbilitySpecHandle == SpecHandle)
+        {
+            return &Info;
+        }
+    }
+
+    return nullptr;
+}
+
 FHUDSkillSlotViewModel AIsoPlayerState::BuildSlotViewModel(const FEquippedAbilityInfo& Info) const
 {
     FHUDSkillSlotViewModel ViewModel = BuildEmptySlotViewModel(Info.Slot);
@@ -622,10 +751,14 @@ FHUDSkillSlotViewModel AIsoPlayerState::BuildSlotViewModel(const FEquippedAbilit
 
     ViewModel.bIsUnlocked = true;
 
+    // Treat slot as 'equipped' if the soft class pointer has a valid path (even if not yet loaded).
+    const bool bHasAbilitySoftRef = !Info.AbilityClass.ToSoftObjectPath().IsNull();
     UClass* AbilityClass = Info.AbilityClass.Get();
     ViewModel.AbilityClass = AbilityClass;
+    ViewModel.bIsEquipped = bHasAbilitySoftRef; // allow UI to show placeholder before class loads
+
+    // Icon: attempt to resolve; if not yet loaded, keep nullptr (will refresh after async load)
     ViewModel.Icon = Info.Icon.Get();
-    ViewModel.bIsEquipped = AbilityClass != nullptr;
 
     if (AbilityClass)
     {
@@ -710,6 +843,21 @@ FText AIsoPlayerState::BuildHotkeyLabel(ESkillSlot Slot) const
     case ESkillSlot::Skill_F: return FText::FromString(TEXT("F"));
     default: return FText::GetEmpty();
     }
+}
+
+TArray<FHUDItemSlotViewModel> AIsoPlayerState::BuildUtilityButtonViewModels() const
+{
+    static const TCHAR* DefaultHotkeys[] = { TEXT("4"), TEXT("5"), TEXT("6") };
+
+    TArray<FHUDItemSlotViewModel> Buttons;
+    Buttons.SetNum(UE_ARRAY_COUNT(DefaultHotkeys));
+
+    for (int32 Index = 0; Index < Buttons.Num(); ++Index)
+    {
+        Buttons[Index].HotkeyLabel = FText::FromString(DefaultHotkeys[Index]);
+    }
+
+    return Buttons;
 }
 
 void AIsoPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

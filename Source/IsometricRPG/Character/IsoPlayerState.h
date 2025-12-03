@@ -6,6 +6,8 @@
 #include "GameFramework/PlayerState.h"
 #include "AbilitySystemInterface.h"
 #include "IsometricAbilities/Types/EquippedAbilityInfo.h"
+#include "UI/HUD/HUDViewModelTypes.h"
+#include "GameplayTagContainer.h"
 #include "IsoPlayerState.generated.h"
 
 class UAbilitySystemComponent;
@@ -79,6 +81,17 @@ public:
     void OnUIInitialized();
     void UpdateUIWhenReady();
     void NotifyAbilityActorInfoReady();
+
+    /** Called by gameplay abilities to kick off HUD cooldown visuals. */
+    void HandleAbilityCooldownTriggered(const FGameplayAbilitySpecHandle& Handle, float DurationSeconds);
+
+    // UI Debug: whether to show all owned gameplay tags as text badges on HUD
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Debug")
+    bool bShowOwnedTagsOnHUD = false;
+
+    // Whitelist of gameplay tags to surface on the HUD buff strip, mapping to icon assets
+    UPROPERTY(EditDefaultsOnly, Category = "UI|Buffs")
+    TMap<FGameplayTag, TSoftObjectPtr<class UTexture2D>> BuffIconMap;
 private:
 	int SlotIndex = 0; // 用于跟踪当前技能槽的索引
     void OnAssetsLoadedForUI();
@@ -101,7 +114,6 @@ private:
     void HandleLevelChanged(UIsometricRPGAttributeSetBase* AttributeSetChanged, float NewLevel);
 
     bool bAttributeDelegatesBound = false;
-    TMap<FName, int32> CachedCurrencyValues;
 
     // --- Slot/Index 映射与工具 ---
     // 有些默认技能（如基础攻击/被动）可能不在技能栏显示，但仍需授予。
@@ -116,4 +128,10 @@ private:
     FHUDSkillSlotViewModel BuildEmptySlotViewModel(ESkillSlot Slot) const;
     bool ShouldDisplaySlot(ESkillSlot Slot) const;
     FText BuildHotkeyLabel(ESkillSlot Slot) const;
+    TArray<FHUDItemSlotViewModel> BuildUtilityButtonViewModels() const;
+
+    const FEquippedAbilityInfo* FindEquippedInfoByHandle(const FGameplayAbilitySpecHandle& Handle) const;
+
+    /** Build curated buff icon view models from owned tags */
+    TArray<struct FHUDBuffIconViewModel> BuildBuffViewModels(const FGameplayTagContainer& OwnedTags) const;
 };
