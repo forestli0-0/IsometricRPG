@@ -226,6 +226,7 @@ void UIsometricRPGAttributeSetBase::OnRep_MoveSpeed(const FGameplayAttributeData
 
 void UIsometricRPGAttributeSetBase::OnRep_AttackRange(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, AttackRange, OldValue); }
 void UIsometricRPGAttributeSetBase::OnRep_AttackDamage(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, AttackDamage, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_AbilityPower(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, AbilityPower, OldValue); }
 void UIsometricRPGAttributeSetBase::OnRep_AttackSpeed(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, AttackSpeed, OldValue); }
 void UIsometricRPGAttributeSetBase::OnRep_CriticalChance(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, CriticalChance, OldValue); }
 void UIsometricRPGAttributeSetBase::OnRep_CriticalDamage(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, CriticalDamage, OldValue); }

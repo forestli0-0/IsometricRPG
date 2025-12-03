@@ -68,6 +68,11 @@ public:
 	FGameplayAttributeData AttackDamage;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AttackDamage);
 
+	/** Ability Power / Magic Damage scaling */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_AbilityPower, Category = "Attributes|Attack")
+	FGameplayAttributeData AbilityPower;
+	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AbilityPower);
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_AttackSpeed, Category = "Attributes|Attack")
 	FGameplayAttributeData AttackSpeed;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AttackSpeed);
@@ -177,6 +182,7 @@ protected:
 
 	UFUNCTION() virtual void OnRep_AttackRange(const FGameplayAttributeData& OldValue);
 	UFUNCTION() virtual void OnRep_AttackDamage(const FGameplayAttributeData& OldValue);
+	UFUNCTION() virtual void OnRep_AbilityPower(const FGameplayAttributeData& OldValue);
 	UFUNCTION() virtual void OnRep_AttackSpeed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() virtual void OnRep_CriticalChance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() virtual void OnRep_CriticalDamage(const FGameplayAttributeData& OldValue);
