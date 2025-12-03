@@ -3,6 +3,7 @@
 #include "UI/HUD/HUDActionBarWidget.h"
 #include "UI/HUD/HUDResourcePanelWidget.h"
 #include "UI/HUD/HUDStatusPanelWidget.h"
+#include "UI/HUD/HUDInventorySlotWidget.h"
 #include "UI/SkillLoadout/HUDSkillSlotWidget.h"
 #include "UObject/NameTypes.h"
 
@@ -38,19 +39,34 @@ void UHUDRootWidget::UpdateAbilityCooldown(ESkillSlot InSlot, float Duration, fl
 	}
 }
 
-void UHUDRootWidget::UpdateHealth(float CurrentHealth, float MaxHealth, float ShieldValue)
+void UHUDRootWidget::UpdateHealth(float CurrentHealth, float MaxHealth, float /*ShieldValue*/)
+{
+	CachedCurrentHealth = CurrentHealth;
+	CachedMaxHealth = FMath::Max(MaxHealth, KINDA_SMALL_NUMBER);
+	PushVitalStateToActionBar();
+}
+
+void UHUDRootWidget::UpdateChampionStats(const FHUDChampionStatsViewModel& Stats)
 {
 	if (StatusPanel)
 	{
-		StatusPanel->SetHealthValues(CurrentHealth, MaxHealth, ShieldValue);
+		StatusPanel->SetChampionStats(Stats);
 	}
 }
 
 void UHUDRootWidget::UpdateStatusEffects(const TArray<FName>& TagNames)
 {
-	if (StatusPanel)
+	if (ActionBar)
 	{
-		StatusPanel->SetStatusTags(TagNames);
+		ActionBar->SetStatusTags(TagNames);
+	}
+}
+
+void UHUDRootWidget::UpdateStatusBuffs(const TArray<FHUDBuffIconViewModel>& Buffs)
+{
+	if (ActionBar)
+	{
+		ActionBar->SetStatusBuffs(Buffs);
 	}
 }
 
@@ -64,24 +80,39 @@ void UHUDRootWidget::UpdatePortrait(UTexture2D* PortraitTexture, bool bIsInComba
 
 void UHUDRootWidget::UpdateResources(float CurrentPrimary, float MaxPrimary, float CurrentSecondary, float MaxSecondary)
 {
-	if (ResourcePanel)
-	{
-		ResourcePanel->SetResourceValues(CurrentPrimary, MaxPrimary, CurrentSecondary, MaxSecondary);
-	}
+	CachedCurrentMana = CurrentPrimary;
+	CachedMaxMana = FMath::Max(MaxPrimary, KINDA_SMALL_NUMBER);
+	PushVitalStateToActionBar();
 }
 
 void UHUDRootWidget::UpdateExperience(int32 CurrentLevel, float CurrentExperience, float RequiredExperience)
 {
-	if (ResourcePanel)
+	if (ActionBar)
 	{
-		ResourcePanel->SetExperienceValues(CurrentLevel, CurrentExperience, RequiredExperience);
+		ActionBar->SetExperience(CurrentLevel, CurrentExperience, RequiredExperience);
 	}
 }
 
-void UHUDRootWidget::UpdateCurrencies(const TMap<FName, int32>& CurrencyValues)
+void UHUDRootWidget::UpdateItemSlots(const TArray<FHUDItemSlotViewModel>& Slots)
 {
 	if (ResourcePanel)
 	{
-		ResourcePanel->SetCurrencies(CurrencyValues);
+		ResourcePanel->SetItemSlots(Slots);
+	}
+}
+
+void UHUDRootWidget::UpdateUtilityButtons(const TArray<FHUDItemSlotViewModel>& Buttons)
+{
+	if (ResourcePanel)
+	{
+		ResourcePanel->SetUtilityButtons(Buttons);
+	}
+}
+
+void UHUDRootWidget::PushVitalStateToActionBar()
+{
+	if (ActionBar)
+	{
+		ActionBar->SetVitals(CachedCurrentHealth, CachedMaxHealth, CachedCurrentMana, CachedMaxMana);
 	}
 }

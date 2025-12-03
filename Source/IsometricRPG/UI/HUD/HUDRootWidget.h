@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "IsometricRPG/IsometricAbilities/Types/EquippedAbilityInfo.h"
+#include "UI/HUD/HUDViewModelTypes.h"
 #include "HUDRootWidget.generated.h"
 
 class UHUDActionBarWidget;
@@ -44,25 +45,36 @@ public:
     /** Updates cooldown values for a specific slot. */
     void UpdateAbilityCooldown(ESkillSlot Slot, float Duration, float Remaining);
 
-    /** Forwards health information to the status panel. */
+    /** Updates cached health values and forwards them to the vitals bar. */
     void UpdateHealth(float CurrentHealth, float MaxHealth, float ShieldValue);
 
-    /** Forwards active status tags to the status panel. */
+    /** Updates the champion stat summary block. */
+    void UpdateChampionStats(const FHUDChampionStatsViewModel& Stats);
+
+    /** Forwards active status tags to the buff strip. */
     void UpdateStatusEffects(const TArray<FName>& TagNames);
+
+    /** Forwards curated buff icons to the action bar strip. */
+    void UpdateStatusBuffs(const TArray<FHUDBuffIconViewModel>& Buffs);
 
     /** Updates portrait and alert information. */
     void UpdatePortrait(UTexture2D* PortraitTexture, bool bIsInCombat, bool bHasLevelUp);
 
-    /** Updates primary/secondary resource values. */
+    /** Updates the mana/energy values rendered beneath the action bar. */
     void UpdateResources(float CurrentPrimary, float MaxPrimary, float CurrentSecondary, float MaxSecondary);
 
-    /** Updates level and experience progress. */
+    /** Updates the experience bar rendered on the action bar. */
     void UpdateExperience(int32 CurrentLevel, float CurrentExperience, float RequiredExperience);
 
-    /** Updates currency displays. */
-    void UpdateCurrencies(const TMap<FName, int32>& CurrencyValues);
+    /** Updates right-side equipment slots. */
+    void UpdateItemSlots(const TArray<FHUDItemSlotViewModel>& Slots);
+
+    /** Updates the trio of quick utility buttons. */
+    void UpdateUtilityButtons(const TArray<FHUDItemSlotViewModel>& Buttons);
 
 protected:
+    void PushVitalStateToActionBar();
+
     /** Bottom-center action bar (skills, items, summon slots). */
     UPROPERTY(meta = (BindWidgetOptional))
     TObjectPtr<UHUDActionBarWidget> ActionBar;
@@ -71,7 +83,13 @@ protected:
     UPROPERTY(meta = (BindWidgetOptional))
     TObjectPtr<UHUDStatusPanelWidget> StatusPanel;
 
-    /** Bottom-right resource panel (mana/energy, experience, currencies). */
+    /** Bottom-right resource panel (inventory and utility buttons). */
     UPROPERTY(meta = (BindWidgetOptional))
     TObjectPtr<UHUDResourcePanelWidget> ResourcePanel;
+
+private:
+    float CachedCurrentHealth = 0.f;
+    float CachedMaxHealth = 1.f;
+    float CachedCurrentMana = 0.f;
+    float CachedMaxMana = 1.f;
 };
