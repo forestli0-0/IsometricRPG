@@ -1,40 +1,16 @@
 #include "UI/HUD/HUDStatusPanelWidget.h"
 
 #include "Components/Image.h"
-#include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
 #include "Components/Widget.h"
 #include "Engine/Texture2D.h"
-#include "UObject/NameTypes.h"
-
-namespace
-{
-    FString BuildStatusSummary(const TArray<FName>& TagNames)
-    {
-        if (TagNames.Num() == 0)
-        {
-            return TEXT("");
-        }
-
-        FString Summary;
-        for (int32 Index = 0; Index < TagNames.Num(); ++Index)
-        {
-            Summary += TagNames[Index].ToString();
-            if (Index < TagNames.Num() - 1)
-            {
-                Summary += TEXT(" | ");
-            }
-        }
-        return Summary;
-    }
-}
+#include "Internationalization/Text.h"
 
 void UHUDStatusPanelWidget::NativePreConstruct()
 {
     Super::NativePreConstruct();
 
-    RefreshHealthWidgets();
-    RefreshStatusWidgets();
+    RefreshStatWidgets();
     RefreshPortraitWidgets();
 }
 
@@ -42,24 +18,15 @@ void UHUDStatusPanelWidget::NativeConstruct()
 {
     Super::NativeConstruct();
 
-    RefreshHealthWidgets();
-    RefreshStatusWidgets();
+    RefreshStatWidgets();
     RefreshPortraitWidgets();
 }
 
-void UHUDStatusPanelWidget::SetHealthValues(float InCurrentHealth, float InMaxHealth, float InCurrentShield)
+void UHUDStatusPanelWidget::SetChampionStats(const FHUDChampionStatsViewModel& InStats)
 {
-    CurrentHealth = FMath::Max(0.f, InCurrentHealth);
-    MaxHealth = FMath::Max(0.f, InMaxHealth);
-    CurrentShield = FMath::Max(0.f, InCurrentShield);
-
-    RefreshHealthWidgets();
-}
-
-void UHUDStatusPanelWidget::SetStatusTags(const TArray<FName>& InTags)
-{
-    ActiveStatusTags = InTags;
-    RefreshStatusWidgets();
+    CachedStats = InStats;
+    bHasStats = true;
+    RefreshStatWidgets();
 }
 
 void UHUDStatusPanelWidget::SetPortraitData(UTexture2D* InPortraitTexture, bool bInCombat, bool bHasLevelUp)
@@ -71,59 +38,42 @@ void UHUDStatusPanelWidget::SetPortraitData(UTexture2D* InPortraitTexture, bool 
     RefreshPortraitWidgets();
 }
 
-void UHUDStatusPanelWidget::RefreshHealthWidgets()
+void UHUDStatusPanelWidget::RefreshStatWidgets()
 {
-    const float SafeMaxHealth = FMath::Max(MaxHealth, KINDA_SMALL_NUMBER);
-    const float HealthPercent = FMath::Clamp(CurrentHealth / SafeMaxHealth, 0.f, 1.f);
-
-    if (HealthProgressBar)
+    if (!bHasStats)
     {
-        HealthProgressBar->SetPercent(HealthPercent);
-    }
+        const TArray<TObjectPtr<UTextBlock>> StatTexts = {
+            AttackDamageText, AbilityPowerText, ArmorText,
+            MagicResistText, AttackSpeedText, CritChanceText, MoveSpeedText
+        };
 
-    if (HealthValueText)
-    {
-        const FString HealthString = FString::Printf(TEXT("%.0f / %.0f"), CurrentHealth, MaxHealth);
-        HealthValueText->SetText(FText::FromString(HealthString));
-    }
-
-    if (ShieldProgressBar)
-    {
-        const float ShieldPercent = FMath::Clamp(CurrentShield / SafeMaxHealth, 0.f, 1.f);
-        ShieldProgressBar->SetPercent(ShieldPercent);
-        ShieldProgressBar->SetVisibility(ShieldPercent > 0.f ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
-    }
-
-    if (ShieldValueText)
-    {
-        if (CurrentShield > 0.f)
+        for (TObjectPtr<UTextBlock> StatText : StatTexts)
         {
-            ShieldValueText->SetVisibility(ESlateVisibility::Visible);
-            ShieldValueText->SetText(FText::FromString(FString::Printf(TEXT("+%.0f"), CurrentShield)));
+            if (StatText)
+            {
+                StatText->SetText(FText::GetEmpty());
+                StatText->SetVisibility(ESlateVisibility::Collapsed);
+            }
         }
-        else
-        {
-            ShieldValueText->SetVisibility(ESlateVisibility::Collapsed);
-        }
+        return;
     }
-}
 
-void UHUDStatusPanelWidget::RefreshStatusWidgets()
-{
-    if (StatusSummaryText)
+    auto SetStatText = [](UTextBlock* Target, float Value)
     {
-        const FString Summary = BuildStatusSummary(ActiveStatusTags);
-        if (Summary.IsEmpty())
+        if (Target)
         {
-            StatusSummaryText->SetText(FText::GetEmpty());
-            StatusSummaryText->SetVisibility(ESlateVisibility::Collapsed);
+            Target->SetText(FText::FromString(FString::Printf(TEXT("%.1f"), Value)));
+            Target->SetVisibility(ESlateVisibility::HitTestInvisible);
         }
-        else
-        {
-            StatusSummaryText->SetText(FText::FromString(Summary));
-            StatusSummaryText->SetVisibility(ESlateVisibility::HitTestInvisible);
-        }
-    }
+    };
+
+    SetStatText(AttackDamageText, CachedStats.AttackDamage);
+    SetStatText(AbilityPowerText, CachedStats.AbilityPower);
+    SetStatText(ArmorText, CachedStats.Armor);
+    SetStatText(MagicResistText, CachedStats.MagicResist);
+    SetStatText(AttackSpeedText, CachedStats.AttackSpeed);
+    SetStatText(CritChanceText, CachedStats.CritChance);
+    SetStatText(MoveSpeedText, CachedStats.MoveSpeed);
 }
 
 void UHUDStatusPanelWidget::RefreshPortraitWidgets()

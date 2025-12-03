@@ -2,10 +2,10 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "UI/HUD/HUDViewModelTypes.h"
 #include "HUDStatusPanelWidget.generated.h"
 
 class UImage;
-class UProgressBar;
 class UTextBlock;
 class UWidget;
 class UTexture2D;
@@ -19,11 +19,8 @@ class ISOMETRICRPG_API UHUDStatusPanelWidget : public UUserWidget
     GENERATED_BODY()
 
 public:
-    /** Updates the primary health and optional shield values. */
-    void SetHealthValues(float InCurrentHealth, float InMaxHealth, float InCurrentShield);
-
-    /** Updates the active buff/debuff indicators using gameplay tags. */
-    void SetStatusTags(const TArray<FName>& InTags);
+    /** Updates the focused combat stats block. */
+    void SetChampionStats(const FHUDChampionStatsViewModel& InStats);
 
     /** Updates the portrait icon and alert indicators. */
     void SetPortraitData(UTexture2D* InPortraitTexture, bool bInCombat, bool bHasLevelUp);
@@ -33,36 +30,38 @@ protected:
     virtual void NativeConstruct() override;
 
 private:
-    void RefreshHealthWidgets();
-    void RefreshStatusWidgets();
+    void RefreshStatWidgets();
     void RefreshPortraitWidgets();
 
 private:
-    float CurrentHealth = 0.f;
-    float MaxHealth = 0.f;
-    float CurrentShield = 0.f;
-
-    TArray<FName> ActiveStatusTags;
+    FHUDChampionStatsViewModel CachedStats;
+    bool bHasStats = false;
 
     TObjectPtr<UTexture2D> PortraitTexture;
     bool bIsInCombat = false;
     bool bHasPendingLevelUp = false;
 
-    /** Bound sub-widgets configured in the designer but driven via C++. */
+    /** Bound stat rows. */
     UPROPERTY(meta = (BindWidgetOptional))
-    TObjectPtr<UProgressBar> HealthProgressBar;
+    TObjectPtr<UTextBlock> AttackDamageText;
 
     UPROPERTY(meta = (BindWidgetOptional))
-    TObjectPtr<UProgressBar> ShieldProgressBar;
+    TObjectPtr<UTextBlock> AbilityPowerText;
 
     UPROPERTY(meta = (BindWidgetOptional))
-    TObjectPtr<UTextBlock> HealthValueText;
+    TObjectPtr<UTextBlock> ArmorText;
 
     UPROPERTY(meta = (BindWidgetOptional))
-    TObjectPtr<UTextBlock> ShieldValueText;
+    TObjectPtr<UTextBlock> MagicResistText;
 
     UPROPERTY(meta = (BindWidgetOptional))
-    TObjectPtr<UTextBlock> StatusSummaryText;
+    TObjectPtr<UTextBlock> AttackSpeedText;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UTextBlock> CritChanceText;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UTextBlock> MoveSpeedText;
 
     UPROPERTY(meta = (BindWidgetOptional))
     TObjectPtr<UImage> PortraitImage;
