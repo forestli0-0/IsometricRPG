@@ -30,6 +30,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GameplayEffect")
     float EffectLevel = 1.0f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GameplayEffect")
+    float KnockbackForce = 800.0f;
+
     AActor* TargetActor;
 private:
     void ApplyEffectToTarget(

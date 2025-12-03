@@ -86,6 +86,11 @@ void UAN_PlayMeleeAttackMontageNotify::Notify(USkeletalMeshComponent* MeshComp, 
         FGameplayEffectSpecHandle PunchSpecHandle = SourceASC->MakeOutgoingSpec(PunchEffectClass, EffectLevel, ContextHandle);
         if (PunchSpecHandle.IsValid())
         {
+            // 设置击退力度参数，解决 "magnitude had not yet been set by caller" 错误
+            // 并允许通过 Notify 配置不同的击退力度
+            FGameplayTag KnockbackForceTag = FGameplayTag::RequestGameplayTag(FName("Data.Ability.KnockBack.Force"));
+            PunchSpecHandle.Data->SetSetByCallerMagnitude(KnockbackForceTag, KnockbackForce);
+
             SourceASC->ApplyGameplayEffectSpecToTarget(*PunchSpecHandle.Data.Get(), TargetASC);
         }
     }
