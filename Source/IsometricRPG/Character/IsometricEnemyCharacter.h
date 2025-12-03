@@ -20,10 +20,11 @@ protected:
     UPROPERTY(EditDefaultsOnly, Category = "GAS")
     TSubclassOf<class UGameplayEffect> DefaultAttributesEffect;
 
-    UPROPERTY(EditDefaultsOnly, Category = "GAS")
+    // 修改：添加 BlueprintReadOnly 以便 TS/蓝图可以读取配置的技能列表
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS")
     TArray<TSubclassOf<UGameplayAbility>> DefaultAbilities;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GAS")
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GAS")
     TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GAS")

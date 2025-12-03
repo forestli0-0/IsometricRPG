@@ -8,6 +8,9 @@ AIsometricEnemyCharacter::AIsometricEnemyCharacter()
     AbilitySystemComponent->SetIsReplicated(true);
     AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
     AttributeSet = CreateDefaultSubobject<UIsometricRPGAttributeSetBase>(TEXT("AttributeSet"));
+
+    // 自动控制设置：放置在世界中或生成时都会被 AI 控制
+    AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 }
 
 UAbilitySystemComponent* AIsometricEnemyCharacter::GetAbilitySystemComponent() const
