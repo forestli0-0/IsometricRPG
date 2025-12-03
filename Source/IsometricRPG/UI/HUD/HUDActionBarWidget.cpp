@@ -2,6 +2,15 @@
 
 #include "UI/SkillLoadout/HUDSkillLoadoutWidget.h"
 #include "UI/SkillLoadout/HUDSkillSlotWidget.h"
+#include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
+#include "Components/ProgressBar.h"
+#include "Components/TextBlock.h"
+#include "Components/Overlay.h"
+#include "Components/OverlaySlot.h"
+#include "Components/Image.h"
+#include "Blueprint/WidgetTree.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 namespace
 {
@@ -26,17 +35,11 @@ void UHUDActionBarWidget::NativeConstruct()
 
 	SlotLookup.Reset();
 
-	if (SkillLoadout)
-	{
-		SkillLoadout->ResetSlots();
-	}
+	RebuildSlotLookup();
 
-	RegisterSlot(ESkillSlot::Skill_Q, Slot_Q);
-	RegisterSlot(ESkillSlot::Skill_W, Slot_W);
-	RegisterSlot(ESkillSlot::Skill_E, Slot_E);
-	RegisterSlot(ESkillSlot::Skill_R, Slot_R);
-	RegisterSlot(ESkillSlot::Skill_D, Slot_D);
-	RegisterSlot(ESkillSlot::Skill_F, Slot_F);
+	RefreshVitalWidgets();
+	RefreshExperienceWidgets();
+	RefreshBuffWidgets();
 }
 
 void UHUDActionBarWidget::SetSlot(const FHUDSkillSlotViewModel& ViewModel)
@@ -110,6 +113,37 @@ void UHUDActionBarWidget::ApplyCooldown(ESkillSlot InSlot, float Duration, float
 	}
 }
 
+void UHUDActionBarWidget::SetVitals(float InCurrentHealth, float InMaxHealth, float InCurrentMana, float InMaxMana)
+{
+	CurrentHealth = FMath::Max(0.f, InCurrentHealth);
+	MaxHealth = FMath::Max(KINDA_SMALL_NUMBER, InMaxHealth);
+	CurrentMana = FMath::Max(0.f, InCurrentMana);
+	MaxMana = FMath::Max(KINDA_SMALL_NUMBER, InMaxMana);
+
+	RefreshVitalWidgets();
+}
+
+void UHUDActionBarWidget::SetExperience(int32 InCurrentLevel, float InCurrentXP, float InRequiredXP)
+{
+	CurrentLevel = FMath::Max(1, InCurrentLevel);
+	CurrentExperience = FMath::Max(0.f, InCurrentXP);
+	RequiredExperience = FMath::Max(KINDA_SMALL_NUMBER, InRequiredXP);
+
+	RefreshExperienceWidgets();
+}
+
+void UHUDActionBarWidget::SetStatusTags(const TArray<FName>& InTags)
+{
+	CachedBuffTags = InTags;
+	RefreshBuffWidgets();
+}
+
+void UHUDActionBarWidget::SetStatusBuffs(const TArray<FHUDBuffIconViewModel>& InBuffs)
+{
+	CachedBuffIcons = InBuffs;
+	RefreshBuffWidgets();
+}
+
 UHUDSkillSlotWidget* UHUDActionBarWidget::FindSlot(ESkillSlot InSlot) const
 {
 	if (const TObjectPtr<UHUDSkillSlotWidget>* Found = SlotLookup.Find(InSlot))
@@ -119,17 +153,192 @@ UHUDSkillSlotWidget* UHUDActionBarWidget::FindSlot(ESkillSlot InSlot) const
 	return nullptr;
 }
 
-void UHUDActionBarWidget::RegisterSlot(ESkillSlot InSlot, UHUDSkillSlotWidget* SlotWidget)
+void UHUDActionBarWidget::RebuildSlotLookup()
 {
-	if (!SlotWidget)
+	if (!SkillLoadout)
 	{
 		return;
 	}
 
-	SlotLookup.Add(InSlot, SlotWidget);
-
-	if (SkillLoadout)
+	const TArray<TObjectPtr<UHUDSkillSlotWidget>>& Slots = SkillLoadout->GetSlots();
+	for (UHUDSkillSlotWidget* SlotWidget : Slots)
 	{
-		SkillLoadout->RegisterSlot(SlotWidget);
+		if (!SlotWidget)
+		{
+			continue;
+		}
+
+		const ESkillSlot SlotType = SlotWidget->GetConfiguredSlot();
+		if (SlotType == ESkillSlot::Invalid || SlotType == ESkillSlot::MAX)
+		{
+			continue;
+		}
+
+		SlotLookup.Add(SlotType, SlotWidget);
+	}
+}
+
+void UHUDActionBarWidget::RefreshVitalWidgets()
+{
+	const float HealthPercent = FMath::Clamp(CurrentHealth / MaxHealth, 0.f, 1.f);
+	if (HealthBar)
+	{
+		HealthBar->SetPercent(HealthPercent);
+	}
+
+	if (HealthText)
+	{
+		HealthText->SetText(FText::FromString(FString::Printf(TEXT("%d / %d"), FMath::RoundToInt(CurrentHealth), FMath::RoundToInt(MaxHealth))));
+	}
+
+	const float ManaPercent = FMath::Clamp(CurrentMana / MaxMana, 0.f, 1.f);
+	if (ManaBar)
+	{
+		ManaBar->SetPercent(ManaPercent);
+	}
+
+	if (ManaText)
+	{
+		ManaText->SetText(FText::FromString(FString::Printf(TEXT("%d / %d"), FMath::RoundToInt(CurrentMana), FMath::RoundToInt(MaxMana))));
+	}
+}
+
+void UHUDActionBarWidget::RefreshExperienceWidgets()
+{
+	const float SafeRequiredXP = FMath::Max(RequiredExperience, KINDA_SMALL_NUMBER);
+	const float XPPercent = FMath::Clamp(CurrentExperience / SafeRequiredXP, 0.f, 1.f);
+
+	if (ExperienceBar)
+	{
+		ExperienceBar->SetPercent(XPPercent);
+	}
+
+	if (ExperienceText)
+	{
+		ExperienceText->SetText(FText::FromString(FString::Printf(TEXT("%.0f / %.0f"), CurrentExperience, SafeRequiredXP)));
+	}
+
+	if (LevelText)
+	{
+		LevelText->SetText(FText::AsNumber(CurrentLevel));
+	}
+}
+
+void UHUDActionBarWidget::RefreshBuffWidgets()
+{
+	if (!BuffStrip)
+	{
+		return;
+	}
+
+	BuffStrip->ClearChildren();
+
+	// Prefer curated icons; fallback to debug tag labels if empty
+	if (CachedBuffIcons.Num() > 0)
+	{
+		BuffStrip->SetVisibility(ESlateVisibility::HitTestInvisible);
+
+		for (const FHUDBuffIconViewModel& Buff : CachedBuffIcons)
+		{
+			if (!WidgetTree)
+			{
+				break;
+			}
+
+			if (!Buff.Icon)
+			{
+				continue; // Skip unresolved icon (avoid white rectangle)
+			}
+
+			UOverlay* IconOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+			if (!IconOverlay)
+			{
+				continue;
+			}
+
+			// Base icon image
+			UImage* IconWidget = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+			if (IconWidget)
+			{
+				IconWidget->SetBrushFromTexture(Buff.Icon);
+				FSlateBrush Brush = IconWidget->GetBrush();
+				Brush.ImageSize = BuffIconSize;
+				IconWidget->SetBrush(Brush);
+				IconWidget->SetDesiredSizeOverride(BuffIconSize);
+				IconWidget->SetColorAndOpacity(Buff.bIsDebuff ? FLinearColor(1.f, 0.3f, 0.3f, 1.f) : FLinearColor::White);
+				if (UOverlaySlot* IconSlot = IconOverlay->AddChildToOverlay(IconWidget))
+				{
+					IconSlot->SetHorizontalAlignment(HAlign_Fill);
+					IconSlot->SetVerticalAlignment(VAlign_Fill);
+				}
+			}
+
+			// Radial cooldown overlay if we have timing data
+			if (Buff.TimeRemaining >= 0.f && Buff.TotalDuration > KINDA_SMALL_NUMBER)
+			{
+				UImage* CooldownMask = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+				if (CooldownMask && BuffCooldownMaterial)
+				{
+					UMaterialInstanceDynamic* CooldownMID = UMaterialInstanceDynamic::Create(BuffCooldownMaterial, this);
+					if (CooldownMID)
+					{
+						const float Percent = FMath::Clamp(Buff.TimeRemaining / Buff.TotalDuration, 0.f, 1.f);
+						CooldownMID->SetScalarParameterValue(BuffCooldownPercentParam, Percent);
+						CooldownMask->SetBrushFromMaterial(CooldownMID);
+						CooldownMask->SetColorAndOpacity(BuffCooldownTint);
+						CooldownMask->SetDesiredSizeOverride(BuffIconSize);
+						if (UOverlaySlot* CooldownSlot = IconOverlay->AddChildToOverlay(CooldownMask))
+						{
+							CooldownSlot->SetHorizontalAlignment(HAlign_Fill);
+							CooldownSlot->SetVerticalAlignment(VAlign_Fill);
+						}
+					}
+				}
+			}
+
+			// Stack count badge
+			if (Buff.StackCount > 1)
+			{
+				UTextBlock* StackText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+				if (StackText)
+				{
+					StackText->SetText(FText::AsNumber(Buff.StackCount));
+					StackText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+					StackText->SetShadowOffset(FVector2D(1.f, 1.f));
+					StackText->SetJustification(ETextJustify::Right);
+					if (UOverlaySlot* StackSlot = IconOverlay->AddChildToOverlay(StackText))
+					{
+						StackSlot->SetHorizontalAlignment(HAlign_Right);
+						StackSlot->SetVerticalAlignment(VAlign_Bottom);
+						StackSlot->SetPadding(FMargin(0.f, 0.f, 1.f, 1.f));
+					}
+				}
+			}
+
+			BuffStrip->AddChildToHorizontalBox(IconOverlay);
+		}
+		return;
+	}
+
+	if (CachedBuffTags.Num() == 0)
+	{
+		BuffStrip->SetVisibility(ESlateVisibility::Collapsed);
+		return;
+	}
+
+	BuffStrip->SetVisibility(ESlateVisibility::HitTestInvisible);
+
+	for (const FName& TagName : CachedBuffTags)
+	{
+		if (!WidgetTree)
+		{
+			break;
+		}
+
+		UTextBlock* TagLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		TagLabel->SetText(FText::FromName(TagName));
+		TagLabel->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+		TagLabel->SetShadowOffset(FVector2D(1.f, 1.f));
+		BuffStrip->AddChildToHorizontalBox(TagLabel);
 	}
 }
