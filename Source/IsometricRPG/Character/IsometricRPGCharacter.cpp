@@ -240,3 +240,12 @@ void AIsometricRPGCharacter::Client_SetMovementLocked_Implementation(bool bLocke
         }
     }
 }
+
+float AIsometricRPGCharacter::GetAttackRange() const
+{
+    if (UIsometricRPGAttributeSetBase* AttributeSet = GetAttributeSet())
+    {
+        return AttributeSet->GetAttackRange();
+    }
+    return 0.0f;
+}

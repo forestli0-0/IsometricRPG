@@ -79,6 +79,8 @@ public:
     float GetCurrentHealth() const;
     UFUNCTION(BlueprintPure, Category="Attributes")
     float GetMaxHealth() const;
+    UFUNCTION(BlueprintPure, Category="Attributes")
+    float GetAttackRange() const;
 
 public:
     /** 由InputComponent在激活技能前调用，用于暂存目标数据 */
