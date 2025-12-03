@@ -10,11 +10,15 @@
 #include "AbilitySystemBlueprintLibrary.h"
 #include "GameplayEffectTypes.h"
 #include "Components/AudioComponent.h"
+#include "Net/UnrealNetwork.h"
 
 AProjectileBase::AProjectileBase()
 {
     PrimaryActorTick.bCanEverTick = true;
     PrimaryActorTick.TickGroup = TG_PrePhysics; // Tick before physics to update distance
+
+    bReplicates = true;
+    SetReplicateMovement(true);
 
     CollisionComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
     CollisionComp->InitSphereRadius(15.0f);
@@ -39,6 +43,51 @@ AProjectileBase::AProjectileBase()
     ProjectileOwner = nullptr;
     ProjectileInstigator = nullptr;
     SourceAbilitySystemComponent = nullptr;
+}
+
+void AProjectileBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+    DOREPLIFETIME(AProjectileBase, InitData);
+}
+
+void AProjectileBase::OnRep_InitData()
+{
+    // 当客户端收到 InitData 更新时，刷新视觉效果和移动参数
+    if (ProjectileMovement)
+    {
+        ProjectileMovement->InitialSpeed = InitData.InitialSpeed;
+        ProjectileMovement->MaxSpeed = InitData.MaxSpeed > 0 ? InitData.MaxSpeed : InitData.InitialSpeed;
+        ProjectileMovement->ProjectileGravityScale = InitData.GravityScale;
+        ProjectileMovement->bShouldBounce = InitData.bShouldBounce;
+    }
+
+    // 生成视觉特效
+    if (InitData.VisualEffect)
+    {
+        // 清理旧的（如果有）- 这里简单起见直接生成新的，通常 InitData 只会设置一次
+        if (VisualEffectComp)
+        {
+             VisualEffectComp->Deactivate();
+        }
+        
+        UNiagaraFunctionLibrary::SpawnSystemAttached(
+            InitData.VisualEffect,
+            RootComponent,
+            NAME_None,
+            FVector::ZeroVector,
+            FRotator::ZeroRotator,
+            EAttachLocation::KeepRelativeOffset,
+            true // autoDestroy
+        );
+    }
+
+    // 播放飞行音效
+    if (FlyingSoundComp && InitData.FlyingSound)
+    {
+        FlyingSoundComp->SetSound(InitData.FlyingSound);
+        FlyingSoundComp->Play();
+    }
 }
 
 void AProjectileBase::InitializeProjectile(const UGameplayAbility* InSourceAbility, const FProjectileInitializationData& Data, AActor* InOwner, APawn* InInstigator, UAbilitySystemComponent* InSourceASC)

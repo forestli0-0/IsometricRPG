@@ -6,10 +6,14 @@
 #include "NiagaraSystem.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
+#include "Net/UnrealNetwork.h"
 #include "AProjectileBase.generated.h"
 
 class UAbilitySystemComponent;
 class UGameplayEffect;
+class USphereComponent;
+class UProjectileMovementComponent;
+class UAudioComponent;
 
 // 用于初始化投射物的数据结构
 USTRUCT(BlueprintType)
@@ -47,7 +51,7 @@ struct FProjectileInitializationData
     // 投射物击中时的爆炸/冲击特效 (可选)  
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")  
     UNiagaraSystem* ImpactEffect;
-    
+
     // 投射物飞行音效 (可选)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
     USoundBase* FlyingSound;
@@ -56,81 +60,125 @@ struct FProjectileInitializationData
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
     USoundBase* ImpactSound;
 
-    // 溅射半径 (0 表示无溅射)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
-    float SplashRadius = 50.0f;
-
-    // 溅射伤害效果 (可选, 仅当SplashRadius > 0时有效)
+    // 溅射伤害效果 (可选)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
     TSubclassOf<UGameplayEffect> SplashDamageEffect;
 
-    // 投射物是否受重力影响
+    // 溅射半径
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
+    float SplashRadius = 0.0f;
+
+    // 重力缩放
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
     float GravityScale = 0.0f;
 
-    // 投射物是否应该弹跳
+    // 是否反弹
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
     bool bShouldBounce = false;
-
-    // 构造函数提供默认值
-    FProjectileInitializationData() {}
 };
 
-
-UCLASS(Abstract) // 标记为抽象类，因为我们希望具体投射物继承它
+UCLASS()
 class ISOMETRICRPG_API AProjectileBase : public AActor
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
+	
+public:	
+	// Sets default values for this actor's properties
+	AProjectileBase();
 
-public:
-    AProjectileBase();
-
-    // 用于从Ability初始化投射物
-    UFUNCTION(BlueprintCallable, Category = "Projectile")
-    virtual void InitializeProjectile(const UGameplayAbility* SourceAbility, const FProjectileInitializationData& Data, AActor* InOwner, APawn* InInstigator, UAbilitySystemComponent* InSourceASC);
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
-    // 组件
-    UPROPERTY(VisibleDefaultsOnly, Category = Projectile)
+	// Called when the game starts or when spawned
+	virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+    UPROPERTY()
+    class UGameplayAbility* SourceAbility;
+
+public:	
+	// Called every frame
+	virtual void Tick(float DeltaTime) override;
+
+	// 用于从Ability初始化投射物
+	UFUNCTION(BlueprintCallable, Category = "Projectile")
+	virtual void InitializeProjectile(const UGameplayAbility* InSourceAbility, const FProjectileInitializationData& Data, AActor* InOwner, APawn* InInstigator, UAbilitySystemComponent* InSourceASC);
+
+	// 碰撞处理
+	UFUNCTION(BlueprintCallable, Category = "Projectile")
+	virtual void OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+
+    UFUNCTION()
+    virtual void OnRep_InitData();
+
+	UPROPERTY(ReplicatedUsing = OnRep_InitData, BlueprintReadOnly, Category = "Projectile Data")
+	FProjectileInitializationData InitData;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Projectile Data")
+	AActor* ProjectileOwner;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Projectile Data")
+	APawn* ProjectileInstigator;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Projectile Data")
+	UAbilitySystemComponent* SourceAbilitySystemComponent;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Projectile Data")
+	TSubclassOf<UGameplayEffect> DamageEffect;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Projectile Data")
+	TSubclassOf<UGameplayEffect> SplashDamageEffect;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Projectile Data")
+	UNiagaraSystem* VisualEffect;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Projectile Data")
+	UNiagaraSystem* ImpactEffect;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Projectile Data")
+	USoundBase* FlyingSound;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Projectile Data")
+	USoundBase* ImpactSound;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Projectile Data")
+	float InitialSpeed;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Projectile Data")
+	float MaxSpeed;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Projectile Data")
+	float MaxFlyDistance;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Projectile Data")
+	float Lifespan;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Projectile Data")
+	float SplashRadius;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Projectile Data")
+	float GravityScale;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Projectile Data")
+	bool bShouldBounce;
+
+private:
+    UPROPERTY(VisibleDefaultsOnly, Category = "Projectile")
     class USphereComponent* CollisionComp;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Movement)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement", meta = (AllowPrivateAccess = "true"))
     class UProjectileMovementComponent* ProjectileMovement;
 
-    UPROPERTY(VisibleDefaultsOnly, Category = Effects)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Effects", meta = (AllowPrivateAccess = "true"))
     class UNiagaraComponent* VisualEffectComp;
-    
-    UPROPERTY(VisibleDefaultsOnly, Category = Audio)
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Effects", meta = (AllowPrivateAccess = "true"))
     class UAudioComponent* FlyingSoundComp;
-
-    // 属性
-    UPROPERTY(BlueprintReadOnly, Category = "Projectile")
-    FProjectileInitializationData InitData;
-    
-    UPROPERTY(BlueprintReadOnly, Category = "Projectile")
-    TObjectPtr<AActor> ProjectileOwner;
-
-    UPROPERTY(BlueprintReadOnly, Category = "Projectile")
-    TObjectPtr<APawn> ProjectileInstigator;
-    
-    UPROPERTY(BlueprintReadOnly, Category = "Projectile")
-    TObjectPtr<UAbilitySystemComponent> SourceAbilitySystemComponent;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Projectile")
-	TObjectPtr<UGameplayAbility> SourceAbility;
 
     float TravelDistance;
     FTimerHandle TimerHandle_Lifespan;
 
 protected:
-    virtual void BeginPlay() override;
-    virtual void Tick(float DeltaTime) override;
-    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-
-    // 碰撞处理
-    UFUNCTION()
-    virtual void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
-
     // 应用伤害效果
     virtual void ApplyDamageEffects(AActor* TargetActor, const FHitResult& HitResult);
     
