@@ -3,6 +3,7 @@
         "target": "esnext",
         "module": "commonjs",
         "experimentalDecorators": true,
+        "emitDecoratorMetadata": true,
         "useDefineForClassFields": false,
         "jsx": "react",
         "sourceMap": true,
