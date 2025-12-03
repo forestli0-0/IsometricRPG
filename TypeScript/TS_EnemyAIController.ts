@@ -29,13 +29,7 @@ class TS_EnemyAIController extends UE.IsometricAIController {
     // --- 生命周期 ---
 
     ReceivePossess(InPawn: UE.Pawn): void {
-        // 不再需要从 Pawn 同步 AttackRange，因为我们将直接从 AttributeSet 读取
-        // const enemy = InPawn as any;
-        // if (enemy.AttackRange !== undefined) {
-        //     this.AttackRange = enemy.AttackRange;
-        //     if (this.EnableDebug) console.log(`[AI] Sync AttackRange from Pawn: ${this.AttackRange}`);
-        // }
-        
+        super.ReceivePossess(InPawn);
     }
 
     ReceiveBeginPlay(): void {
