@@ -5,6 +5,8 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Character/IsometricRPGAttributeSetBase.h"
+#include "GameFramework/PlayerState.h"
+#include "GameFramework/Controller.h"
 
 // 定义我们要捕获的属性
 struct FKnockbackStatics
@@ -42,6 +44,25 @@ void UGEE_KnockbackExecution::Execute_Implementation(const FGameplayEffectCustom
 	AActor* SourceActor = SourceAbilitySystemComponent ? SourceAbilitySystemComponent->GetAvatarActor() : nullptr;
 	AActor* TargetActor = TargetAbilitySystemComponent ? TargetAbilitySystemComponent->GetAvatarActor() : nullptr;
 
+
+	if (SourceActor)
+	{
+		if (APlayerState* PS = Cast<APlayerState>(SourceActor))
+		{
+			if (PS->GetPawn())
+			{
+				SourceActor = PS->GetPawn();
+			}
+		}
+		else if (AController* Controller = Cast<AController>(SourceActor))
+		{
+			if (Controller->GetPawn())
+			{
+				SourceActor = Controller->GetPawn();
+			}
+		}
+	}
+
 	const FGameplayEffectSpec& Spec = ExecutionParams.GetOwningSpec();
 
 	// 从规格中获取标签和数值
@@ -51,6 +72,16 @@ void UGEE_KnockbackExecution::Execute_Implementation(const FGameplayEffectCustom
 	FAggregatorEvaluateParameters EvaluationParameters;
 	EvaluationParameters.SourceTags = SourceTags;
 	EvaluationParameters.TargetTags = TargetTags;
+
+	// 尝试从 SetByCaller 获取击退力度，如果没设置则使用默认值
+	float ForceMagnitude = KnockbackForce;
+	FGameplayTag KnockbackForceTag = FGameplayTag::RequestGameplayTag(FName("Data.Ability.KnockBack.Force"));
+	float SetByCallerMagnitude = Spec.GetSetByCallerMagnitude(KnockbackForceTag, false, -1.0f);
+	
+	if (SetByCallerMagnitude > 0.0f)
+	{
+		ForceMagnitude = SetByCallerMagnitude;
+	}
 
 	if (!TargetActor || !SourceActor)
 	{
@@ -63,6 +94,14 @@ void UGEE_KnockbackExecution::Execute_Implementation(const FGameplayEffectCustom
 	{
 		return;
 	}
+
+    // Debug Log: 打印击退计算的关键信息
+    UE_LOG(LogTemp, Warning, TEXT("Knockback Exec: Source=%s Loc=%s, Target=%s Loc=%s"), 
+        SourceActor ? *SourceActor->GetName() : TEXT("NULL"), 
+        SourceActor ? *SourceActor->GetActorLocation().ToString() : TEXT("N/A"),
+        TargetActor ? *TargetActor->GetName() : TEXT("NULL"), 
+        TargetActor ? *TargetActor->GetActorLocation().ToString() : TEXT("N/A")
+    );
 
 	// 获取角色移动组件
 	UCharacterMovementComponent* MovementComponent = TargetCharacter->GetCharacterMovement();
@@ -79,7 +118,7 @@ void UGEE_KnockbackExecution::Execute_Implementation(const FGameplayEffectCustom
 	KnockbackDirection = KnockbackDirection.GetSafeNormal();
 
 	// 计算击飞向量
-	FVector KnockbackVelocity = KnockbackDirection * KnockbackForce;
+	FVector KnockbackVelocity = KnockbackDirection * ForceMagnitude;
 
 	// 应用击飞
 	MovementComponent->Launch(KnockbackVelocity);
