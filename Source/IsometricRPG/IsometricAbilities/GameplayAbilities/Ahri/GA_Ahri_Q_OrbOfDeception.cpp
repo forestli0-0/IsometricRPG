@@ -72,5 +72,3 @@ float UGA_Ahri_Q_OrbOfDeception::CalculateDamage() const
 
 	return TotalDamage;
 }
-
-// 所有旧的 OnOrb... 函数都已删除，因为投射物现在是自包含的。 
