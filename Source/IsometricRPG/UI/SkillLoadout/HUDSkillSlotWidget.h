@@ -5,6 +5,8 @@
 #include "GameplayTagContainer.h"
 #include "Abilities/GameplayAbility.h"
 #include "IsometricRPG/IsometricAbilities/Types/EquippedAbilityInfo.h"
+#include "Materials/MaterialInterface.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "HUDSkillSlotWidget.generated.h"
 
 class UImage;
@@ -79,6 +81,12 @@ public:
     /** Returns true while the cooldown overlay is active. */
     bool IsOnCooldown() const { return bCooldownActive; }
 
+    /** Configures which gameplay slot this widget represents in the HUD. */
+    void SetConfiguredSlot(ESkillSlot InSlot) { ConfiguredSlot = InSlot; }
+
+    /** Returns the gameplay slot this widget is bound to. */
+    ESkillSlot GetConfiguredSlot() const { return ConfiguredSlot; }
+
 protected:
     virtual void NativePreConstruct() override;
     virtual void NativeConstruct() override;
@@ -93,6 +101,10 @@ private:
 private:
     /** Cached model for the slot. */
     FHUDSkillSlotViewModel SlotData;
+
+    /** Enum slot this widget represents (Q/W/E/R/D/F/etc.). */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slot", meta = (AllowPrivateAccess = "true"))
+    ESkillSlot ConfiguredSlot = ESkillSlot::Invalid;
 
     /** Whether the slot currently holds valid data. */
     bool bHasData = false;
@@ -117,4 +129,28 @@ private:
 
     UPROPERTY(meta = (BindWidgetOptional))
     TObjectPtr<UImage> EmptyStateOverlay;
+
+    // LoL-style radial cooldown mask and center countdown label
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UImage> CooldownMaskImage;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UTextBlock> CooldownText;
+
+    // Optional override material; if null, will use the material already set on CooldownMaskImage
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cooldown", meta = (AllowPrivateAccess = "true"))
+    TObjectPtr<UMaterialInterface> CooldownRadialMaterial;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UMaterialInstanceDynamic> CooldownMID;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cooldown", meta = (AllowPrivateAccess = "true"))
+    FName CooldownPercentParamName = TEXT("Percent");
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cooldown", meta = (AllowPrivateAccess = "true"))
+    FLinearColor CooldownMaskTint = FLinearColor(0.f, 0.f, 0.f, 0.65f);
+
+    // Style: color for the hotkey label (e.g., Q/W/E/R), configurable in defaults/blueprint
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Style", meta = (AllowPrivateAccess = "true"))
+    FSlateColor HotkeyTextColor = FLinearColor::White;
 };

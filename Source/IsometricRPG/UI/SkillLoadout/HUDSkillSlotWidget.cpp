@@ -7,6 +7,7 @@
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
 #include "UMG.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 namespace
 {
@@ -26,6 +27,30 @@ void UHUDSkillSlotWidget::NativePreConstruct()
 void UHUDSkillSlotWidget::NativeConstruct()
 {
     Super::NativeConstruct();
+
+    // Setup radial cooldown material instance if a material is assigned
+    if (CooldownMaskImage)
+    {
+        UMaterialInterface* SourceMat = CooldownRadialMaterial;
+        if (!SourceMat)
+        {
+            if (UObject* Res = CooldownMaskImage->GetBrush().GetResourceObject())
+            {
+                SourceMat = Cast<UMaterialInterface>(Res);
+            }
+        }
+
+        if (SourceMat)
+        {
+            CooldownMID = UMaterialInstanceDynamic::Create(SourceMat, this);
+            if (CooldownMID)
+            {
+                CooldownMaskImage->SetBrushFromMaterial(CooldownMID);
+                CooldownMaskImage->SetColorAndOpacity(CooldownMaskTint);
+                CooldownMaskImage->SetVisibility(ESlateVisibility::Collapsed);
+            }
+        }
+    }
 
     UpdateEmptyState();
 }
@@ -117,15 +142,8 @@ void UHUDSkillSlotWidget::ApplySlotDataToWidgets()
 
     if (NameText)
     {
-        if (SlotData.DisplayName.IsEmpty())
-        {
-            NameText->SetVisibility(ESlateVisibility::Collapsed);
-        }
-        else
-        {
-            NameText->SetText(SlotData.DisplayName);
-            NameText->SetVisibility(ESlateVisibility::HitTestInvisible);
-        }
+        NameText->SetText(SlotData.DisplayName);
+        NameText->SetVisibility(ESlateVisibility::Collapsed);
     }
 
     if (HotkeyText)
@@ -137,6 +155,7 @@ void UHUDSkillSlotWidget::ApplySlotDataToWidgets()
         else
         {
             HotkeyText->SetText(SlotData.HotkeyLabel);
+            HotkeyText->SetColorAndOpacity(HotkeyTextColor);
             HotkeyText->SetVisibility(ESlateVisibility::HitTestInvisible);
         }
     }
@@ -144,28 +163,47 @@ void UHUDSkillSlotWidget::ApplySlotDataToWidgets()
 
 void UHUDSkillSlotWidget::ApplyCooldownToWidgets(float RemainingSeconds)
 {
-    if (!CooldownProgress)
-    {
-        return;
-    }
-
-    if (!bCooldownActive)
+    // Always hide legacy linear bar if present
+    if (CooldownProgress)
     {
         CooldownProgress->SetVisibility(ESlateVisibility::Collapsed);
         CooldownProgress->SetPercent(0.f);
+    }
+
+    const bool bShow = bCooldownActive && CooldownDuration > 0.f;
+
+    if (CooldownMaskImage)
+    {
+        CooldownMaskImage->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    }
+    if (CooldownText)
+    {
+        CooldownText->SetVisibility(bShow ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+    }
+
+    if (!bShow)
+    {
+        if (CooldownMID)
+        {
+            CooldownMID->SetScalarParameterValue(CooldownPercentParamName, 0.f);
+        }
+        if (CooldownText)
+        {
+            CooldownText->SetText(FText::GetEmpty());
+        }
         return;
     }
 
-    CooldownProgress->SetVisibility(ESlateVisibility::Visible);
-
-    if (CooldownDuration > 0.f)
+    const float Percent = FMath::Clamp(RemainingSeconds / CooldownDuration, 0.f, 1.f);
+    if (CooldownMID)
     {
-        const float Percent = FMath::Clamp(RemainingSeconds / CooldownDuration, 0.f, 1.f);
-        CooldownProgress->SetPercent(Percent);
+        CooldownMID->SetScalarParameterValue(CooldownPercentParamName, Percent);
     }
-    else
+
+    if (CooldownText)
     {
-        CooldownProgress->SetPercent(0.f);
+        const int32 SecondsLeft = FMath::CeilToInt(RemainingSeconds);
+        CooldownText->SetText(FText::AsNumber(SecondsLeft));
     }
 }
 
