@@ -73,7 +73,7 @@ void AIsometricPlayerController::PlayerTick(float DeltaTime)
     if (bIsRightMouseDown)
     {
         FHitResult HitResult;
-        GetHitResultUnderCursor(ECC_Visibility, true, HitResult);
+        GetHitResultUnderCursorSafe(ECC_Visibility, true, HitResult);
 
         if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
         {
@@ -119,7 +119,7 @@ void AIsometricPlayerController::HandleRightClickStarted(const FInputActionValue
 	UE_LOG(LogTemp, Log, TEXT("[PC] RightClick Started on %s (Auth=%d)"), *GetName(), HasAuthority()?1:0);
 
 	FHitResult HitResult;
-	GetHitResultUnderCursor(ECC_Visibility, true, HitResult);
+	GetHitResultUnderCursorSafe(ECC_Visibility, true, HitResult);
 	UE_LOG(LogTemp, Log, TEXT("[PC] RightClick Hit: Block=%d Loc=%s Actor=%s"), HitResult.bBlockingHit?1:0, *HitResult.ImpactPoint.ToString(), HitResult.GetActor()?*HitResult.GetActor()->GetName():TEXT("None"));
 	
 	if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
@@ -144,7 +144,7 @@ void AIsometricPlayerController::HandleLeftClickInput(const FInputActionValue& V
 {
 	UE_LOG(LogTemp, Log, TEXT("[PC] LeftClick Started on %s (Auth=%d)"), *GetName(), HasAuthority()?1:0);
 	FHitResult HitResult;
-	GetHitResultUnderCursor(ECC_Visibility, true, HitResult);
+	GetHitResultUnderCursorSafe(ECC_Visibility, true, HitResult);
 	UE_LOG(LogTemp, Log, TEXT("[PC] LeftClick Hit: Block=%d Loc=%s Actor=%s"), HitResult.bBlockingHit?1:0, *HitResult.ImpactPoint.ToString(), HitResult.GetActor()?*HitResult.GetActor()->GetName():TEXT("None"));
 
 	if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
@@ -160,7 +160,7 @@ void AIsometricPlayerController::HandleLeftClickInput(const FInputActionValue& V
 void AIsometricPlayerController::HandleSkillInput(EAbilityInputID InputID)
 {
 	FHitResult HitResult; 
-	GetHitResultUnderCursor(ECC_Visibility, true, HitResult);
+	GetHitResultUnderCursorSafe(ECC_Visibility, true, HitResult);
 
    if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))  
    {  
@@ -169,5 +169,25 @@ void AIsometricPlayerController::HandleSkillInput(EAbilityInputID InputID)
            InputComp->HandleSkillInput(InputID, HitResult); // 将枚举传递下去
        }  
    }  
+}
+
+bool AIsometricPlayerController::GetHitResultUnderCursorSafe(ECollisionChannel TraceChannel, bool bTraceComplex, FHitResult& HitResult)
+{
+    ULocalPlayer* LocalPlayer = Cast<ULocalPlayer>(Player);
+    if (LocalPlayer && LocalPlayer->ViewportClient)
+    {
+        FVector WorldOrigin;
+        FVector WorldDirection;
+        if (DeprojectMousePositionToWorld(WorldOrigin, WorldDirection))
+        {
+            FCollisionQueryParams Params(NAME_None, bTraceComplex, this);
+            if (GetPawn())
+            {
+                Params.AddIgnoredActor(GetPawn());
+            }
+            return GetWorld()->LineTraceSingleByChannel(HitResult, WorldOrigin, WorldOrigin + WorldDirection * HitResultTraceDistance, TraceChannel, Params);
+        }
+    }
+    return false;
 }
 

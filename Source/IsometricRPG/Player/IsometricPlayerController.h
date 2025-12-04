@@ -74,5 +74,6 @@ private:
     // 【新增】用于缓存上一帧的目标Actor，以判断目标是否变化
     TWeakObjectPtr<AActor> LastHitActor;
 
-
+    // Helper function to perform trace ignoring the controlled pawn
+    bool GetHitResultUnderCursorSafe(ECollisionChannel TraceChannel, bool bTraceComplex, FHitResult& HitResult);
 };
