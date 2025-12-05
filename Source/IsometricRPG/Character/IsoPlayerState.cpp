@@ -277,6 +277,12 @@ void AIsoPlayerState::InitAbilities()
     UE_LOG(LogTemp, Log, TEXT("[PassiveDebug][Init] 已授予默认技能组, 等待激活被动技能"));
     LogActivatableAbilities();
     TryActivatePassiveAbilities();
+
+    // Listen-server/Standalone UI won't receive OnRep, so trigger asset load here
+    if (GetNetMode() != NM_DedicatedServer)
+    {
+        OnRep_EquippedAbilities();
+    }
 }
 
 
