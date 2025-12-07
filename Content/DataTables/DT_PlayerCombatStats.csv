@@ -1,0 +1,3 @@
+Name,MaxHealth,AttackDamage,AbilityPower,PhysicalDefense,MagicDefense,PhysicalResistance,FireResistance,IceResistance,LightningResistance,ArmorPenetration,MagicPenetration,ElementalPenetration,CriticalChance,CriticalDamage,AttackSpeed,BlockChance,BlockDamageReduction,LifeSteal,ManaLeech,PreferredDamageType
+StarterHero,550,65,20,25,15,10,5,5,5,15,5,5,0.1,0.5,1.0,0.05,0.2,0.08,0.04,Physical
+MageHero,480,35,80,10,35,5,0,10,10,5,25,20,0.15,0.6,0.9,0.02,0.1,0.05,0.06,Magic

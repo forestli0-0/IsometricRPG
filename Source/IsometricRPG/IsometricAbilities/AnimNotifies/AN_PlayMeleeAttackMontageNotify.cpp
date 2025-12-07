@@ -5,6 +5,7 @@
 #include "Character/IsometricRPGCharacter.h"
 #include "AbilitySystemInterface.h"
 #include "Character/IsometricRPGAttributeSetBase.h"
+#include "GameplayEffectTypes.h"
 void UAN_PlayMeleeAttackMontageNotify::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
 {
     // 早期验证关键前提条件
@@ -110,31 +111,81 @@ void UAN_PlayMeleeAttackMontageNotify::ApplyEffectToTarget(
     }
 
     // 1. 读取攻击者的属性
-    float AttackDamage = SourceASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetAttackDamageAttribute());
-    float ArmorPenetration = SourceASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetArmorPenetrationAttribute());
-    float CritChance = SourceASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetCriticalChanceAttribute());
-    float CritDamage = SourceASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetCriticalDamageAttribute());
+    const float AttackDamage = SourceASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetAttackDamageAttribute());
+    const float ArmorPenetration = SourceASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetArmorPenetrationAttribute());
+    const float MagicPenetration = SourceASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetMagicPenetrationAttribute());
+    const float ElementalPenetration = SourceASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetElementalPenetrationAttribute());
+    const float CritChance = SourceASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetCriticalChanceAttribute());
+    const float CritDamage = SourceASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetCriticalDamageAttribute());
+    const float LifeStealPercent = SourceASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetLifeStealAttribute());
+    const float ManaLeechPercent = SourceASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetManaLeechAttribute());
 
     // 2. 读取防御者的属性
-    float TargetPhysicalDefense = TargetASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetPhysicalDefenseAttribute());
+    const float TargetPhysicalDefense = TargetASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetPhysicalDefenseAttribute());
+    const float TargetMagicDefense = TargetASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetMagicDefenseAttribute());
+    const float TargetPhysicalResist = TargetASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetPhysicalResistanceAttribute());
+    const float TargetFireResist = TargetASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetFireResistanceAttribute());
+    const float TargetIceResist = TargetASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetIceResistanceAttribute());
+    const float TargetLightningResist = TargetASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetLightningResistanceAttribute());
+    const float BlockChance = TargetASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetBlockChanceAttribute());
+    const float BlockReduction = TargetASC->GetNumericAttribute(UIsometricRPGAttributeSetBase::GetBlockDamageReductionAttribute());
 
     // 3. 计算最终伤害
     float FinalDamage = AttackDamage;
 
-    // 应用护甲穿透 (简单公式: 最终伤害 = 攻击力 * (1 - max(0, (防御力 - 护甲穿透)) / 100))
-    float EffectiveDefense = FMath::Max(0.0f, TargetPhysicalDefense - ArmorPenetration);
+    auto ResolveResistance = [&](EIsoDamageType InType) -> float
+    {
+        switch (InType)
+        {
+        case EIsoDamageType::Magic:
+            return TargetMagicDefense;
+        case EIsoDamageType::Fire:
+            return TargetFireResist;
+        case EIsoDamageType::Ice:
+            return TargetIceResist;
+        case EIsoDamageType::Lightning:
+            return TargetLightningResist;
+        default:
+            return TargetPhysicalResist > 0.f ? TargetPhysicalResist : TargetPhysicalDefense;
+        }
+    };
+
+    auto ResolvePenetration = [&](EIsoDamageType InType) -> float
+    {
+        switch (InType)
+        {
+        case EIsoDamageType::Magic:
+            return MagicPenetration;
+        case EIsoDamageType::Fire:
+        case EIsoDamageType::Ice:
+        case EIsoDamageType::Lightning:
+            return ElementalPenetration;
+        default:
+            return ArmorPenetration;
+        }
+    };
+
+    const float EffectiveDefense = FMath::Max(0.0f, ResolveResistance(DamageType) - ResolvePenetration(DamageType));
     float DefenseFactor = 1.0f - (EffectiveDefense / 100.0f);  // 假设每100点防御减少100%伤害
     DefenseFactor = FMath::Clamp(DefenseFactor, 0.1f, 1.0f);  // 防御最多减少90%伤害
     FinalDamage *= DefenseFactor;
 
-    // 应用暴击
-    bool IsCritical = (FMath::FRand() <= CritChance);
+    // 4. 格挡：计算在暴击之前，格挡的减免效果
+    const bool bBlocked = FMath::FRand() <= BlockChance;
+    if (bBlocked)
+    {
+        const float BlockFactor = 1.0f - FMath::Clamp(BlockReduction, 0.0f, 0.9f);
+        FinalDamage *= BlockFactor;
+    }
+
+    // 5. 应用暴击
+    const bool IsCritical = (FMath::FRand() <= CritChance);
     if (IsCritical)
     {
         FinalDamage *= (1.0f + CritDamage);
-        FinalDamage = FinalDamage;
         UE_LOG(LogTemp, Warning, TEXT("暴击! 伤害: %f"), FinalDamage);
     }
+    FinalDamage = FMath::Max(0.f, FinalDamage);
 
     // 4. 创建GameplayEffectSpec并设置自定义伤害
     FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(EffectClass, Level, ContextHandle);
@@ -147,8 +198,24 @@ void UAN_PlayMeleeAttackMontageNotify::ApplyEffectToTarget(
         // 5. 应用效果到目标
         FActiveGameplayEffectHandle ActiveGEHandle = SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
 
-        // 6. 调试日志
-        UE_LOG(LogTemp, Warning, TEXT("应用攻击效果 - 攻击力: %f, 护甲穿透: %f, 目标防御: %f, 最终伤害: %f"),
-            AttackDamage, ArmorPenetration, TargetPhysicalDefense, FinalDamage);
+        // 6. 吸血 / 回蓝
+        if (FinalDamage > 0.f)
+        {
+            if (LifeStealPercent > 0.f)
+            {
+                const float HealAmount = FinalDamage * LifeStealPercent;
+                SourceASC->ApplyModToAttribute(UIsometricRPGAttributeSetBase::GetHealthAttribute(), EGameplayModOp::Additive, HealAmount);
+            }
+
+            if (ManaLeechPercent > 0.f)
+            {
+                const float ManaAmount = FinalDamage * ManaLeechPercent;
+                SourceASC->ApplyModToAttribute(UIsometricRPGAttributeSetBase::GetManaAttribute(), EGameplayModOp::Additive, ManaAmount);
+            }
+        }
+
+        // 7. 调试日志
+        UE_LOG(LogTemp, Warning, TEXT("应用攻击效果 - 类型: %d 攻击力: %f, 穿透(物/魔/元): %f/%f/%f, 目标防御: %f, 最终伤害: %f, 格挡:%d"),
+            static_cast<int32>(DamageType), AttackDamage, ArmorPenetration, MagicPenetration, ElementalPenetration, TargetPhysicalDefense, FinalDamage, bBlocked);
     }
 }

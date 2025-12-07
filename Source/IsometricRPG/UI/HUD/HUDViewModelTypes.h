@@ -16,6 +16,13 @@ struct FHUDChampionStatsViewModel
     float AbilityPower = 0.f;
     float Armor = 0.f;
     float MagicResist = 0.f;
+    float PhysicalResist = 0.f;
+    float FireResist = 0.f;
+    float IceResist = 0.f;
+    float LightningResist = 0.f;
+    float ArmorPenetration = 0.f;
+    float MagicPenetration = 0.f;
+    float ElementalPenetration = 0.f;
     float AttackSpeed = 0.f;
     float CritChance = 0.f;
     float MoveSpeed = 0.f;

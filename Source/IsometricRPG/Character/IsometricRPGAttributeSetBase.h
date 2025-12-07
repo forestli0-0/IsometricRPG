@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "AttributeSet.h"
 #include "AbilitySystemComponent.h"
+#include "IsometricAbilities/Types/IsoDamageType.h"
 #include "IsometricRPGAttributeSetBase.generated.h"
 
 #define ATTRIBUTE_ACCESSORS(ClassName, PropertyName) \
@@ -73,41 +74,73 @@ public:
 	FGameplayAttributeData AbilityPower;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AbilityPower);
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_AttackSpeed, Category = "Attributes|Attack")
-	FGameplayAttributeData AttackSpeed;
-	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AttackSpeed);
+        UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_AttackSpeed, Category = "Attributes|Attack")
+        FGameplayAttributeData AttackSpeed;
+        ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, AttackSpeed);
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_CriticalChance, Category = "Attributes|Attack")
 	FGameplayAttributeData CriticalChance;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, CriticalChance);
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_CriticalDamage, Category = "Attributes|Attack")
-	FGameplayAttributeData CriticalDamage;
-	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, CriticalDamage);
+        UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_CriticalDamage, Category = "Attributes|Attack")
+        FGameplayAttributeData CriticalDamage;
+        ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, CriticalDamage);
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_ArmorPenetration, Category = "Attributes|Attack")
 	FGameplayAttributeData ArmorPenetration;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, ArmorPenetration);
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_MagicPenetration, Category = "Attributes|Attack")
-	FGameplayAttributeData MagicPenetration;
-	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MagicPenetration);
+        UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_MagicPenetration, Category = "Attributes|Attack")
+        FGameplayAttributeData MagicPenetration;
+        ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MagicPenetration);
 
-	// 防御属性
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_PhysicalDefense, Category = "Attributes|Defense")
-	FGameplayAttributeData PhysicalDefense;
-	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, PhysicalDefense);
+        UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_ElementalPenetration, Category = "Attributes|Attack")
+        FGameplayAttributeData ElementalPenetration;
+        ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, ElementalPenetration);
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_MagicDefense, Category = "Attributes|Defense")
-	FGameplayAttributeData MagicDefense;
-	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MagicDefense);
+        // 防御属性
+        UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_PhysicalDefense, Category = "Attributes|Defense")
+        FGameplayAttributeData PhysicalDefense;
+        ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, PhysicalDefense);
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_LifeSteal, Category = "Attributes|Defense")
-	FGameplayAttributeData LifeSteal;
-	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, LifeSteal);
+        UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_MagicDefense, Category = "Attributes|Defense")
+        FGameplayAttributeData MagicDefense;
+        ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, MagicDefense);
 
-	// 经验与等级
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_Level, Category = "Attributes|Experience")
+        UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_LifeSteal, Category = "Attributes|Defense")
+        FGameplayAttributeData LifeSteal;
+        ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, LifeSteal);
+
+        UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_ManaLeech, Category = "Attributes|Defense")
+        FGameplayAttributeData ManaLeech;
+        ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, ManaLeech);
+
+        UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_BlockChance, Category = "Attributes|Defense")
+        FGameplayAttributeData BlockChance;
+        ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, BlockChance);
+
+        UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_BlockDamageReduction, Category = "Attributes|Defense")
+        FGameplayAttributeData BlockDamageReduction;
+        ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, BlockDamageReduction);
+
+        UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_PhysicalResistance, Category = "Attributes|Defense")
+        FGameplayAttributeData PhysicalResistance;
+        ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, PhysicalResistance);
+
+        UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_FireResistance, Category = "Attributes|Defense")
+        FGameplayAttributeData FireResistance;
+        ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, FireResistance);
+
+        UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_IceResistance, Category = "Attributes|Defense")
+        FGameplayAttributeData IceResistance;
+        ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, IceResistance);
+
+        UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_LightningResistance, Category = "Attributes|Defense")
+        FGameplayAttributeData LightningResistance;
+        ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, LightningResistance);
+
+        // 经验与等级
+        UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_Level, Category = "Attributes|Experience")
 	FGameplayAttributeData Level;
 	ATTRIBUTE_ACCESSORS(UIsometricRPGAttributeSetBase, Level);
 
@@ -184,14 +217,22 @@ protected:
 	UFUNCTION() virtual void OnRep_AttackDamage(const FGameplayAttributeData& OldValue);
 	UFUNCTION() virtual void OnRep_AbilityPower(const FGameplayAttributeData& OldValue);
 	UFUNCTION() virtual void OnRep_AttackSpeed(const FGameplayAttributeData& OldValue);
-	UFUNCTION() virtual void OnRep_CriticalChance(const FGameplayAttributeData& OldValue);
-	UFUNCTION() virtual void OnRep_CriticalDamage(const FGameplayAttributeData& OldValue);
-	UFUNCTION() virtual void OnRep_ArmorPenetration(const FGameplayAttributeData& OldValue);
-	UFUNCTION() virtual void OnRep_MagicPenetration(const FGameplayAttributeData& OldValue);
+        UFUNCTION() virtual void OnRep_CriticalChance(const FGameplayAttributeData& OldValue);
+        UFUNCTION() virtual void OnRep_CriticalDamage(const FGameplayAttributeData& OldValue);
+        UFUNCTION() virtual void OnRep_ArmorPenetration(const FGameplayAttributeData& OldValue);
+        UFUNCTION() virtual void OnRep_MagicPenetration(const FGameplayAttributeData& OldValue);
+        UFUNCTION() virtual void OnRep_ElementalPenetration(const FGameplayAttributeData& OldValue);
 
-	UFUNCTION() virtual void OnRep_PhysicalDefense(const FGameplayAttributeData& OldValue);
-	UFUNCTION() virtual void OnRep_MagicDefense(const FGameplayAttributeData& OldValue);
-	UFUNCTION() virtual void OnRep_LifeSteal(const FGameplayAttributeData& OldValue);
+        UFUNCTION() virtual void OnRep_PhysicalDefense(const FGameplayAttributeData& OldValue);
+        UFUNCTION() virtual void OnRep_MagicDefense(const FGameplayAttributeData& OldValue);
+        UFUNCTION() virtual void OnRep_LifeSteal(const FGameplayAttributeData& OldValue);
+        UFUNCTION() virtual void OnRep_ManaLeech(const FGameplayAttributeData& OldValue);
+        UFUNCTION() virtual void OnRep_BlockChance(const FGameplayAttributeData& OldValue);
+        UFUNCTION() virtual void OnRep_BlockDamageReduction(const FGameplayAttributeData& OldValue);
+        UFUNCTION() virtual void OnRep_PhysicalResistance(const FGameplayAttributeData& OldValue);
+        UFUNCTION() virtual void OnRep_FireResistance(const FGameplayAttributeData& OldValue);
+        UFUNCTION() virtual void OnRep_IceResistance(const FGameplayAttributeData& OldValue);
+        UFUNCTION() virtual void OnRep_LightningResistance(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION() virtual void OnRep_ExperienceBounty(const FGameplayAttributeData& OldValue);
 	UFUNCTION() virtual void OnRep_Level(const FGameplayAttributeData& OldValue);

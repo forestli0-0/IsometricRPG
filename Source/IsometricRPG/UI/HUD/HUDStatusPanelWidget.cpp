@@ -44,7 +44,9 @@ void UHUDStatusPanelWidget::RefreshStatWidgets()
     {
         const TArray<TObjectPtr<UTextBlock>> StatTexts = {
             AttackDamageText, AbilityPowerText, ArmorText,
-            MagicResistText, AttackSpeedText, CritChanceText, MoveSpeedText
+            MagicResistText, PhysicalResistText, FireResistText, IceResistText, LightningResistText,
+            ArmorPenetrationText, MagicPenetrationText, ElementalPenetrationText,
+            AttackSpeedText, CritChanceText, MoveSpeedText
         };
 
         for (TObjectPtr<UTextBlock> StatText : StatTexts)
@@ -71,6 +73,13 @@ void UHUDStatusPanelWidget::RefreshStatWidgets()
     SetStatText(AbilityPowerText, CachedStats.AbilityPower);
     SetStatText(ArmorText, CachedStats.Armor);
     SetStatText(MagicResistText, CachedStats.MagicResist);
+    SetStatText(PhysicalResistText, CachedStats.PhysicalResist);
+    SetStatText(FireResistText, CachedStats.FireResist);
+    SetStatText(IceResistText, CachedStats.IceResist);
+    SetStatText(LightningResistText, CachedStats.LightningResist);
+    SetStatText(ArmorPenetrationText, CachedStats.ArmorPenetration);
+    SetStatText(MagicPenetrationText, CachedStats.MagicPenetration);
+    SetStatText(ElementalPenetrationText, CachedStats.ElementalPenetration);
     SetStatText(AttackSpeedText, CachedStats.AttackSpeed);
     SetStatText(CritChanceText, CachedStats.CritChance);
     SetStatText(MoveSpeedText, CachedStats.MoveSpeed);

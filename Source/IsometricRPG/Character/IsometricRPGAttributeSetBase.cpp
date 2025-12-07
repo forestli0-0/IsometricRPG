@@ -192,11 +192,19 @@ void UIsometricRPGAttributeSetBase::GetLifetimeReplicatedProps(TArray<FLifetimeP
     DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, CriticalDamage, COND_None, REPNOTIFY_Always);
     DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, ArmorPenetration, COND_None, REPNOTIFY_Always);
     DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, MagicPenetration, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, ElementalPenetration, COND_None, REPNOTIFY_Always);
 
     // Defense
     DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, PhysicalDefense, COND_None, REPNOTIFY_Always);
     DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, MagicDefense, COND_None, REPNOTIFY_Always);
     DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, LifeSteal, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, ManaLeech, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, BlockChance, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, BlockDamageReduction, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, PhysicalResistance, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, FireResistance, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, IceResistance, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, LightningResistance, COND_None, REPNOTIFY_Always);
 
     // Level/Experience（已存在）
     DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, Level, COND_None, REPNOTIFY_Always);
@@ -232,10 +240,18 @@ void UIsometricRPGAttributeSetBase::OnRep_CriticalChance(const FGameplayAttribut
 void UIsometricRPGAttributeSetBase::OnRep_CriticalDamage(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, CriticalDamage, OldValue); }
 void UIsometricRPGAttributeSetBase::OnRep_ArmorPenetration(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, ArmorPenetration, OldValue); }
 void UIsometricRPGAttributeSetBase::OnRep_MagicPenetration(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, MagicPenetration, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_ElementalPenetration(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, ElementalPenetration, OldValue); }
 
 void UIsometricRPGAttributeSetBase::OnRep_PhysicalDefense(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, PhysicalDefense, OldValue); }
 void UIsometricRPGAttributeSetBase::OnRep_MagicDefense(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, MagicDefense, OldValue); }
 void UIsometricRPGAttributeSetBase::OnRep_LifeSteal(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, LifeSteal, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_ManaLeech(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, ManaLeech, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_BlockChance(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, BlockChance, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_BlockDamageReduction(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, BlockDamageReduction, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_PhysicalResistance(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, PhysicalResistance, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_FireResistance(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, FireResistance, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_IceResistance(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, IceResistance, OldValue); }
+void UIsometricRPGAttributeSetBase::OnRep_LightningResistance(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, LightningResistance, OldValue); }
 
 void UIsometricRPGAttributeSetBase::OnRep_ExperienceBounty(const FGameplayAttributeData& OldValue) { GAMEPLAYATTRIBUTE_REPNOTIFY(UIsometricRPGAttributeSetBase, ExperienceBounty, OldValue); }
 void UIsometricRPGAttributeSetBase::OnRep_Level(const FGameplayAttributeData& OldValue)

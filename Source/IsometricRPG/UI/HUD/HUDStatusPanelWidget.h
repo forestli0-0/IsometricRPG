@@ -55,6 +55,27 @@ private:
     TObjectPtr<UTextBlock> MagicResistText;
 
     UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UTextBlock> PhysicalResistText;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UTextBlock> FireResistText;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UTextBlock> IceResistText;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UTextBlock> LightningResistText;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UTextBlock> ArmorPenetrationText;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UTextBlock> MagicPenetrationText;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UTextBlock> ElementalPenetrationText;
+
+    UPROPERTY(meta = (BindWidgetOptional))
     TObjectPtr<UTextBlock> AttackSpeedText;
 
     UPROPERTY(meta = (BindWidgetOptional))

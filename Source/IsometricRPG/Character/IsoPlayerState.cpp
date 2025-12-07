@@ -556,6 +556,13 @@ void AIsoPlayerState::PushHUDSnapshot(UHUDRootWidget& HUD)
     ChampionStats.AbilityPower = AttributeSet->GetAbilityPower();
     ChampionStats.Armor = AttributeSet->GetPhysicalDefense();
     ChampionStats.MagicResist = AttributeSet->GetMagicDefense();
+    ChampionStats.PhysicalResist = AttributeSet->GetPhysicalResistance();
+    ChampionStats.FireResist = AttributeSet->GetFireResistance();
+    ChampionStats.IceResist = AttributeSet->GetIceResistance();
+    ChampionStats.LightningResist = AttributeSet->GetLightningResistance();
+    ChampionStats.ArmorPenetration = AttributeSet->GetArmorPenetration();
+    ChampionStats.MagicPenetration = AttributeSet->GetMagicPenetration();
+    ChampionStats.ElementalPenetration = AttributeSet->GetElementalPenetration();
     ChampionStats.AttackSpeed = AttributeSet->GetAttackSpeed();
     ChampionStats.CritChance = AttributeSet->GetCriticalChance();
     ChampionStats.MoveSpeed = AttributeSet->GetMoveSpeed();

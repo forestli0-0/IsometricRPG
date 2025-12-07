@@ -8,6 +8,7 @@
 #include "Animation/AnimNotifies/AnimNotify.h"
 #include "GameplayEffect.h"
 #include "AbilitySystemComponent.h"
+#include "IsometricAbilities/Types/IsoDamageType.h"
 #include "AN_PlayMeleeAttackMontageNotify.generated.h"
 
 /**
@@ -32,6 +33,10 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GameplayEffect")
     float KnockbackForce = 800.0f;
+
+    /** Damage flavor used when pulling resistances & penetration. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GameplayEffect")
+    EIsoDamageType DamageType = EIsoDamageType::Physical;
 
     AActor* TargetActor;
 private:
