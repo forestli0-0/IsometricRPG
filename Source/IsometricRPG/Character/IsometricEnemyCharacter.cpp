@@ -6,7 +6,7 @@ AIsometricEnemyCharacter::AIsometricEnemyCharacter()
 {
     AbilitySystemComponent = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
     AbilitySystemComponent->SetIsReplicated(true);
-    AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
+    AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Full);
     AttributeSet = CreateDefaultSubobject<UIsometricRPGAttributeSetBase>(TEXT("AttributeSet"));
 
     // 自动控制设置：放置在世界中或生成时都会被 AI 控制

@@ -23,7 +23,7 @@ AIsoPlayerState::AIsoPlayerState()
     // 创建ASC
     AbilitySystemComponent = CreateDefaultSubobject<UAbilitySystemComponent>("AbilitySystemComponent");
     AbilitySystemComponent->SetIsReplicated(true);
-    AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed); // 推荐使用Mixed模式
+    AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Full); // 推荐使用Mixed模式
 
     // 创建AttributeSet
     AttributeSet = CreateDefaultSubobject<UIsometricRPGAttributeSetBase>("AttributeSet");
