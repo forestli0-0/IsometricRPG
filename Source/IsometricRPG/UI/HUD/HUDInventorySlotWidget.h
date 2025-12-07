@@ -9,7 +9,7 @@
 class UImage;
 class UTextBlock;
 
-/** Widget responsible for showing one inventory/equipment slot. */
+/** 显示单个物品/装备格位的控件（负责图标、数量与快捷键显示）。 */
 UCLASS()
 class ISOMETRICRPG_API UHUDInventorySlotWidget : public UUserWidget
 {
@@ -30,18 +30,18 @@ private:
     FHUDItemSlotViewModel CachedData;
     bool bHasData = false;
 
-    /** Captured designer brush so we can restore it when no data is present. */
+    /** 保存设计器中设置的初始 Brush，以便在无数据时恢复占位样式。 */
     UPROPERTY(Transient)
     FSlateBrush OriginalBrush;
 
     UPROPERTY(Transient)
     bool bOriginalBrushCaptured = false;
 
-    /** Tint applied while showing the placeholder. */
+    /** 占位时应用的颜色遮罩（当格位为空时使用）。 */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Inventory", meta = (AllowPrivateAccess = "true"))
     FLinearColor EmptySlotTint = FLinearColor(0.1f, 0.1f, 0.1f, 0.9f);
 
-    /** Tint applied when an actual item icon is present. */
+    /** 有实际物品图标时应用的颜色遮罩（用于恢复高亮/正常显示）。 */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Inventory", meta = (AllowPrivateAccess = "true"))
     FLinearColor FilledSlotTint = FLinearColor::White;
 

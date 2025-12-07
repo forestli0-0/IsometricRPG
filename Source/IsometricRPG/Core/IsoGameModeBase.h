@@ -6,7 +6,6 @@
 #include "GameFramework/GameModeBase.h"
 #include "IsoGameModeBase.generated.h"
 
-// 正确的前向声明应放在类外
 class APlayerController;
 
 /**

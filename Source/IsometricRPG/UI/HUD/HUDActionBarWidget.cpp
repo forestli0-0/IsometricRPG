@@ -233,7 +233,8 @@ void UHUDActionBarWidget::RefreshBuffWidgets()
 
 	BuffStrip->ClearChildren();
 
-	// Prefer curated icons; fallback to debug tag labels if empty
+	// 优先使用预先策划并在 PlayerState 中指定的图标（更美观且可控）；
+	// 当没有可用图标时退回到显示调试用的标签名（避免出现白色占位方块）
 	if (CachedBuffIcons.Num() > 0)
 	{
 		BuffStrip->SetVisibility(ESlateVisibility::HitTestInvisible);
@@ -247,7 +248,7 @@ void UHUDActionBarWidget::RefreshBuffWidgets()
 
 			if (!Buff.Icon)
 			{
-				continue; // Skip unresolved icon (avoid white rectangle)
+				continue; // 跳过未解析的图标（避免出现白色占位方块）
 			}
 
 			UOverlay* IconOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
@@ -256,7 +257,7 @@ void UHUDActionBarWidget::RefreshBuffWidgets()
 				continue;
 			}
 
-			// Base icon image
+			// 基础图标：从纹理构造 Image 并设置尺寸/颜色
 			UImage* IconWidget = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 			if (IconWidget)
 			{
@@ -273,7 +274,7 @@ void UHUDActionBarWidget::RefreshBuffWidgets()
 				}
 			}
 
-			// Radial cooldown overlay if we have timing data
+			// 圆形冷却遮罩：当存在时间信息时，创建基于材质的遮罩并按照剩余时间百分比设置参数
 			if (Buff.TimeRemaining >= 0.f && Buff.TotalDuration > KINDA_SMALL_NUMBER)
 			{
 				UImage* CooldownMask = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
@@ -296,7 +297,7 @@ void UHUDActionBarWidget::RefreshBuffWidgets()
 				}
 			}
 
-			// Stack count badge
+			// 堆叠数徽章：当该 Buff 有多层叠加（StackCount>1）时，右下角显示数量
 			if (Buff.StackCount > 1)
 			{
 				UTextBlock* StackText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());

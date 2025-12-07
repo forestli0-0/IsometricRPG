@@ -5,7 +5,7 @@
 #include "GameplayTagContainer.h"
 #include "Engine/HitResult.h"
 #include "IsometricRPG/IsometricAbilities/Types/HeroAbilityTypes.h"
-// Forward declarations
+// 前向声明
 class UAbilitySystemComponent;
 class AIsometricRPGCharacter;
 class APlayerController;
@@ -27,7 +27,7 @@ protected:
 	virtual void BeginPlay() override;
 
 public:
-	// These methods are called by AIsometricPlayerController (or an AI Controller)
+	// 这些方法由 AIsometricPlayerController（或 AI 控制器）调用
 	void HandleLeftClick(const FHitResult& HitResult);
 
     void HandleRightClickTriggered(const FHitResult& HitResult, TWeakObjectPtr<AActor> LastHitActor);
@@ -35,7 +35,7 @@ public:
 	void HandleSkillInput(EAbilityInputID InputID, const FHitResult& TargetData);
 
 
-	// Game action requests, can be called by this component internally or by AI
+	// 游戏行为请求，可由该组件内部或 AI 调用
 	void RequestMoveToLocation(const FVector& TargetLocation);
 	void RequestBasicAttack(AActor* TargetActor);
 
@@ -68,11 +68,11 @@ public:
 	void OnTargetClearedForUI();
 
 private:
-	// Helper methods to send GAS input confirmations/cancellations
+	// 辅助方法：发送 GAS 的确认/取消 输入
 	void SendConfirmTargetInput();
 	void SendCancelTargetInput();
 
-	// --- Server RPCs for networked actions ---
+	// --- 服务端 RPC（用于网络动作） ---
 public:
 	UFUNCTION(Server, Reliable)
 	void Server_RequestMoveToLocation(const FVector& TargetLocation);

@@ -49,7 +49,6 @@ private:
 	UPROPERTY()
 	UCurveFloat* MovementCurve;
 
-	// 新增的成员变量
 	EMoveInterpMethod InterpMethod;
 	float ParabolicArcHeight;
 protected:

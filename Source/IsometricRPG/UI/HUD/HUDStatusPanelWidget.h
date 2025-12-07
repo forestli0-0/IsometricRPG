@@ -11,7 +11,7 @@ class UWidget;
 class UTexture2D;
 
 /**
- * Displays portrait, health/defense bars, and active buffs in the bottom-left corner.
+ * 在左下角显示：头像、生命/防御数值条，以及当前生效的增益/减益图标。
  */
 UCLASS()
 class ISOMETRICRPG_API UHUDStatusPanelWidget : public UUserWidget
@@ -19,10 +19,10 @@ class ISOMETRICRPG_API UHUDStatusPanelWidget : public UUserWidget
     GENERATED_BODY()
 
 public:
-    /** Updates the focused combat stats block. */
+    /** 更新聚焦的战斗属性面板（攻击力、法强、护甲等）。 */
     void SetChampionStats(const FHUDChampionStatsViewModel& InStats);
 
-    /** Updates the portrait icon and alert indicators. */
+    /** 更新头像贴图和提示（是否处于战斗、是否有可分配的等级点）。 */
     void SetPortraitData(UTexture2D* InPortraitTexture, bool bInCombat, bool bHasLevelUp);
 
 protected:

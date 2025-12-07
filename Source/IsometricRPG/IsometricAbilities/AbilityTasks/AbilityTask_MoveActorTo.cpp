@@ -18,7 +18,6 @@ UAbilityTask_MoveActorTo* UAbilityTask_MoveActorTo::MoveActorTo(UGameplayAbility
 		MyTask->TargetLocation = TargetLocation;
 		MyTask->Duration = FMath::Max(Duration, 0.01f);
 		MyTask->MovementCurve = MovementCurve;
-		// 保存新参数
 		MyTask->InterpMethod = InterpMethod;
 		MyTask->ParabolicArcHeight = ParabolicArcHeight;
 	}
@@ -108,6 +107,5 @@ void UAbilityTask_MoveActorTo::TickTask(float DeltaTime)
 
 void UAbilityTask_MoveActorTo::SetTickingTask(bool bShouldTick)
 {
-	// 兼容UE4/UE5的AbilityTask Tick注册方式
 	bTickingTask = bShouldTick;
 }

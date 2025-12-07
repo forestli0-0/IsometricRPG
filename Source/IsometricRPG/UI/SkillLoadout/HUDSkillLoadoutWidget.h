@@ -9,7 +9,7 @@ struct FHUDSkillSlotViewModel;
 class UHUDSkillSlotWidget;
 
 /**
- * Container widget responsible for arranging the QWER skill slots and auxiliary action items.
+ * 技能配置容器控件，负责排布 Q/W/E/R 等技能槽以及辅助动作/物品槽。
  */
 UCLASS()
 class ISOMETRICRPG_API UHUDSkillLoadoutWidget : public UUserWidget
@@ -19,31 +19,31 @@ class ISOMETRICRPG_API UHUDSkillLoadoutWidget : public UUserWidget
 public:
     virtual void NativeConstruct() override;
 
-    /** Registers a slot (called from UMG designer to wire slot widgets). */
+    /** 注册一个槽控件（由 UMG 设计器在运行时绑定具体槽部件）。 */
     UFUNCTION(BlueprintCallable, Category = "SkillLoadout")
     void RegisterSlot(UHUDSkillSlotWidget* InSlot);
 
-    /** Removes every slot reference, typically before rebuilding via designer. */
+    /** 清除所有已注册的槽引用，通常在重新从设计器重建时调用。 */
     UFUNCTION(BlueprintCallable, Category = "SkillLoadout")
     void ResetSlots();
 
-    /** Assigns view data to a specific slot index. */
+    /** 将给定的视图模型数据分配到指定索引的槽位，用于刷新该槽显示。 */
     void AssignSlot(int32 Index, const FHUDSkillSlotViewModel& ViewModel);
 
-    /** Clears the slot at the specified index. */
+    /** 清除指定索引的槽位显示（恢复为空状态）。 */
     void ClearSlot(int32 Index);
 
-    /** Returns immutable access to the registered slots. */
+    /** 返回已注册槽位的只读访问引用（用于遍历或查找）。 */
     const TArray<TObjectPtr<UHUDSkillSlotWidget>>& GetSlots() const { return SkillSlots; }
 
 protected:
     void RegisterDesignerSlots();
 
-    /** Passive slot (always-on ability icon). */
+    /** 被动技能槽（常驻图标，通常显示被动效果或始终可用的技能）。 */
     UPROPERTY(meta = (BindWidgetOptional))
     TObjectPtr<UHUDSkillSlotWidget> Slot_Passive;
 
-    /** Individual skill slots keyed by enum, bound inside the loadout blueprint. */
+    /** 按枚举键绑定的各个技能槽（由 Loadout Blueprint 绑定实际子部件）。 */
     UPROPERTY(meta = (BindWidgetOptional))
     TObjectPtr<UHUDSkillSlotWidget> Slot_Q;
 

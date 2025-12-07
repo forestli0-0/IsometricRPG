@@ -13,7 +13,7 @@ class UTexture2D;
 struct FHUDSkillSlotViewModel;
 
 /**
- * Root HUD widget responsible for arranging the bottom combat HUD and auxiliary overlays.
+ * 根 HUD 界面控件，负责组织底部战斗相关的 HUD（技能栏、状态栏、资源）及辅助覆盖层。
  */
 UCLASS()
 class ISOMETRICRPG_API UHUDRootWidget : public UUserWidget
@@ -21,69 +21,69 @@ class ISOMETRICRPG_API UHUDRootWidget : public UUserWidget
     GENERATED_BODY()
 
 public:
-    /** Returns the action bar section displayed at the bottom center. */
+    /** 返回显示在底部中央的动作条控件（用于呈现技能、物品与召唤槽）。 */
     UFUNCTION(BlueprintPure, Category = "HUD")
     UHUDActionBarWidget* GetActionBar() const { return ActionBar; }
 
-    /** Returns the status panel shown in the bottom-left corner. */
+    /** 返回显示在左下角的状态面板（头像、生命、增益/减益等）。 */
     UFUNCTION(BlueprintPure, Category = "HUD")
     UHUDStatusPanelWidget* GetStatusPanel() const { return StatusPanel; }
 
-    /** Returns the resource panel displayed in the bottom-right corner. */
+    /** 返回显示在右下角的资源面板（物品栏与快捷按钮）。 */
     UFUNCTION(BlueprintPure, Category = "HUD")
     UHUDResourcePanelWidget* GetResourcePanel() const { return ResourcePanel; }
 
-    /** Routes ability slot view-model data to the action bar. */
+    /** 将技能槽的视图模型数据路由到动作条，用于更新图标、名称与冷却显示。 */
     void SetAbilitySlot(const FHUDSkillSlotViewModel& ViewModel);
 
-    /** Clears a specific ability slot. */
+    /** 清空指定的技能槽（将槽位恢复为未装备状态）。 */
     void ClearAbilitySlot(ESkillSlot Slot);
 
-    /** Clears all ability slots. */
+    /** 清空所有技能槽（用于重置或初始化 UI）。 */
     void ClearAllAbilitySlots();
 
-    /** Updates cooldown values for a specific slot. */
+    /** 更新指定技能槽的冷却时长与剩余时间，用于进度显示。 */
     void UpdateAbilityCooldown(ESkillSlot Slot, float Duration, float Remaining);
 
-    /** Updates cached health values and forwards them to the vitals bar. */
+    /** 更新缓存的生命值并将其推送到血量/资源显示条。 */
     void UpdateHealth(float CurrentHealth, float MaxHealth, float ShieldValue);
 
-    /** Updates the champion stat summary block. */
+    /** 更新英雄属性概览（如攻击力、法强、护甲等）的显示内容。 */
     void UpdateChampionStats(const FHUDChampionStatsViewModel& Stats);
 
-    /** Forwards active status tags to the buff strip. */
+    /** 将当前生效的状态标签（Gameplay Tags）转发到增益/减益图标条以便显示文本备选。 */
     void UpdateStatusEffects(const TArray<FName>& TagNames);
 
-    /** Forwards curated buff icons to the action bar strip. */
+    /** 将经过策划/筛选的增益图标视图模型转发到动作条的图标条，优先显示图形化图标。 */
     void UpdateStatusBuffs(const TArray<FHUDBuffIconViewModel>& Buffs);
 
-    /** Updates portrait and alert information. */
+    /** 更新头像贴图及相关提示（是否处于战斗、是否有升级未分配等）。 */
     void UpdatePortrait(UTexture2D* PortraitTexture, bool bIsInCombat, bool bHasLevelUp);
 
-    /** Updates the mana/energy values rendered beneath the action bar. */
+    /** 更新显示在动作条下方的法力/能量（主/次资源）数值。 */
     void UpdateResources(float CurrentPrimary, float MaxPrimary, float CurrentSecondary, float MaxSecondary);
 
-    /** Updates the experience bar rendered on the action bar. */
+    /** 更新动作条上的经验进度条与等级数字显示。 */
     void UpdateExperience(int32 CurrentLevel, float CurrentExperience, float RequiredExperience);
 
-    /** Updates right-side equipment slots. */
+    /** 更新右侧的装备/物品槽显示（物品图标与可用性）。 */
     void UpdateItemSlots(const TArray<FHUDItemSlotViewModel>& Slots);
 
-    /** Updates the trio of quick utility buttons. */
+    /** 更新右侧的三个快捷功能按钮的显示（例如快捷使用或召唤按钮）。 */
     void UpdateUtilityButtons(const TArray<FHUDItemSlotViewModel>& Buttons);
 
 protected:
     void PushVitalStateToActionBar();
 
-    /** Bottom-center action bar (skills, items, summon slots). */
+    /** 底部中央的动作条（用于呈现技能、物品与召唤槽）。 */
     UPROPERTY(meta = (BindWidgetOptional))
     TObjectPtr<UHUDActionBarWidget> ActionBar;
 
-    /** Bottom-left status panel (portrait, health, buffs). */
+    /** 左下角的状态面板（头像、生命/法力、Buff 列表）。 */
     UPROPERTY(meta = (BindWidgetOptional))
     TObjectPtr<UHUDStatusPanelWidget> StatusPanel;
 
-    /** Bottom-right resource panel (inventory and utility buttons). */
+    /** 右下角的资源面板（物品格、快捷功能按钮等）。 */
     UPROPERTY(meta = (BindWidgetOptional))
     TObjectPtr<UHUDResourcePanelWidget> ResourcePanel;
 

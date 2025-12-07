@@ -16,8 +16,6 @@ class ISOMETRICRPG_API UGEE_EnemyKnockbackExecution : public UGameplayEffectExec
 GENERATED_BODY()
 
 public:
-// Corrected the function declaration to match Unreal Engine's naming conventions
-
 	virtual void Execute_Implementation(
 		const FGameplayEffectCustomExecutionParameters& ExecutionParams,
 		FGameplayEffectCustomExecutionOutput& OutExecutionOutput) const override;

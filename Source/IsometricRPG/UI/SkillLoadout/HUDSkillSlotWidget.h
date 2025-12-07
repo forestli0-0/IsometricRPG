@@ -14,7 +14,7 @@ class UTextBlock;
 class UProgressBar;
 class UTexture2D;
 
-/** Lightweight view-model describing a single skill slot. */
+/** 轻量视图模型：描述单个技能槽的显示数据（图标、冷却、消耗等）。 */
 USTRUCT(BlueprintType)
 struct FHUDSkillSlotViewModel
 {
@@ -55,7 +55,7 @@ struct FHUDSkillSlotViewModel
 };
 
 /**
- * Represents a single skill or action slot within the loadout bar. All runtime logic lives in C++.
+ * 表示加载栏中的单个技能或动作槽。运行时的视觉/计时逻辑在 C++ 中实现以确保性能。
  */
 UCLASS()
 class ISOMETRICRPG_API UHUDSkillSlotWidget : public UUserWidget
@@ -63,28 +63,28 @@ class ISOMETRICRPG_API UHUDSkillSlotWidget : public UUserWidget
     GENERATED_BODY()
 
 public:
-    /** Populate the slot using the provided data and refresh bound sub-widgets. */
+    /** 使用提供的数据填充槽并刷新绑定的子控件显示。 */
     void SetSlotData(const FHUDSkillSlotViewModel& InData);
 
-    /** Clears the slot, marking it as empty and resetting visuals. */
+    /** 清空槽位，标记为空并重置所有视觉元素。 */
     void ClearSlot();
 
-    /** Starts a cooldown timer that is ticked and rendered entirely in C++. */
+    /** 开始一个冷却计时器，该计时器由 C++ 在 Tick 中驱动并渲染遮罩/文本。 */
     void BeginCooldown(float DurationSeconds, float InitialRemainingSeconds = -1.f);
 
-    /** Interrupts the cooldown timer if active and hides the overlay. */
+    /** 如果冷却在进行则中断冷却并隐藏覆盖层。 */
     void CancelCooldown();
 
-    /** Returns true when the slot currently has valid data assigned. */
+    /** 如果当前槽位持有有效数据则返回 true。 */
     bool HasData() const { return bHasData; }
 
-    /** Returns true while the cooldown overlay is active. */
+    /** 当冷却遮罩处于激活状态时返回 true。 */
     bool IsOnCooldown() const { return bCooldownActive; }
 
-    /** Configures which gameplay slot this widget represents in the HUD. */
+    /** 配置此控件对应的游戏内槽位（Q/W/E/R/D/F 等）。 */
     void SetConfiguredSlot(ESkillSlot InSlot) { ConfiguredSlot = InSlot; }
 
-    /** Returns the gameplay slot this widget is bound to. */
+    /** 返回当前控件绑定的游戏槽位。 */
     ESkillSlot GetConfiguredSlot() const { return ConfiguredSlot; }
 
 protected:
@@ -99,22 +99,22 @@ private:
     float GetWorldTime() const;
 
 private:
-    /** Cached model for the slot. */
+    /** 槽位的缓存数据模型。 */
     FHUDSkillSlotViewModel SlotData;
 
-    /** Enum slot this widget represents (Q/W/E/R/D/F/etc.). */
+    /** 此控件代表的枚举槽（Q/W/E/R/D/F 等）。 */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slot", meta = (AllowPrivateAccess = "true"))
     ESkillSlot ConfiguredSlot = ESkillSlot::Invalid;
 
-    /** Whether the slot currently holds valid data. */
+    /** 标志：槽位是否持有有效数据。 */
     bool bHasData = false;
 
-    /** Cooldown bookkeeping (in seconds). */
+    /** 冷却相关的计时字段（以秒为单位）。 */
     bool bCooldownActive = false;
     float CooldownDuration = 0.f;
     float CooldownEndTime = 0.f;
 
-    /** Sub-widgets configured in the designer but driven via C++. */
+    /** 在 UMG 设计器中配置的子控件，由 C++ 驱动显示内容。 */
     UPROPERTY(meta = (BindWidgetOptional))
     TObjectPtr<UImage> IconImage;
 
@@ -130,14 +130,14 @@ private:
     UPROPERTY(meta = (BindWidgetOptional))
     TObjectPtr<UImage> EmptyStateOverlay;
 
-    // LoL-style radial cooldown mask and center countdown label
+    // 类似 LoL 的圆形冷却遮罩与中心倒计时文本
     UPROPERTY(meta = (BindWidgetOptional))
     TObjectPtr<UImage> CooldownMaskImage;
 
     UPROPERTY(meta = (BindWidgetOptional))
     TObjectPtr<UTextBlock> CooldownText;
 
-    // Optional override material; if null, will use the material already set on CooldownMaskImage
+    // 可选的覆盖材质；若为空则使用 `CooldownMaskImage` 上已设置的材质
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cooldown", meta = (AllowPrivateAccess = "true"))
     TObjectPtr<UMaterialInterface> CooldownRadialMaterial;
 
@@ -150,7 +150,7 @@ private:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cooldown", meta = (AllowPrivateAccess = "true"))
     FLinearColor CooldownMaskTint = FLinearColor(0.f, 0.f, 0.f, 0.65f);
 
-    // Style: color for the hotkey label (e.g., Q/W/E/R), configurable in defaults/blueprint
+    // 风格：热键标签颜色（例如 Q/W/E/R），可在默认值或蓝图中配置
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Style", meta = (AllowPrivateAccess = "true"))
     FSlateColor HotkeyTextColor = FLinearColor::White;
 };

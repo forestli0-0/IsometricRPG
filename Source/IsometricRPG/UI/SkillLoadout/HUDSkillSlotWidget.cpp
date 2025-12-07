@@ -28,7 +28,7 @@ void UHUDSkillSlotWidget::NativeConstruct()
 {
     Super::NativeConstruct();
 
-    // Setup radial cooldown material instance if a material is assigned
+    // 设置圆形冷却材质实例：如果为遮罩分配了材质，则使用或从 Image 的 Brush 中读取材质并创建动态实例
     if (CooldownMaskImage)
     {
         UMaterialInterface* SourceMat = CooldownRadialMaterial;
@@ -45,6 +45,7 @@ void UHUDSkillSlotWidget::NativeConstruct()
             CooldownMID = UMaterialInstanceDynamic::Create(SourceMat, this);
             if (CooldownMID)
             {
+                // 将动态材质应用到遮罩图像，并初始化颜色/可见性
                 CooldownMaskImage->SetBrushFromMaterial(CooldownMID);
                 CooldownMaskImage->SetColorAndOpacity(CooldownMaskTint);
                 CooldownMaskImage->SetVisibility(ESlateVisibility::Collapsed);
@@ -59,18 +60,21 @@ void UHUDSkillSlotWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 {
     Super::NativeTick(MyGeometry, InDeltaTime);
 
+    // 若未处于冷却状态则跳过
     if (!bCooldownActive)
     {
         return;
     }
 
     const float Remaining = CooldownEndTime - GetWorldTime();
+    // 剩余时间为 0 或以下则终止冷却并重置显示
     if (Remaining <= 0.f)
     {
         CancelCooldown();
         return;
     }
 
+    // 更新冷却遮罩与文本
     ApplyCooldownToWidgets(Remaining);
 }
 
@@ -163,7 +167,7 @@ void UHUDSkillSlotWidget::ApplySlotDataToWidgets()
 
 void UHUDSkillSlotWidget::ApplyCooldownToWidgets(float RemainingSeconds)
 {
-    // Always hide legacy linear bar if present
+    // 隐藏旧的线性冷却条（保留兼容性），当前优先使用圆形遮罩与中心倒计时
     if (CooldownProgress)
     {
         CooldownProgress->SetVisibility(ESlateVisibility::Collapsed);
@@ -172,6 +176,7 @@ void UHUDSkillSlotWidget::ApplyCooldownToWidgets(float RemainingSeconds)
 
     const bool bShow = bCooldownActive && CooldownDuration > 0.f;
 
+    // 根据是否处于冷却显示或隐藏遮罩与文本
     if (CooldownMaskImage)
     {
         CooldownMaskImage->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
@@ -183,6 +188,7 @@ void UHUDSkillSlotWidget::ApplyCooldownToWidgets(float RemainingSeconds)
 
     if (!bShow)
     {
+        // 若不展示则将材质参数与文本重置
         if (CooldownMID)
         {
             CooldownMID->SetScalarParameterValue(CooldownPercentParamName, 0.f);
@@ -194,12 +200,14 @@ void UHUDSkillSlotWidget::ApplyCooldownToWidgets(float RemainingSeconds)
         return;
     }
 
+    // 计算冷却百分比并把值写入动态材质参数以驱动遮罩表现
     const float Percent = FMath::Clamp(RemainingSeconds / CooldownDuration, 0.f, 1.f);
     if (CooldownMID)
     {
         CooldownMID->SetScalarParameterValue(CooldownPercentParamName, Percent);
     }
 
+    // 中央倒计时文本以整秒显示剩余时间
     if (CooldownText)
     {
         const int32 SecondsLeft = FMath::CeilToInt(RemainingSeconds);
