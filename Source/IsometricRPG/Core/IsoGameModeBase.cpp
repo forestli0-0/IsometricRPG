@@ -25,10 +25,10 @@ void AIsoGameModeBase::PostLogin(APlayerController* NewPlayer)
 	// 调试日志，确认多人PIE下是否正确登录并获得 Pawn
 	if (NewPlayer)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[PC] PostLogin: %s, Pawn=%s, IsLocal=%d"),
+		UE_LOG(LogTemp, Log, TEXT("[GameMode] 玩家登录: 控制器=%s, 当前Pawn=%s, 是否本地=%s"),
 			*NewPlayer->GetName(),
-			NewPlayer->GetPawn() ? *NewPlayer->GetPawn()->GetName() : TEXT("None"),
-			NewPlayer->IsLocalController() ? 1 : 0);
+			NewPlayer->GetPawn() ? *NewPlayer->GetPawn()->GetName() : TEXT("无"),
+			NewPlayer->IsLocalController() ? TEXT("是") : TEXT("否"));
 	}
 }
 

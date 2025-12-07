@@ -96,12 +96,14 @@ void UGEE_KnockbackExecution::Execute_Implementation(const FGameplayEffectCustom
 	}
 
     // Debug Log: 打印击退计算的关键信息
-    UE_LOG(LogTemp, Warning, TEXT("Knockback Exec: Source=%s Loc=%s, Target=%s Loc=%s"), 
-        SourceActor ? *SourceActor->GetName() : TEXT("NULL"), 
-        SourceActor ? *SourceActor->GetActorLocation().ToString() : TEXT("N/A"),
-        TargetActor ? *TargetActor->GetName() : TEXT("NULL"), 
-        TargetActor ? *TargetActor->GetActorLocation().ToString() : TEXT("N/A")
-    );
+	UE_LOG(LogTemp, Warning, TEXT("击退效果执行: 来源Actor=[%s] 坐标=[%s], 目标Actor=[%s] 坐标=[%s], 最终击退力度=[%f] (SetByCaller原始值=[%f])"), 
+		SourceActor ? *SourceActor->GetName() : TEXT("NULL"), 
+		SourceActor ? *SourceActor->GetActorLocation().ToString() : TEXT("N/A"),
+		TargetActor ? *TargetActor->GetName() : TEXT("NULL"), 
+		TargetActor ? *TargetActor->GetActorLocation().ToString() : TEXT("N/A"),
+		ForceMagnitude,
+		SetByCallerMagnitude
+	);
 
 	// 获取角色移动组件
 	UCharacterMovementComponent* MovementComponent = TargetCharacter->GetCharacterMovement();
