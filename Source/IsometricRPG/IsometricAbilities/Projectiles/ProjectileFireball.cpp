@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// 在项目设置的描述页填写版权声明。
 
 
 #include "IsometricAbilities/Projectiles/ProjectileFireball.h"
@@ -45,8 +45,8 @@ void AProjectileFireball::HandleSplashDamage(const FVector& ImpactLocation, AAct
             ImpactLocation,
             InitData.SplashRadius,
             ObjectTypes,
-            nullptr, // Actor class filter
-            TArray<AActor*>({ ProjectileOwner, DirectHitActor }), // Actors to ignore (owner and direct hit target)
+            nullptr, // 过滤的 Actor 类（可选）
+            TArray<AActor*>({ ProjectileOwner, DirectHitActor }), // 忽略的 Actor（发射者与直接命中目标）
             OverlappedActors
         );
 

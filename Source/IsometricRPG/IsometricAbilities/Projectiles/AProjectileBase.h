@@ -83,13 +83,13 @@ class ISOMETRICRPG_API AProjectileBase : public AActor
 	GENERATED_BODY()
 	
 public:	
-	// Sets default values for this actor's properties
+	// 为该 Actor 的属性设置默认值
 	AProjectileBase();
 
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
-	// Called when the game starts or when spawned
+	// 游戏开始或生成时调用
 	virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -97,7 +97,7 @@ protected:
     class UGameplayAbility* SourceAbility;
 
 public:	
-	// Called every frame
+	// 每帧调用
 	virtual void Tick(float DeltaTime) override;
 
 	// 用于从Ability初始化投射物

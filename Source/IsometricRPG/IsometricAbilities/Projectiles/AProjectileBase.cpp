@@ -15,7 +15,7 @@
 AProjectileBase::AProjectileBase()
 {
     PrimaryActorTick.bCanEverTick = true;
-    PrimaryActorTick.TickGroup = TG_PrePhysics; // Tick before physics to update distance
+    PrimaryActorTick.TickGroup = TG_PrePhysics; // 物理前先 Tick 以更新飞行距离
 
     bReplicates = true;
     SetReplicateMovement(true);
@@ -78,7 +78,7 @@ void AProjectileBase::OnRep_InitData()
             FVector::ZeroVector,
             FRotator::ZeroRotator,
             EAttachLocation::KeepRelativeOffset,
-            true // autoDestroy
+            true // 自动销毁
         );
     }
 
@@ -144,7 +144,7 @@ void AProjectileBase::InitializeProjectile(const UGameplayAbility* InSourceAbili
         FVector::ZeroVector,
         FRotator::ZeroRotator,
         EAttachLocation::KeepRelativeOffset,
-        true // autoDestroy
+        true // 自动销毁
     );
     if (FlyingSoundComp && InitData.FlyingSound)
     {
@@ -258,8 +258,8 @@ void AProjectileBase::HandleSplashDamage(const FVector& ImpactLocation, AActor* 
             ImpactLocation,
             InitData.SplashRadius,
             ObjectTypes,
-            nullptr, // Actor class filter
-            TArray<AActor*>({ProjectileOwner, DirectHitActor}), // Actors to ignore (owner and direct hit target)
+            nullptr, // 过滤的 Actor 类（可选）
+            TArray<AActor*>({ProjectileOwner, DirectHitActor}), // 忽略的 Actor（发射者与直接命中目标）
             OverlappedActors
         );
 

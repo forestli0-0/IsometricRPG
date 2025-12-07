@@ -9,7 +9,7 @@
 
 class UTexture2D;
 
-/** Aggregate stats shown on the far-left panel of the HUD. */
+/** HUD 左侧面板展示的综合属性。 */
 struct FHUDChampionStatsViewModel
 {
     float AttackDamage = 0.f;
@@ -21,7 +21,7 @@ struct FHUDChampionStatsViewModel
     float MoveSpeed = 0.f;
 };
 
-/** Simple per-slot view model for the item/equipment panel. */
+/** 物品/装备面板的单格视图模型。 */
 struct FHUDItemSlotViewModel
 {
     FText HotkeyLabel = FText::GetEmpty();
@@ -30,13 +30,13 @@ struct FHUDItemSlotViewModel
     bool bIsActive = false;
 };
 
-/** Lightweight view model for a single buff/debuff icon above the action bar. */
+/** 技能栏上方单个增益/减益图标的轻量视图模型。 */
 struct FHUDBuffIconViewModel
 {
-    FName TagName = NAME_None;          // Source gameplay tag (for debugging/stacking key)
-    TObjectPtr<UTexture2D> Icon = nullptr; // Icon to display
-    int32 StackCount = 0;               // Optional stacks
-    bool bIsDebuff = false;             // For tinting if needed
-    float TimeRemaining = -1.f;         // <0 means hide timer text
-    float TotalDuration = -1.f;         // For radial timer if desired
+    FName TagName = NAME_None;          // 来源的 Gameplay Tag（用于调试或作为叠层键）
+    TObjectPtr<UTexture2D> Icon = nullptr; // 要显示的图标
+    int32 StackCount = 0;               // 可选的层数
+    bool bIsDebuff = false;             // 需要时用于区分染色
+    float TimeRemaining = -1.f;         // 小于 0 表示隐藏计时文本
+    float TotalDuration = -1.f;         // 若使用径向计时器则为其持续时间
 };
