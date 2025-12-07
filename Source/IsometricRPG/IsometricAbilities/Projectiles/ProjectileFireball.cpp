@@ -16,6 +16,10 @@ void AProjectileFireball::ApplyDamageEffects(AActor* TargetActor, const FHitResu
 	auto TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor);
     if (BurnEffect)
     {
+        if (SourceAbilitySystemComponent == nullptr || SourceAbility == nullptr)
+        {
+            return;
+		}
         FGameplayEffectContextHandle BurnContextHandle = SourceAbilitySystemComponent->MakeEffectContext();
         BurnContextHandle.AddSourceObject(this);
         FGameplayEffectSpecHandle BurnSpecHandle = SourceAbilitySystemComponent->MakeOutgoingSpec(BurnEffect, SourceAbility->GetAbilityLevel(), BurnContextHandle);
