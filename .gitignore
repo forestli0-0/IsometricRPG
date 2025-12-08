@@ -74,6 +74,7 @@ Plugins/**/Intermediate/*
 DerivedDataCache/*
 
 Plugins/Puerts
+Plugins/UnLua/
 # Keep generated output ignored, but allow checked-in TS typings.
 Content/JavaScript/
 
