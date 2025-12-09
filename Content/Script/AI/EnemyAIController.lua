@@ -10,7 +10,7 @@ local BBKEY_IN_RANGE = "bIsInAttackRange"
 
 -- 可调参数
 EnemyAIController.UpdateInterval = 0.25
-EnemyAIController.EnableDebug = true
+EnemyAIController.EnableDebug = false
 EnemyAIController.LoseSightDistance = 2000 -- 为保持一致性而保留，当前未使用
 
 function EnemyAIController:ReceiveBeginPlay()

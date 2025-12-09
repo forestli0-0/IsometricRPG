@@ -10,14 +10,12 @@ function BTT_GenericAttack:ReceiveExecuteAI(OwnerController, ControlledPawn)
     -- ---------------------------------------------------------
     local AbilityClass = nil
 
-    -- 优先调用 C++ 定义的接口 GetAttackAbilityClass
     -- Lua 中调用 C++ 函数用冒号 :
     if ControlledPawn.GetAttackAbilityClass then
         AbilityClass = ControlledPawn:GetAttackAbilityClass()
     end
 
     -- 兼容：如果上面没获取到，尝试直接读取属性 (假设是反射暴露的属性)
-    -- 注意：通常建议走函数接口，更稳定
     if not AbilityClass and ControlledPawn.AttackAbilityClass then
         AbilityClass = ControlledPawn.AttackAbilityClass
     end
