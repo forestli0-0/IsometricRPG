@@ -6,6 +6,7 @@ function BaseEnemy:ReceiveBeginPlay()
     if not self.AbilitySystemComponent then
         print(string.format("[BaseEnemy] Warning: ASC missing on %s (check C++ ctor)", self:GetName()))
     end
+    self.Overridden.ReceiveBeginPlay(self)
 end
 
 -- 返回主要的攻击技能类，从 C++ 的 DefaultAbilities 读取
