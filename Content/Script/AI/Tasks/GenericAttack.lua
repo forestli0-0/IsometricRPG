@@ -60,7 +60,7 @@ function BTT_GenericAttack:ReceiveExecuteAI(OwnerController, ControlledPawn)
 
     -- 如果接口拿不到，尝试通过组件查找
     if not ASC then
-        ASC = ControlledPawn:GetComponentByClass(UAbilitySystemComponent.StaticClass())
+        ASC = ControlledPawn:GetComponentByClass(UE.UAbilitySystemComponent.StaticClass())
     end
 
     if ASC then
