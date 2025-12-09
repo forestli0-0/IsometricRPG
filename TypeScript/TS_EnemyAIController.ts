@@ -12,8 +12,6 @@ const BBKEY_IS_IN_ATTACK_RANGE = "bIsInAttackRange";
 
 class TS_EnemyAIController extends UE.IsometricAIController {
     // --- 属性 ---
-    BehaviorTreeAsset: UE.BehaviorTree;
-    
     LoseSightDistance: number = 2000;
 
     // @UE.uproperty.uproperty(UE.uproperty.VisibleAnywhere, UE.uproperty.BlueprintReadWrite, "Category=Combat")
