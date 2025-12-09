@@ -90,11 +90,15 @@ function EnemyAIController:HandlePerceptionUpdated(Actor, Stimulus)
     end
 
     if Stimulus and Stimulus.bSuccessfullySensed then
-        local targetLoc = Actor and Actor:K2_GetActorLocation() or (Stimulus.StimulusLocation or FVector())
-        bb:SetValueAsObject(BBKEY_TARGET, Actor)
-        bb:SetValueAsVector(BBKEY_LAST_LOC, targetLoc)
-        if self.EnableDebug and Actor then
-            print(string.format("[AI] Sensed: %s", Actor:GetName()))
+        local currentTarget = bb:GetValueAsObject(BBKEY_TARGET)
+        -- 只有当前没有目标，或者感知到的就是当前目标时，才更新（实现目标锁定）
+        if not currentTarget or currentTarget == Actor then
+            local targetLoc = Actor and Actor:K2_GetActorLocation() or (Stimulus.StimulusLocation or UE.FVector())
+            bb:SetValueAsObject(BBKEY_TARGET, Actor)
+            bb:SetValueAsVector(BBKEY_LAST_LOC, targetLoc)
+            if self.EnableDebug and Actor then
+                print(string.format("[AI] Sensed (Locked): %s", Actor:GetName()))
+            end
         end
     else
         -- 失去视野
