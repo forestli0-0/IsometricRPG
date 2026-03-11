@@ -13,11 +13,13 @@
 #include "Abilities/GameplayAbility.h"
 #include "TimerManager.h"
 #include "Engine/AssetManager.h"
+#include "Engine/Texture2D.h"
 #include "IsometricAbilities/GameplayAbilities/GA_HeroBaseAbility.h"
 #include "IsometricRPGCharacter.h"
 #include "UI/HUD/HUDRootWidget.h"
 #include "UI/HUD/HUDViewModelTypes.h"
 #include "UI/SkillLoadout/HUDSkillSlotWidget.h"
+
 AIsoPlayerState::AIsoPlayerState()
 {
     // 创建ASC
@@ -381,6 +383,7 @@ void AIsoPlayerState::OnAssetsLoadedForUI()
     }
 
     EnsureAttributeDelegatesBound();
+    EnsureGameplayTagDelegatesBound();
 
     if (!bUIInitialized)
     {
@@ -404,6 +407,7 @@ void AIsoPlayerState::OnUIInitialized()
     bUIInitialized = true;
     UE_LOG(LogTemp, Log, TEXT("UI initialized in PlayerState"));
     EnsureAttributeDelegatesBound();
+    EnsureGameplayTagDelegatesBound();
     UpdateUIWhenReady();
 }
 
@@ -489,6 +493,7 @@ TArray<FHUDBuffIconViewModel> AIsoPlayerState::BuildBuffViewModels(const FGamepl
 void AIsoPlayerState::UpdateUIWhenReady()
 {
     EnsureAttributeDelegatesBound();
+    EnsureGameplayTagDelegatesBound();
 
     AIsometricPlayerController* PC = Cast<AIsometricPlayerController>(GetPlayerController());
     if (!PC) return;
@@ -545,18 +550,31 @@ void AIsoPlayerState::RefreshEntireHUD(UHUDRootWidget& HUD)
 
 void AIsoPlayerState::PushHUDSnapshot(UHUDRootWidget& HUD)
 {
+    RefreshVitals(HUD);
+    RefreshChampionStats(HUD);
+    RefreshGameplayTagPresentation(HUD);
+    RefreshExperience(HUD);
+    RefreshUtilityButtons(HUD);
+}
+
+void AIsoPlayerState::RefreshVitals(UHUDRootWidget& HUD) const
+{
     if (!AttributeSet)
     {
         return;
     }
 
-    const float CurrentHealth = AttributeSet->GetHealth();
-    const float MaxHealth = AttributeSet->GetMaxHealth();
-    const float ShieldValue = 0.f;
+    HUD.UpdateHealth(AttributeSet->GetHealth(), AttributeSet->GetMaxHealth(), 0.f);
+    HUD.UpdateResources(AttributeSet->GetMana(), AttributeSet->GetMaxMana(), 0.f, 0.f);
+}
 
-    HUD.UpdateHealth(CurrentHealth, MaxHealth, ShieldValue);
+void AIsoPlayerState::RefreshChampionStats(UHUDRootWidget& HUD) const
+{
+    if (!AttributeSet)
+    {
+        return;
+    }
 
-    // --- Champion stats summary for status panel ---
     FHUDChampionStatsViewModel ChampionStats;
     ChampionStats.AttackDamage = AttributeSet->GetAttackDamage();
     ChampionStats.AbilityPower = AttributeSet->GetAbilityPower();
@@ -566,13 +584,30 @@ void AIsoPlayerState::PushHUDSnapshot(UHUDRootWidget& HUD)
     ChampionStats.CritChance = AttributeSet->GetCriticalChance();
     ChampionStats.MoveSpeed = AttributeSet->GetMoveSpeed();
     HUD.UpdateChampionStats(ChampionStats);
+}
 
-    // -- Owned Gameplay Tags to HUD (debug/optional) --
+void AIsoPlayerState::RefreshGameplayTagPresentation(UHUDRootWidget& HUD) const
+{
     FGameplayTagContainer OwnedTags;
     if (AbilitySystemComponent)
     {
         AbilitySystemComponent->GetOwnedGameplayTags(OwnedTags);
     }
+
+    HUD.UpdateStatusBuffs(BuildBuffViewModels(OwnedTags));
+
+    TArray<FName> TagNameArray;
+    if (bShowOwnedTagsOnHUD)
+    {
+        TArray<FGameplayTag> OwnedTagArray;
+        OwnedTags.GetGameplayTagArray(OwnedTagArray);
+        TagNameArray.Reserve(OwnedTagArray.Num());
+        for (const FGameplayTag& Tag : OwnedTagArray)
+        {
+            TagNameArray.Add(Tag.GetTagName());
+        }
+    }
+    HUD.UpdateStatusEffects(TagNameArray);
 
     bool bIsInCombat = false;
     if (AbilitySystemComponent)
@@ -584,35 +619,23 @@ void AIsoPlayerState::PushHUDSnapshot(UHUDRootWidget& HUD)
         }
     }
 
-    // Curated buff icons (preferred)
-    HUD.UpdateStatusBuffs(BuildBuffViewModels(OwnedTags));
+    const bool bHasPendingLevelUp = AttributeSet && AttributeSet->GetUnUsedSkillPoint() > 0.f;
+    HUD.UpdatePortrait(nullptr, bIsInCombat, bHasPendingLevelUp);
+}
 
-    // Optional debug text badges
-    if (bShowOwnedTagsOnHUD)
+void AIsoPlayerState::RefreshExperience(UHUDRootWidget& HUD) const
+{
+    if (!AttributeSet)
     {
-        TArray<FGameplayTag> OwnedTagArray;
-        OwnedTags.GetGameplayTagArray(OwnedTagArray);
-        TArray<FName> TagNameArray;
-        TagNameArray.Reserve(OwnedTagArray.Num());
-        for (const FGameplayTag& Tag : OwnedTagArray)
-        {
-            TagNameArray.Add(Tag.GetTagName());
-        }
-        HUD.UpdateStatusEffects(TagNameArray);
+        return;
     }
 
-    const bool bHasPendingLevelUp = AttributeSet->GetUnUsedSkillPoint() > 0.f;
-    HUD.UpdatePortrait(nullptr, bIsInCombat, bHasPendingLevelUp);
-
-    const float CurrentMana = AttributeSet->GetMana();
-    const float MaxMana = AttributeSet->GetMaxMana();
-    HUD.UpdateResources(CurrentMana, MaxMana, 0.f, 0.f);
-
     const int32 CurrentLevel = FMath::FloorToInt(AttributeSet->GetLevel());
-    const float CurrentXP = AttributeSet->GetExperience();
-    const float RequiredXP = AttributeSet->GetExperienceToNextLevel();
-    HUD.UpdateExperience(CurrentLevel, CurrentXP, RequiredXP);
+    HUD.UpdateExperience(CurrentLevel, AttributeSet->GetExperience(), AttributeSet->GetExperienceToNextLevel());
+}
 
+void AIsoPlayerState::RefreshUtilityButtons(UHUDRootWidget& HUD) const
+{
     HUD.UpdateUtilityButtons(BuildUtilityButtonViewModels());
 }
 
@@ -629,6 +652,37 @@ void AIsoPlayerState::EnsureAttributeDelegatesBound()
     AttributeSet->OnLevelChanged.AddDynamic(this, &AIsoPlayerState::HandleLevelChanged);
 
     bAttributeDelegatesBound = true;
+}
+
+void AIsoPlayerState::EnsureGameplayTagDelegatesBound()
+{
+    if (bGameplayTagDelegatesBound || !AbilitySystemComponent)
+    {
+        return;
+    }
+
+    TSet<FGameplayTag> ObservedTags;
+    for (const TPair<FGameplayTag, TSoftObjectPtr<UTexture2D>>& Pair : BuffIconMap)
+    {
+        if (Pair.Key.IsValid())
+        {
+            ObservedTags.Add(Pair.Key);
+        }
+    }
+
+    static const FGameplayTag CombatTag = FGameplayTag::RequestGameplayTag(FName("State.Combat"), false);
+    if (CombatTag.IsValid())
+    {
+        ObservedTags.Add(CombatTag);
+    }
+
+    for (const FGameplayTag& ObservedTag : ObservedTags)
+    {
+        AbilitySystemComponent->RegisterGameplayTagEvent(ObservedTag, EGameplayTagEventType::AnyCountChange)
+            .AddUObject(this, &AIsoPlayerState::HandleObservedGameplayTagChanged);
+    }
+
+    bGameplayTagDelegatesBound = true;
 }
 
 UHUDRootWidget* AIsoPlayerState::ResolveHUDWidget() const
@@ -655,7 +709,7 @@ void AIsoPlayerState::HandleHealthChanged(UIsometricRPGAttributeSetBase* Attribu
 
     if (UHUDRootWidget* HUD = ResolveHUDWidget())
     {
-        PushHUDSnapshot(*HUD);
+        HUD->UpdateHealth(NewHealth, AttributeSet->GetMaxHealth(), 0.f);
     }
     else
     {
@@ -672,7 +726,7 @@ void AIsoPlayerState::HandleManaChanged(UIsometricRPGAttributeSetBase* Attribute
 
     if (UHUDRootWidget* HUD = ResolveHUDWidget())
     {
-        PushHUDSnapshot(*HUD);
+        HUD->UpdateResources(NewMana, AttributeSet->GetMaxMana(), 0.f, 0.f);
     }
     else
     {
@@ -689,7 +743,7 @@ void AIsoPlayerState::HandleExperienceChanged(UIsometricRPGAttributeSetBase* Att
 
     if (UHUDRootWidget* HUD = ResolveHUDWidget())
     {
-        PushHUDSnapshot(*HUD);
+        HUD->UpdateExperience(FMath::FloorToInt(AttributeSet->GetLevel()), NewExperience, NewMaxExperience);
     }
     else
     {
@@ -706,12 +760,26 @@ void AIsoPlayerState::HandleLevelChanged(UIsometricRPGAttributeSetBase* Attribut
 
     if (UHUDRootWidget* HUD = ResolveHUDWidget())
     {
-        PushHUDSnapshot(*HUD);
+        RefreshVitals(*HUD);
+        RefreshChampionStats(*HUD);
+        RefreshExperience(*HUD);
+        RefreshGameplayTagPresentation(*HUD);
     }
     else
     {
         bPendingUIUpdate = true;
     }
+}
+
+void AIsoPlayerState::HandleObservedGameplayTagChanged(const FGameplayTag ChangedTag, int32 NewCount)
+{
+    if (UHUDRootWidget* HUD = ResolveHUDWidget())
+    {
+        RefreshGameplayTagPresentation(*HUD);
+        return;
+    }
+
+    bPendingUIUpdate = true;
 }
 
 void AIsoPlayerState::HandleAbilityCooldownTriggered(const FGameplayAbilitySpecHandle& SpecHandle, float DurationSeconds)

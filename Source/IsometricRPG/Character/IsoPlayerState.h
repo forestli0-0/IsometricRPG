@@ -98,8 +98,15 @@ private:
 
     void RefreshEntireHUD(UHUDRootWidget& HUD);
     void PushHUDSnapshot(UHUDRootWidget& HUD);
+    void RefreshVitals(UHUDRootWidget& HUD) const;
+    void RefreshChampionStats(UHUDRootWidget& HUD) const;
+    void RefreshGameplayTagPresentation(UHUDRootWidget& HUD) const;
+    void RefreshExperience(UHUDRootWidget& HUD) const;
+    void RefreshUtilityButtons(UHUDRootWidget& HUD) const;
     void EnsureAttributeDelegatesBound();
+    void EnsureGameplayTagDelegatesBound();
     UHUDRootWidget* ResolveHUDWidget() const;
+    void HandleObservedGameplayTagChanged(const FGameplayTag ChangedTag, int32 NewCount);
 
     UFUNCTION()
     void HandleHealthChanged(UIsometricRPGAttributeSetBase* AttributeSetChanged, float NewHealth);
@@ -114,6 +121,7 @@ private:
     void HandleLevelChanged(UIsometricRPGAttributeSetBase* AttributeSetChanged, float NewLevel);
 
     bool bAttributeDelegatesBound = false;
+    bool bGameplayTagDelegatesBound = false;
 
     // --- Slot/Index 映射与工具 ---
     // 有些默认技能（如基础攻击/被动）可能不在技能栏显示，但仍需授予。

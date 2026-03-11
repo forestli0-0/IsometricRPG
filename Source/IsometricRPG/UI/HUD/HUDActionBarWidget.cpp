@@ -24,8 +24,33 @@ namespace
 		case ESkillSlot::Skill_R: return TEXT("Skill_R");
 		case ESkillSlot::Skill_D: return TEXT("Skill_D");
 		case ESkillSlot::Skill_F: return TEXT("Skill_F");
-		default: return TEXT("Invalid");
+			default: return TEXT("Invalid");
 		}
+	}
+
+	bool AreBuffIconArraysEquivalent(const TArray<FHUDBuffIconViewModel>& Left, const TArray<FHUDBuffIconViewModel>& Right)
+	{
+		if (Left.Num() != Right.Num())
+		{
+			return false;
+		}
+
+		for (int32 Index = 0; Index < Left.Num(); ++Index)
+		{
+			const FHUDBuffIconViewModel& LeftEntry = Left[Index];
+			const FHUDBuffIconViewModel& RightEntry = Right[Index];
+			if (LeftEntry.TagName != RightEntry.TagName
+				|| LeftEntry.Icon != RightEntry.Icon
+				|| LeftEntry.StackCount != RightEntry.StackCount
+				|| LeftEntry.bIsDebuff != RightEntry.bIsDebuff
+				|| !FMath::IsNearlyEqual(LeftEntry.TimeRemaining, RightEntry.TimeRemaining, 0.05f)
+				|| !FMath::IsNearlyEqual(LeftEntry.TotalDuration, RightEntry.TotalDuration, 0.05f))
+			{
+				return false;
+			}
+		}
+
+		return true;
 	}
 }
 
@@ -34,6 +59,13 @@ void UHUDActionBarWidget::NativeConstruct()
 	Super::NativeConstruct();
 
 	SlotLookup.Reset();
+	BuffIconEntries.Reset();
+	BuffTagLabels.Reset();
+
+	if (BuffStrip)
+	{
+		BuffStrip->ClearChildren();
+	}
 
 	RebuildSlotLookup();
 
@@ -115,31 +147,65 @@ void UHUDActionBarWidget::ApplyCooldown(ESkillSlot InSlot, float Duration, float
 
 void UHUDActionBarWidget::SetVitals(float InCurrentHealth, float InMaxHealth, float InCurrentMana, float InMaxMana)
 {
-	CurrentHealth = FMath::Max(0.f, InCurrentHealth);
-	MaxHealth = FMath::Max(KINDA_SMALL_NUMBER, InMaxHealth);
-	CurrentMana = FMath::Max(0.f, InCurrentMana);
-	MaxMana = FMath::Max(KINDA_SMALL_NUMBER, InMaxMana);
+	const float NewCurrentHealth = FMath::Max(0.f, InCurrentHealth);
+	const float NewMaxHealth = FMath::Max(KINDA_SMALL_NUMBER, InMaxHealth);
+	const float NewCurrentMana = FMath::Max(0.f, InCurrentMana);
+	const float NewMaxMana = FMath::Max(KINDA_SMALL_NUMBER, InMaxMana);
+
+	if (FMath::IsNearlyEqual(CurrentHealth, NewCurrentHealth, 0.01f)
+		&& FMath::IsNearlyEqual(MaxHealth, NewMaxHealth, 0.01f)
+		&& FMath::IsNearlyEqual(CurrentMana, NewCurrentMana, 0.01f)
+		&& FMath::IsNearlyEqual(MaxMana, NewMaxMana, 0.01f))
+	{
+		return;
+	}
+
+	CurrentHealth = NewCurrentHealth;
+	MaxHealth = NewMaxHealth;
+	CurrentMana = NewCurrentMana;
+	MaxMana = NewMaxMana;
 
 	RefreshVitalWidgets();
 }
 
 void UHUDActionBarWidget::SetExperience(int32 InCurrentLevel, float InCurrentXP, float InRequiredXP)
 {
-	CurrentLevel = FMath::Max(1, InCurrentLevel);
-	CurrentExperience = FMath::Max(0.f, InCurrentXP);
-	RequiredExperience = FMath::Max(KINDA_SMALL_NUMBER, InRequiredXP);
+	const int32 NewCurrentLevel = FMath::Max(1, InCurrentLevel);
+	const float NewCurrentExperience = FMath::Max(0.f, InCurrentXP);
+	const float NewRequiredExperience = FMath::Max(KINDA_SMALL_NUMBER, InRequiredXP);
+
+	if (CurrentLevel == NewCurrentLevel
+		&& FMath::IsNearlyEqual(CurrentExperience, NewCurrentExperience, 0.01f)
+		&& FMath::IsNearlyEqual(RequiredExperience, NewRequiredExperience, 0.01f))
+	{
+		return;
+	}
+
+	CurrentLevel = NewCurrentLevel;
+	CurrentExperience = NewCurrentExperience;
+	RequiredExperience = NewRequiredExperience;
 
 	RefreshExperienceWidgets();
 }
 
 void UHUDActionBarWidget::SetStatusTags(const TArray<FName>& InTags)
 {
+	if (CachedBuffTags == InTags)
+	{
+		return;
+	}
+
 	CachedBuffTags = InTags;
 	RefreshBuffWidgets();
 }
 
 void UHUDActionBarWidget::SetStatusBuffs(const TArray<FHUDBuffIconViewModel>& InBuffs)
 {
+	if (AreBuffIconArraysEquivalent(CachedBuffIcons, InBuffs))
+	{
+		return;
+	}
+
 	CachedBuffIcons = InBuffs;
 	RefreshBuffWidgets();
 }
@@ -175,6 +241,108 @@ void UHUDActionBarWidget::RebuildSlotLookup()
 		}
 
 		SlotLookup.Add(SlotType, SlotWidget);
+	}
+}
+
+UHUDActionBarWidget::FBuffIconEntryWidgets& UHUDActionBarWidget::GetOrCreateBuffIconEntry(int32 Index)
+{
+	while (BuffIconEntries.Num() <= Index)
+	{
+		FBuffIconEntryWidgets NewEntry;
+		if (WidgetTree && BuffStrip)
+		{
+			NewEntry.Root = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+			if (NewEntry.Root)
+			{
+				NewEntry.Root->SetVisibility(ESlateVisibility::Collapsed);
+
+				NewEntry.IconImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+				if (NewEntry.IconImage)
+				{
+					if (UOverlaySlot* IconSlot = NewEntry.Root->AddChildToOverlay(NewEntry.IconImage))
+					{
+						IconSlot->SetHorizontalAlignment(HAlign_Fill);
+						IconSlot->SetVerticalAlignment(VAlign_Fill);
+					}
+				}
+
+				NewEntry.CooldownMask = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+				if (NewEntry.CooldownMask)
+				{
+					NewEntry.CooldownMask->SetVisibility(ESlateVisibility::Collapsed);
+					NewEntry.CooldownMask->SetDesiredSizeOverride(BuffIconSize);
+
+					if (UOverlaySlot* CooldownSlot = NewEntry.Root->AddChildToOverlay(NewEntry.CooldownMask))
+					{
+						CooldownSlot->SetHorizontalAlignment(HAlign_Fill);
+						CooldownSlot->SetVerticalAlignment(VAlign_Fill);
+					}
+				}
+
+				NewEntry.StackText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+				if (NewEntry.StackText)
+				{
+					NewEntry.StackText->SetVisibility(ESlateVisibility::Collapsed);
+					NewEntry.StackText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+					NewEntry.StackText->SetShadowOffset(FVector2D(1.f, 1.f));
+					NewEntry.StackText->SetJustification(ETextJustify::Right);
+					if (UOverlaySlot* StackSlot = NewEntry.Root->AddChildToOverlay(NewEntry.StackText))
+					{
+						StackSlot->SetHorizontalAlignment(HAlign_Right);
+						StackSlot->SetVerticalAlignment(VAlign_Bottom);
+						StackSlot->SetPadding(FMargin(0.f, 0.f, 1.f, 1.f));
+					}
+				}
+
+				BuffStrip->AddChildToHorizontalBox(NewEntry.Root);
+			}
+		}
+
+		BuffIconEntries.Add(MoveTemp(NewEntry));
+	}
+
+	return BuffIconEntries[Index];
+}
+
+UTextBlock* UHUDActionBarWidget::GetOrCreateBuffTagLabel(int32 Index)
+{
+	while (BuffTagLabels.Num() <= Index)
+	{
+		TObjectPtr<UTextBlock> NewLabel = nullptr;
+		if (WidgetTree && BuffStrip)
+		{
+			NewLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+			if (NewLabel)
+			{
+				NewLabel->SetVisibility(ESlateVisibility::Collapsed);
+				NewLabel->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+				NewLabel->SetShadowOffset(FVector2D(1.f, 1.f));
+				BuffStrip->AddChildToHorizontalBox(NewLabel);
+			}
+		}
+
+		BuffTagLabels.Add(NewLabel);
+	}
+
+	return BuffTagLabels[Index];
+}
+
+void UHUDActionBarWidget::HideAllBuffWidgets()
+{
+	for (FBuffIconEntryWidgets& Entry : BuffIconEntries)
+	{
+		if (Entry.Root)
+		{
+			Entry.Root->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	}
+
+	for (TObjectPtr<UTextBlock>& TagLabel : BuffTagLabels)
+	{
+		if (TagLabel)
+		{
+			TagLabel->SetVisibility(ESlateVisibility::Collapsed);
+		}
 	}
 }
 
@@ -231,94 +399,80 @@ void UHUDActionBarWidget::RefreshBuffWidgets()
 		return;
 	}
 
-	BuffStrip->ClearChildren();
+	HideAllBuffWidgets();
 
 	// 优先使用预先策划并在 PlayerState 中指定的图标（更美观且可控）；
 	// 当没有可用图标时退回到显示调试用的标签名（避免出现白色占位方块）
 	if (CachedBuffIcons.Num() > 0)
 	{
-		BuffStrip->SetVisibility(ESlateVisibility::HitTestInvisible);
+		int32 VisibleIconCount = 0;
 
 		for (const FHUDBuffIconViewModel& Buff : CachedBuffIcons)
 		{
-			if (!WidgetTree)
-			{
-				break;
-			}
-
 			if (!Buff.Icon)
 			{
 				continue; // 跳过未解析的图标（避免出现白色占位方块）
 			}
 
-			UOverlay* IconOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
-			if (!IconOverlay)
+			FBuffIconEntryWidgets& Entry = GetOrCreateBuffIconEntry(VisibleIconCount++);
+			if (!Entry.Root || !Entry.IconImage)
 			{
 				continue;
 			}
 
-			// 基础图标：从纹理构造 Image 并设置尺寸/颜色
-			UImage* IconWidget = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
-			if (IconWidget)
-			{
-				IconWidget->SetBrushFromTexture(Buff.Icon);
-				FSlateBrush Brush = IconWidget->GetBrush();
-				Brush.ImageSize = BuffIconSize;
-				IconWidget->SetBrush(Brush);
-				IconWidget->SetDesiredSizeOverride(BuffIconSize);
-				IconWidget->SetColorAndOpacity(Buff.bIsDebuff ? FLinearColor(1.f, 0.3f, 0.3f, 1.f) : FLinearColor::White);
-				if (UOverlaySlot* IconSlot = IconOverlay->AddChildToOverlay(IconWidget))
-				{
-					IconSlot->SetHorizontalAlignment(HAlign_Fill);
-					IconSlot->SetVerticalAlignment(VAlign_Fill);
-				}
-			}
+			Entry.Root->SetVisibility(ESlateVisibility::HitTestInvisible);
+			Entry.IconImage->SetBrushFromTexture(Buff.Icon);
+			FSlateBrush Brush = Entry.IconImage->GetBrush();
+			Brush.ImageSize = BuffIconSize;
+			Entry.IconImage->SetBrush(Brush);
+			Entry.IconImage->SetDesiredSizeOverride(BuffIconSize);
+			Entry.IconImage->SetColorAndOpacity(Buff.bIsDebuff ? FLinearColor(1.f, 0.3f, 0.3f, 1.f) : FLinearColor::White);
 
-			// 圆形冷却遮罩：当存在时间信息时，创建基于材质的遮罩并按照剩余时间百分比设置参数
-			if (Buff.TimeRemaining >= 0.f && Buff.TotalDuration > KINDA_SMALL_NUMBER)
+			const bool bShowCooldown = Buff.TimeRemaining >= 0.f && Buff.TotalDuration > KINDA_SMALL_NUMBER && Entry.CooldownMask;
+			if (bShowCooldown)
 			{
-				UImage* CooldownMask = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
-				if (CooldownMask && BuffCooldownMaterial)
+				if (!Entry.CooldownMID && BuffCooldownMaterial)
 				{
-					UMaterialInstanceDynamic* CooldownMID = UMaterialInstanceDynamic::Create(BuffCooldownMaterial, this);
-					if (CooldownMID)
+					Entry.CooldownMID = UMaterialInstanceDynamic::Create(BuffCooldownMaterial, this);
+					if (Entry.CooldownMID)
 					{
-						const float Percent = FMath::Clamp(Buff.TimeRemaining / Buff.TotalDuration, 0.f, 1.f);
-						CooldownMID->SetScalarParameterValue(BuffCooldownPercentParam, Percent);
-						CooldownMask->SetBrushFromMaterial(CooldownMID);
-						CooldownMask->SetColorAndOpacity(BuffCooldownTint);
-						CooldownMask->SetDesiredSizeOverride(BuffIconSize);
-						if (UOverlaySlot* CooldownSlot = IconOverlay->AddChildToOverlay(CooldownMask))
-						{
-							CooldownSlot->SetHorizontalAlignment(HAlign_Fill);
-							CooldownSlot->SetVerticalAlignment(VAlign_Fill);
-						}
+						Entry.CooldownMask->SetBrushFromMaterial(Entry.CooldownMID);
 					}
 				}
+				if (Entry.CooldownMID)
+				{
+					const float Percent = FMath::Clamp(Buff.TimeRemaining / Buff.TotalDuration, 0.f, 1.f);
+					Entry.CooldownMID->SetScalarParameterValue(BuffCooldownPercentParam, Percent);
+				}
+				Entry.CooldownMask->SetColorAndOpacity(BuffCooldownTint);
+				Entry.CooldownMask->SetDesiredSizeOverride(BuffIconSize);
+				Entry.CooldownMask->SetVisibility(Entry.CooldownMID ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+			}
+			else if (Entry.CooldownMask)
+			{
+				Entry.CooldownMask->SetVisibility(ESlateVisibility::Collapsed);
 			}
 
-			// 堆叠数徽章：当该 Buff 有多层叠加（StackCount>1）时，右下角显示数量
-			if (Buff.StackCount > 1)
+			if (Entry.StackText)
 			{
-				UTextBlock* StackText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-				if (StackText)
+				if (Buff.StackCount > 1)
 				{
-					StackText->SetText(FText::AsNumber(Buff.StackCount));
-					StackText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
-					StackText->SetShadowOffset(FVector2D(1.f, 1.f));
-					StackText->SetJustification(ETextJustify::Right);
-					if (UOverlaySlot* StackSlot = IconOverlay->AddChildToOverlay(StackText))
-					{
-						StackSlot->SetHorizontalAlignment(HAlign_Right);
-						StackSlot->SetVerticalAlignment(VAlign_Bottom);
-						StackSlot->SetPadding(FMargin(0.f, 0.f, 1.f, 1.f));
-					}
+					Entry.StackText->SetText(FText::AsNumber(Buff.StackCount));
+					Entry.StackText->SetVisibility(ESlateVisibility::HitTestInvisible);
+				}
+				else
+				{
+					Entry.StackText->SetText(FText::GetEmpty());
+					Entry.StackText->SetVisibility(ESlateVisibility::Collapsed);
 				}
 			}
-
-			BuffStrip->AddChildToHorizontalBox(IconOverlay);
 		}
-		return;
+
+		if (VisibleIconCount > 0)
+		{
+			BuffStrip->SetVisibility(ESlateVisibility::HitTestInvisible);
+			return;
+		}
 	}
 
 	if (CachedBuffTags.Num() == 0)
@@ -329,17 +483,13 @@ void UHUDActionBarWidget::RefreshBuffWidgets()
 
 	BuffStrip->SetVisibility(ESlateVisibility::HitTestInvisible);
 
+	int32 VisibleTagCount = 0;
 	for (const FName& TagName : CachedBuffTags)
 	{
-		if (!WidgetTree)
+		if (UTextBlock* TagLabel = GetOrCreateBuffTagLabel(VisibleTagCount++))
 		{
-			break;
+			TagLabel->SetText(FText::FromName(TagName));
+			TagLabel->SetVisibility(ESlateVisibility::HitTestInvisible);
 		}
-
-		UTextBlock* TagLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		TagLabel->SetText(FText::FromName(TagName));
-		TagLabel->SetColorAndOpacity(FSlateColor(FLinearColor::White));
-		TagLabel->SetShadowOffset(FVector2D(1.f, 1.f));
-		BuffStrip->AddChildToHorizontalBox(TagLabel);
 	}
 }

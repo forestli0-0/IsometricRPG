@@ -10,6 +10,7 @@
 struct FHUDSkillSlotViewModel;
 class UHUDSkillLoadoutWidget;
 class UHUDSkillSlotWidget;
+class UMaterialInstanceDynamic;
 
 class UHorizontalBox;
 class UProgressBar;
@@ -100,8 +101,20 @@ protected:
     FLinearColor BuffCooldownTint = FLinearColor(0.f, 0.f, 0.f, 0.65f);
 
 private:
+    struct FBuffIconEntryWidgets
+    {
+        TObjectPtr<UOverlay> Root;
+        TObjectPtr<UImage> IconImage;
+        TObjectPtr<UImage> CooldownMask;
+        TObjectPtr<UTextBlock> StackText;
+        TObjectPtr<UMaterialInstanceDynamic> CooldownMID;
+    };
+
     TMap<ESkillSlot, TObjectPtr<UHUDSkillSlotWidget>> SlotLookup;
     void RebuildSlotLookup();
+    FBuffIconEntryWidgets& GetOrCreateBuffIconEntry(int32 Index);
+    UTextBlock* GetOrCreateBuffTagLabel(int32 Index);
+    void HideAllBuffWidgets();
 
     float CurrentHealth = 0.f;
     float MaxHealth = 1.f;
@@ -114,6 +127,8 @@ private:
 
     TArray<FName> CachedBuffTags; // 旧的调试路径（遗留用途）
     TArray<FHUDBuffIconViewModel> CachedBuffIcons;
+    TArray<FBuffIconEntryWidgets> BuffIconEntries;
+    TArray<TObjectPtr<UTextBlock>> BuffTagLabels;
 
     /** 风格设定：Buff 图标在条上的显示尺寸（XY）。 */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Style", meta = (AllowPrivateAccess = "true"))

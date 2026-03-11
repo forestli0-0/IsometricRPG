@@ -113,6 +113,7 @@ private:
     bool bCooldownActive = false;
     float CooldownDuration = 0.f;
     float CooldownEndTime = 0.f;
+    int32 LastDisplayedCooldownSeconds = INDEX_NONE;
 
     /** 在 UMG 设计器中配置的子控件，由 C++ 驱动显示内容。 */
     UPROPERTY(meta = (BindWidgetOptional))

@@ -123,6 +123,7 @@ void UHUDSkillSlotWidget::BeginCooldown(float DurationSeconds, float InitialRema
 
     CooldownEndTime = GetWorldTime() + Remaining;
     bCooldownActive = true;
+    LastDisplayedCooldownSeconds = INDEX_NONE;
 
     ApplyCooldownToWidgets(Remaining);
 }
@@ -132,6 +133,7 @@ void UHUDSkillSlotWidget::CancelCooldown()
     bCooldownActive = false;
     CooldownDuration = 0.f;
     CooldownEndTime = 0.f;
+    LastDisplayedCooldownSeconds = INDEX_NONE;
 
     ApplyCooldownToWidgets(0.f);
 }
@@ -170,7 +172,10 @@ void UHUDSkillSlotWidget::ApplyCooldownToWidgets(float RemainingSeconds)
     // 隐藏旧的线性冷却条（保留兼容性），当前优先使用圆形遮罩与中心倒计时
     if (CooldownProgress)
     {
-        CooldownProgress->SetVisibility(ESlateVisibility::Collapsed);
+        if (CooldownProgress->GetVisibility() != ESlateVisibility::Collapsed)
+        {
+            CooldownProgress->SetVisibility(ESlateVisibility::Collapsed);
+        }
         CooldownProgress->SetPercent(0.f);
     }
 
@@ -179,11 +184,19 @@ void UHUDSkillSlotWidget::ApplyCooldownToWidgets(float RemainingSeconds)
     // 根据是否处于冷却显示或隐藏遮罩与文本
     if (CooldownMaskImage)
     {
-        CooldownMaskImage->SetVisibility(bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+        const ESlateVisibility DesiredVisibility = bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
+        if (CooldownMaskImage->GetVisibility() != DesiredVisibility)
+        {
+            CooldownMaskImage->SetVisibility(DesiredVisibility);
+        }
     }
     if (CooldownText)
     {
-        CooldownText->SetVisibility(bShow ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+        const ESlateVisibility DesiredVisibility = bShow ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
+        if (CooldownText->GetVisibility() != DesiredVisibility)
+        {
+            CooldownText->SetVisibility(DesiredVisibility);
+        }
     }
 
     if (!bShow)
@@ -195,8 +208,12 @@ void UHUDSkillSlotWidget::ApplyCooldownToWidgets(float RemainingSeconds)
         }
         if (CooldownText)
         {
-            CooldownText->SetText(FText::GetEmpty());
+            if (LastDisplayedCooldownSeconds != INDEX_NONE)
+            {
+                CooldownText->SetText(FText::GetEmpty());
+            }
         }
+        LastDisplayedCooldownSeconds = INDEX_NONE;
         return;
     }
 
@@ -211,7 +228,11 @@ void UHUDSkillSlotWidget::ApplyCooldownToWidgets(float RemainingSeconds)
     if (CooldownText)
     {
         const int32 SecondsLeft = FMath::CeilToInt(RemainingSeconds);
-        CooldownText->SetText(FText::AsNumber(SecondsLeft));
+        if (SecondsLeft != LastDisplayedCooldownSeconds)
+        {
+            CooldownText->SetText(FText::AsNumber(SecondsLeft));
+            LastDisplayedCooldownSeconds = SecondsLeft;
+        }
     }
 }
 
