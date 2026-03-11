@@ -8,6 +8,7 @@
 #include "AbilitySystemInterface.h"
 #include "AbilitySystemComponent.h"
 #include "IsometricComponents/IsometricInputComponent.h"
+#include "IsometricComponents/IsometricPathFollowingComponent.h"
 #include "GameplayTagContainer.h"
 #include "GenericTeamAgentInterface.h"
 #include "IsoPlayerState.h"
@@ -24,7 +25,7 @@ class ISOMETRICRPG_API AIsometricRPGCharacter : public ACharacter, public IAbili
     GENERATED_BODY()
 public:
     // Sets default values for this character's properties
-    AIsometricRPGCharacter();
+    AIsometricRPGCharacter(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 protected:
     // Called when the game starts or when spawned
@@ -68,6 +69,9 @@ public:
     // 输入组件
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Input")
     UIsometricInputComponent* IRPGInputComponent;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
+    UIsometricPathFollowingComponent* PathFollowingComponent;
 
     UFUNCTION(Server, Reliable)
     void Server_EquipAbilityToSlot(TSubclassOf<UGameplayAbility> NewAbilityClass, ESkillSlot Slot);

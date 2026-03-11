@@ -1,15 +1,10 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "IsometricAbilities/AbilityTasks/AbilityTask_WaitMoveToLocation.h"
 
-#include "AIController.h"
-#include "GameFramework/Character.h"
-#include "NavigationSystem.h"
 #include "Abilities/GameplayAbility.h"
+#include "GameFramework/Character.h"
+#include "IsometricComponents/IsometricPathFollowingComponent.h"
 #include "TimerManager.h"
-#include <Blueprint/AIBlueprintHelperLibrary.h>
-
+#include "Engine/World.h"
 
 UAbilityTask_WaitMoveToLocation* UAbilityTask_WaitMoveToLocation::WaitMoveToLocation(
     UGameplayAbility* OwningAbility,
@@ -24,7 +19,7 @@ UAbilityTask_WaitMoveToLocation* UAbilityTask_WaitMoveToLocation::WaitMoveToLoca
     if (OwningAbility)
     {
         Task->SourceCharacter = Cast<ACharacter>(OwningAbility->GetCurrentActorInfo()->AvatarActor.Get());
-        if (!Task->SourceCharacter)
+        if (!Task->SourceCharacter.IsValid())
         {
             return nullptr;
         }
@@ -45,7 +40,7 @@ UAbilityTask_WaitMoveToLocation* UAbilityTask_WaitMoveToLocation::WaitMoveToActo
     if (OwningAbility)
     {
         Task->SourceCharacter = Cast<ACharacter>(OwningAbility->GetCurrentActorInfo()->AvatarActor.Get());
-        if (!Task->SourceCharacter)
+        if (!Task->SourceCharacter.IsValid())
         {
             return nullptr;
         }
@@ -53,108 +48,213 @@ UAbilityTask_WaitMoveToLocation* UAbilityTask_WaitMoveToLocation::WaitMoveToActo
     return Task;
 }
 
-void UAbilityTask_WaitMoveToLocation::Activate()  
-{  
-    if (!Ability)  
-    {  
-        EndTask();  
-        return;  
-    }  
-
-    if (TargetActor)  
-    {  
-        // 动态目标：定时重启 MoveTo 以追踪目标  
-        UpdateMoveToActor();  
-        SourceCharacter->GetWorldTimerManager().SetTimer(  
-            RepathTimerHandle, this,  
-            &UAbilityTask_WaitMoveToLocation::UpdateMoveToActor,  
-            0.5f, true); // 每0.5秒更新目标位置  
-    }  
-    else  
-    {  
-        if (!TargetLocation.IsZero()) // 修复：检查 TargetLocation 是否为零向量  
-        {  
-            UpdateMoveToLocation();
-        }  
-        else  
-        {  
-            UE_LOG(LogTemp, Warning, TEXT("Target为空，无法向目标移动"));  
-            OnMoveFailed.Broadcast();  
-            EndTask();  
-        }  
-    }  
-}
-
-void UAbilityTask_WaitMoveToLocation::UpdateMoveToActor()
+void UAbilityTask_WaitMoveToLocation::Activate()
 {
-    if (!TargetActor)
+    if (!(Ability && SourceCharacter.IsValid()))
     {
-        OnMoveFailed.Broadcast();
-        EndTask();
+        FailMove();
         return;
     }
 
-    float Distance = FVector::Dist(SourceCharacter->GetActorLocation(), TargetActor->GetActorLocation());
-    if (Distance <= AcceptanceRadius)
+    const bool bHasValidGoal = TargetActor.IsValid() || !TargetLocation.IsZero();
+    if (!bHasValidGoal)
     {
-        if (SourceCharacter->GetController())
+        UE_LOG(LogTemp, Warning, TEXT("Target为空，无法向目标移动"));
+        FailMove();
+        return;
+    }
+
+    PathFollowingComponent = SourceCharacter->FindComponentByClass<UIsometricPathFollowingComponent>();
+    if (PathFollowingComponent.IsValid())
+    {
+        PathFollowingFinishedHandle = PathFollowingComponent->OnMoveFinished.AddUObject(
+            this,
+            &UAbilityTask_WaitMoveToLocation::HandlePathFollowingFinished);
+    }
+
+    if (HasReachedDestination())
+    {
+        FinishMoveSuccessfully();
+        return;
+    }
+
+    if (CanDrivePathFollowing())
+    {
+        if (!PathFollowingComponent.IsValid())
         {
-            SourceCharacter->GetController()->StopMovement();
+            FailMove();
+            return;
         }
-        OnMoveFinished.Broadcast();
-        EndTask();
-        return;
-    }
 
-    // 仅在以下情况下发起 SimpleMoveTo：
-    // - 角色由AI控制（服务器）；或
-    // - 角色由玩家控制但当前在本地客户端上（非服务器）运行
-    const bool bIsPlayer = SourceCharacter->IsPlayerControlled();
-    const bool bIsServer = SourceCharacter->HasAuthority();
-    const bool bIsLocallyControlled = SourceCharacter->IsLocallyControlled();
-    if (bIsServer || (bIsPlayer && !bIsServer && bIsLocallyControlled))
-    {
-        UAIBlueprintHelperLibrary::SimpleMoveToActor(SourceCharacter->GetController(), TargetActor);
-    }
-}
+        const bool bStartedMove = TargetActor.IsValid()
+            ? PathFollowingComponent->RequestMoveToActor(TargetActor.Get(), AcceptanceRadius)
+            : PathFollowingComponent->RequestMoveToLocation(TargetLocation, AcceptanceRadius);
 
-void UAbilityTask_WaitMoveToLocation::UpdateMoveToLocation()
-{
-    if (TargetLocation.IsZero())
-    {
-        OnMoveFailed.Broadcast();
-        EndTask();
-        return;
-    }
-
-    float Distance = FVector::Dist(SourceCharacter->GetActorLocation(), TargetLocation);
-    if (Distance <= AcceptanceRadius)
-    {
-        if (SourceCharacter->GetController())
+        if (!bStartedMove)
         {
-            SourceCharacter->GetController()->StopMovement();
+            if (HasReachedDestination())
+            {
+                FinishMoveSuccessfully();
+            }
+            else
+            {
+                FailMove();
+            }
+            return;
         }
-        OnMoveFinished.Broadcast();
-        EndTask();
-        return;
+
+        bIssuedMoveRequest = true;
     }
-    const bool bIsPlayer = SourceCharacter->IsPlayerControlled();
-    const bool bIsServer = SourceCharacter->HasAuthority();
-    const bool bIsLocallyControlled = SourceCharacter->IsLocallyControlled();
-    if (bIsServer || (bIsPlayer && !bIsServer && bIsLocallyControlled))
+
+    // 远端玩家在服务端那份 ability task 不主动驱动位移，只轮询何时真正进入施法距离。
+    if (UWorld* World = SourceCharacter->GetWorld())
     {
-        UAIBlueprintHelperLibrary::SimpleMoveToLocation(SourceCharacter->GetController(), TargetLocation);
+        World->GetTimerManager().SetTimer(
+            ProgressTimerHandle,
+            this,
+            &UAbilityTask_WaitMoveToLocation::PollMoveProgress,
+            ProgressPollInterval,
+            true);
     }
+
+    PollMoveProgress();
 }
 
 void UAbilityTask_WaitMoveToLocation::OnDestroy(bool bInOwnerFinished)
 {
-    if (Ability && SourceCharacter && SourceCharacter->IsValidLowLevel())
+    CleanupTaskState();
+    Super::OnDestroy(bInOwnerFinished);
+}
+
+bool UAbilityTask_WaitMoveToLocation::CanDrivePathFollowing() const
+{
+    if (!(SourceCharacter.IsValid() && SourceCharacter->GetController()))
     {
-        SourceCharacter->GetWorldTimerManager().ClearTimer(RepathTimerHandle);
+        return false;
     }
 
-    Super::OnDestroy(bInOwnerFinished);
+    if (SourceCharacter->IsPlayerControlled())
+    {
+        return SourceCharacter->IsLocallyControlled();
+    }
+
+    return SourceCharacter->HasAuthority();
+}
+
+bool UAbilityTask_WaitMoveToLocation::HasReachedDestination() const
+{
+    if (!SourceCharacter.IsValid())
+    {
+        return false;
+    }
+
+    FVector GoalLocation = FVector::ZeroVector;
+    if (TargetActor.IsValid())
+    {
+        GoalLocation = TargetActor->GetActorLocation();
+    }
+    else if (!TargetLocation.IsZero())
+    {
+        GoalLocation = TargetLocation;
+    }
+    else
+    {
+        return false;
+    }
+
+    const FVector Delta = GoalLocation - SourceCharacter->GetActorLocation();
+    return FVector2D(Delta.X, Delta.Y).SizeSquared() <= FMath::Square(AcceptanceRadius);
+}
+
+void UAbilityTask_WaitMoveToLocation::PollMoveProgress()
+{
+    if (!SourceCharacter.IsValid())
+    {
+        FailMove();
+        return;
+    }
+
+    if (!TargetActor.IsValid() && !TargetLocation.IsZero())
+    {
+        // 静态目标点不需要额外校验。
+    }
+    else if (!TargetActor.IsValid() && TargetLocation.IsZero())
+    {
+        FailMove();
+        return;
+    }
+
+    if (HasReachedDestination())
+    {
+        if (bIssuedMoveRequest && PathFollowingComponent.IsValid() && PathFollowingComponent->HasActiveMove())
+        {
+            // 让 PathFollower 统一结束并分发结果，避免任务和组件各自收尾。
+            PathFollowingComponent->StopMove(EIsometricPathFollowResult::Succeeded);
+            return;
+        }
+
+        FinishMoveSuccessfully();
+        return;
+    }
+
+    if (CanDrivePathFollowing() && bIssuedMoveRequest)
+    {
+        if (!(PathFollowingComponent.IsValid() && PathFollowingComponent->HasActiveMove()))
+        {
+            FailMove();
+        }
+    }
+}
+
+void UAbilityTask_WaitMoveToLocation::HandlePathFollowingFinished(EIsometricPathFollowResult Result)
+{
+    if (Result == EIsometricPathFollowResult::Succeeded || HasReachedDestination())
+    {
+        FinishMoveSuccessfully();
+        return;
+    }
+
+    FailMove();
+}
+
+void UAbilityTask_WaitMoveToLocation::CleanupTaskState()
+{
+    if (SourceCharacter.IsValid())
+    {
+        SourceCharacter->GetWorldTimerManager().ClearTimer(ProgressTimerHandle);
+    }
+
+    if (PathFollowingComponent.IsValid() && PathFollowingFinishedHandle.IsValid())
+    {
+        PathFollowingComponent->OnMoveFinished.Remove(PathFollowingFinishedHandle);
+    }
+
+    PathFollowingFinishedHandle.Reset();
+    bIssuedMoveRequest = false;
+}
+
+void UAbilityTask_WaitMoveToLocation::FinishMoveSuccessfully()
+{
+    CleanupTaskState();
+
+    if (ShouldBroadcastAbilityTaskDelegates())
+    {
+        OnMoveFinished.Broadcast();
+    }
+
+    EndTask();
+}
+
+void UAbilityTask_WaitMoveToLocation::FailMove()
+{
+    CleanupTaskState();
+
+    if (ShouldBroadcastAbilityTaskDelegates())
+    {
+        OnMoveFailed.Broadcast();
+    }
+
+    EndTask();
 }
 
 

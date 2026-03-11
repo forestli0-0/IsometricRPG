@@ -9,11 +9,21 @@
 #include "Character/IsoPlayerState.h"
 #include "IsometricComponents/IsometricInputComponent.h"
 #include "UI/HUD/HUDRootWidget.h"
+
+namespace
+{
+	bool IsEnemyUnderCursor(const AActor* HitActor, const AActor* OwnerActor)
+	{
+		return HitActor && HitActor != OwnerActor && HitActor->ActorHasTag(FName("Enemy"));
+	}
+}
+
 AIsometricPlayerController::AIsometricPlayerController()
 {
     // 设置使用自定义的PlayerCameraManager
     PlayerCameraManagerClass = AIsometricCameraManager::StaticClass();
 }
+
 void AIsometricPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
@@ -64,26 +74,74 @@ void AIsometricPlayerController::BeginPlay()
 		}
 	}
 }
+
 // 【新增】实现PlayerTick函数
 void AIsometricPlayerController::PlayerTick(float DeltaTime)
 {
     Super::PlayerTick(DeltaTime);
 
-    // 如果右键被按住，则持续处理
-    if (bIsRightMouseDown)
+    // “按住右键”不等于“每帧都发命令”。
+    // 这里只负责把输入节流成少量语义化事件：换目标、重试攻击、重定路径。
+    if (!bIsRightMouseDown)
     {
-        FHitResult HitResult;
-        GetHitResultUnderCursorSafe(ECC_Visibility, true, HitResult);
+        return;
+    }
 
-        if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
+    FHitResult HitResult;
+    if (!GetHitResultUnderCursorSafe(ECC_Visibility, true, HitResult))
+    {
+        return;
+    }
+
+    AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn());
+    if (!MyChar)
+    {
+        return;
+    }
+
+    UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>();
+    if (!InputComp)
+    {
+        return;
+    }
+
+    const float WorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+    AActor* CurrentHitActor = HitResult.GetActor();
+    if (IsEnemyUnderCursor(CurrentHitActor, MyChar))
+    {
+        // 敌人目标：只在目标变化，或者到了重试时间时重新发一次攻击请求。
+        const bool bTargetChanged = CurrentHitActor != LastHitActor.Get();
+        const bool bRetryAttack = !bTargetChanged && WorldTime >= NextHeldAttackCommandTime;
+        if (bTargetChanged || bRetryAttack)
         {
-            if (UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>())
-            {
-                // 持续调用Triggered函数
-                InputComp->HandleRightClickTriggered(HitResult, LastHitActor);
-                LastHitActor = HitResult.GetActor(); // 更新上一个目标
-            }
+            InputComp->HandleRightClickTriggered(HitResult, true);
+            LastHitActor = CurrentHitActor;
+            NextHeldAttackCommandTime = WorldTime + HeldAttackRetryInterval;
+            bHasLastHeldMoveLocation = false;
         }
+        return;
+    }
+
+    if (!HitResult.bBlockingHit)
+    {
+        return;
+    }
+
+    const bool bSwitchedFromActorTarget = LastHitActor.IsValid();
+    const FVector2D CurrentMovePoint(HitResult.ImpactPoint.X, HitResult.ImpactPoint.Y);
+    const FVector2D PreviousMovePoint(LastHeldMoveLocation.X, LastHeldMoveLocation.Y);
+    const bool bMovePointChanged = !bHasLastHeldMoveLocation
+        || (CurrentMovePoint - PreviousMovePoint).SizeSquared() >= FMath::Square(HeldMoveRepathDistance);
+    const bool bRepathIntervalElapsed = WorldTime >= NextHeldMoveCommandTime;
+
+    // 地面移动：只有目标点变化足够大并且节流时间到了，才重新发起一次 move intent。
+    if (bSwitchedFromActorTarget || (bMovePointChanged && bRepathIntervalElapsed))
+    {
+        InputComp->HandleRightClickTriggered(HitResult, true);
+        LastHitActor = nullptr;
+        LastHeldMoveLocation = HitResult.ImpactPoint;
+        NextHeldMoveCommandTime = WorldTime + HeldMoveRepathInterval;
+        bHasLastHeldMoveLocation = true;
     }
 }
 void AIsometricPlayerController::SetupInputComponent()
@@ -116,6 +174,9 @@ void AIsometricPlayerController::HandleRightClickStarted(const FInputActionValue
 {
 	bIsRightMouseDown = true; // 设置右键按下状态
     LastHitActor = nullptr; // 重置上一个目标
+    bHasLastHeldMoveLocation = false;
+    NextHeldMoveCommandTime = 0.0f;
+    NextHeldAttackCommandTime = 0.0f;
 	UE_LOG(LogTemp, Log, TEXT("[PC] RightClick Started on %s (Auth=%d)"), *GetName(), HasAuthority()?1:0);
 
 	FHitResult HitResult;
@@ -127,8 +188,20 @@ void AIsometricPlayerController::HandleRightClickStarted(const FInputActionValue
 		if (UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>())
 		{
             // 第一次点击时，就直接触发一次逻辑
-			InputComp->HandleRightClickTriggered(HitResult, LastHitActor);
-            LastHitActor = HitResult.GetActor();
+			InputComp->HandleRightClickTriggered(HitResult);
+
+            const float WorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+            if (IsEnemyUnderCursor(HitResult.GetActor(), MyChar))
+            {
+                LastHitActor = HitResult.GetActor();
+                NextHeldAttackCommandTime = WorldTime + HeldAttackRetryInterval;
+            }
+            else if (HitResult.bBlockingHit)
+            {
+                LastHeldMoveLocation = HitResult.ImpactPoint;
+                NextHeldMoveCommandTime = WorldTime + HeldMoveRepathInterval;
+                bHasLastHeldMoveLocation = true;
+            }
 		}
 
 	}
@@ -138,6 +211,9 @@ void AIsometricPlayerController::HandleRightClickCompleted(const FInputActionVal
 {
     bIsRightMouseDown = false; // 重置右键按下状态
     LastHitActor = nullptr; // 清空缓存
+    bHasLastHeldMoveLocation = false;
+    NextHeldMoveCommandTime = 0.0f;
+    NextHeldAttackCommandTime = 0.0f;
 	UE_LOG(LogTemp, Log, TEXT("[PC] RightClick Completed on %s (Auth=%d)"), *GetName(), HasAuthority()?1:0);
 }
 void AIsometricPlayerController::HandleLeftClickInput(const FInputActionValue& Value)
@@ -190,4 +266,3 @@ bool AIsometricPlayerController::GetHitResultUnderCursorSafe(ECollisionChannel T
     }
     return false;
 }
-

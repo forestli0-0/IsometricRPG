@@ -60,6 +60,15 @@ protected:
 	// 处理技能输入
 	void HandleSkillInput(EAbilityInputID InputID);
 
+	UPROPERTY(EditDefaultsOnly, Category = "Input|RightClick")
+	float HeldMoveRepathInterval = 0.1f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input|RightClick")
+	float HeldMoveRepathDistance = 75.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input|RightClick")
+	float HeldAttackRetryInterval = 0.25f;
+
 protected:
 	// 添加一个属性来存储我们的主HUD类
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
@@ -73,6 +82,10 @@ private:
     bool bIsRightMouseDown = false;
     // 【新增】用于缓存上一帧的目标Actor，以判断目标是否变化
     TWeakObjectPtr<AActor> LastHitActor;
+    FVector LastHeldMoveLocation = FVector::ZeroVector;
+    float NextHeldMoveCommandTime = 0.0f;
+    float NextHeldAttackCommandTime = 0.0f;
+    bool bHasLastHeldMoveLocation = false;
 
     bool GetHitResultUnderCursorSafe(ECollisionChannel TraceChannel, bool bTraceComplex, FHitResult& HitResult);
 };

@@ -4,13 +4,13 @@
 
 #include "CoreMinimal.h"
 #include "Abilities/Tasks/AbilityTask.h"
-#include "AITypes.h"
-#include "Navigation/PathFollowingComponent.h"
 #include "AbilityTask_WaitMoveToLocation.generated.h"
 
-/**
- * 
- */
+class AActor;
+class ACharacter;
+class UGameplayAbility;
+class UIsometricPathFollowingComponent;
+enum class EIsometricPathFollowResult : uint8;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FWaitMoveToLocationDelegate);
 
@@ -18,8 +18,6 @@ UCLASS()
 class ISOMETRICRPG_API UAbilityTask_WaitMoveToLocation : public UAbilityTask
 {
 	GENERATED_BODY()
-	
-	
 
 public:
     UPROPERTY(BlueprintAssignable)
@@ -28,7 +26,8 @@ public:
     UPROPERTY(BlueprintAssignable)
     FWaitMoveToLocationDelegate OnMoveFailed;
 
-    ACharacter* SourceCharacter;
+    TWeakObjectPtr<ACharacter> SourceCharacter;
+
     /** 移动到固定位置 */
     UFUNCTION(BlueprintCallable, Category = "Ability|Tasks", meta = (DisplayName = "WaitMoveToLocation", HidePin = "OwningAbility", DefaultToSelf = "OwningAbility"))
     static UAbilityTask_WaitMoveToLocation* WaitMoveToLocation(
@@ -45,17 +44,24 @@ public:
 
 protected:
     FVector TargetLocation;
-    AActor* TargetActor;
+    TWeakObjectPtr<AActor> TargetActor;
     float AcceptanceRadius;
-    class AAIController* AIController;
 
-    FTimerHandle RepathTimerHandle;
+    TWeakObjectPtr<UIsometricPathFollowingComponent> PathFollowingComponent;
+    FTimerHandle ProgressTimerHandle;
+    FDelegateHandle PathFollowingFinishedHandle;
+    bool bIssuedMoveRequest = false;
+    float ProgressPollInterval = 0.05f;
 
     virtual void Activate() override;
     virtual void OnDestroy(bool bInOwnerFinished) override;
 
-
-    /** 动态目标持续更新位置 */
-    void UpdateMoveToActor();
-    void UpdateMoveToLocation();
+private:
+    bool CanDrivePathFollowing() const;
+    bool HasReachedDestination() const;
+    void PollMoveProgress();
+    void HandlePathFollowingFinished(EIsometricPathFollowResult Result);
+    void CleanupTaskState();
+    void FinishMoveSuccessfully();
+    void FailMove();
 };

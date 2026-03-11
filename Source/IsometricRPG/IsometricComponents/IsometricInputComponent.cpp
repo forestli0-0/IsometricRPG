@@ -6,10 +6,9 @@
 #include "GameFramework/PlayerController.h"
 #include "AbilitySystemComponent.h"
 #include "Character/IsometricRPGCharacter.h"
-#include "Blueprint/AIBlueprintHelperLibrary.h"
+#include "IsometricComponents/IsometricPathFollowingComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "IsometricAbilities/GameplayAbilities/GA_HeroBaseAbility.h"
-
 
 UIsometricInputComponent::UIsometricInputComponent()
 {
@@ -59,7 +58,7 @@ void UIsometricInputComponent::HandleLeftClick(const FHitResult& HitResult)
 }
 
 
-void UIsometricInputComponent::HandleRightClickTriggered(const FHitResult& HitResult, TWeakObjectPtr<AActor> LastHitActor)
+void UIsometricInputComponent::HandleRightClickTriggered(const FHitResult& HitResult, bool bIsHeldInput)
 {
 	if (!OwnerCharacter)
 	{
@@ -88,19 +87,19 @@ void UIsometricInputComponent::HandleRightClickTriggered(const FHitResult& HitRe
 
 		if (OwnerASC)
 		{
-			RequestBasicAttack(CurrentHitActor);
+			RequestBasicAttack(CurrentHitActor, bIsHeldInput);
 		}
 		else
 		{
 			// ASC 未就绪，先靠近目标
 			const FVector FallbackLocation = CurrentHitActor->GetActorLocation();
-			RequestMoveToLocation(FallbackLocation);
+			RequestMoveToLocation(FallbackLocation, bIsHeldInput);
 		}
 	}
 	else if (HitResult.bBlockingHit)
 	{
 		// 地面点：始终允许移动
-		RequestMoveToLocation(HitResult.ImpactPoint);
+		RequestMoveToLocation(HitResult.ImpactPoint, bIsHeldInput);
 	}
 }
 
@@ -163,49 +162,36 @@ void UIsometricInputComponent::HandleSkillInput(EAbilityInputID InputID, const F
 }
 
 
-void UIsometricInputComponent::RequestMoveToLocation(const FVector& TargetLocation)
+void UIsometricInputComponent::RequestMoveToLocation(const FVector& TargetLocation, bool bIsHeldInput)
 {
-	AController* OwnerController = OwnerCharacter ? OwnerCharacter->GetController() : nullptr;
-	UAbilitySystemComponent* CurrentASC = OwnerCharacter ? OwnerCharacter->GetAbilitySystemComponent() : nullptr;
+	UIsometricPathFollowingComponent* PathFollower = OwnerCharacter ? OwnerCharacter->PathFollowingComponent : nullptr;
 
-	// 移动只需角色和控制器即可，ASC 不再是硬依赖
-	if (!(OwnerCharacter && OwnerController))
+	// owning client 立即启动本地路径跟随，真正的移动仍然交给 CharacterMovement。
+	if (!OwnerCharacter)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("RequestMoveToLocation failed: OwnerCharacter (%p) or Controller (%p) is null."), OwnerCharacter, OwnerController);
+		UE_LOG(LogTemp, Warning, TEXT("RequestMoveToLocation failed: OwnerCharacter is null."));
 		return;
+	}
+
+	if (PathFollower && OwnerCharacter->IsLocallyControlled())
+	{
+		PathFollower->RequestMoveToLocation(TargetLocation);
 	}
 
 	if (!OwnerCharacter->HasAuthority())
 	{
-		Server_RequestMoveToLocation(TargetLocation);
+		if (!bIsHeldInput)
+		{
+			Server_RequestMoveToLocation(TargetLocation);
+		}
+		return;
 	}
 
-	// 只有在服务器并且 ASC 存在时，才尝试取消攻击能力/停止蒙太奇，避免移动前置不可用
-	if (OwnerCharacter->HasAuthority() && CurrentASC)
-	{
-		FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.BasicAttack"));
-		FGameplayTag DirBasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.DirBasicAttack"));
-
-		if (BasicAttackAbilityTag.IsValid())
-		{
-			FGameplayTagContainer TagContainer(BasicAttackAbilityTag);
-			TagContainer.AddTag(DirBasicAttackAbilityTag);
-			CurrentASC->CancelAbilities(&TagContainer);
-			UE_LOG(LogTemp, Log, TEXT("Server: Canceled attack abilities."));
-		}
-
-		if (OwnerCharacter->GetMesh() && OwnerCharacter->GetMesh()->GetAnimInstance())
-		{
-			OwnerCharacter->GetMesh()->GetAnimInstance()->Montage_Stop(0.1f); // Stop any montage
-			UE_LOG(LogTemp, Log, TEXT("Server: Stopped any active montage."));
-		}
-	}
-
-	UAIBlueprintHelperLibrary::SimpleMoveToLocation(OwnerController, TargetLocation);
+	HandleMoveIntentOnAuthority();
 }
 
 
-void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor)
+void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor, bool bUseUnreliableRemoteUpdate)
 {
 	AController* OwnerController = OwnerCharacter ? OwnerCharacter->GetController() : nullptr;
 	UAbilitySystemComponent* CurrentASC = OwnerCharacter ? OwnerCharacter->GetAbilitySystemComponent() : nullptr;
@@ -216,10 +202,20 @@ void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor)
 		return;
 	}
 
+	// 攻击接管移动前，先停掉本地的点击移动预测，避免两套输入同时推角色。
+	StopPredictedClickMove();
+
 	// 客户端转到服务器
 	if (OwnerCharacter->GetLocalRole() < ROLE_Authority)
 	{
-		Server_RequestBasicAttack(TargetActor);
+		if (bUseUnreliableRemoteUpdate)
+		{
+			Server_UpdateBasicAttack(TargetActor);
+		}
+		else
+		{
+			Server_RequestBasicAttack(TargetActor);
+		}
 		return;
 	}
 
@@ -266,15 +262,61 @@ void UIsometricInputComponent::SendCancelTargetInput()
 	}
 }
 
+void UIsometricInputComponent::HandleMoveIntentOnAuthority()
+{
+	if (!OwnerCharacter)
+	{
+		return;
+	}
+
+	if (UAbilitySystemComponent* CurrentASC = OwnerCharacter->GetAbilitySystemComponent())
+	{
+		FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.BasicAttack"));
+		FGameplayTag DirBasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.DirBasicAttack"));
+		if (BasicAttackAbilityTag.IsValid())
+		{
+			FGameplayTagContainer TagContainer(BasicAttackAbilityTag);
+			TagContainer.AddTag(DirBasicAttackAbilityTag);
+			CurrentASC->CancelAbilities(&TagContainer);
+			UE_LOG(LogTemp, Log, TEXT("Server: Canceled attack abilities."));
+		}
+	}
+
+	if (OwnerCharacter->GetMesh() && OwnerCharacter->GetMesh()->GetAnimInstance())
+	{
+		OwnerCharacter->GetMesh()->GetAnimInstance()->Montage_Stop(0.1f);
+		UE_LOG(LogTemp, Log, TEXT("Server: Stopped any active montage."));
+	}
+
+}
+
+void UIsometricInputComponent::StopPredictedClickMove()
+{
+	if (!(OwnerCharacter && OwnerCharacter->IsLocallyControlled()))
+	{
+		return;
+	}
+
+	if (OwnerCharacter->PathFollowingComponent)
+	{
+		OwnerCharacter->PathFollowingComponent->StopMove();
+	}
+}
+
 
 // --- Server RPC implementations ---
 void UIsometricInputComponent::Server_RequestMoveToLocation_Implementation(const FVector& TargetLocation)
 {
-	RequestMoveToLocation(TargetLocation);
+	HandleMoveIntentOnAuthority();
 }
 
 
 void UIsometricInputComponent::Server_RequestBasicAttack_Implementation(AActor* TargetActor)
+{
+	RequestBasicAttack(TargetActor);
+}
+
+void UIsometricInputComponent::Server_UpdateBasicAttack_Implementation(AActor* TargetActor)
 {
 	RequestBasicAttack(TargetActor);
 }

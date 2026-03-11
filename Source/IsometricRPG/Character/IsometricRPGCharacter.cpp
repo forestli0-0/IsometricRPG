@@ -1,4 +1,5 @@
 #include "IsometricRPGCharacter.h"
+#include "Character/IsometricRPGCharacterMovementComponent.h"
 #include "EnhancedInputComponent.h" 
 #include "Components/SceneComponent.h"
 #include "AIController.h"
@@ -13,11 +14,13 @@
 #include "IsometricRPGAttributeSetBase.h"
 #include <AbilitySystemBlueprintLibrary.h>
 // 设置默认值
-AIsometricRPGCharacter::AIsometricRPGCharacter()
+AIsometricRPGCharacter::AIsometricRPGCharacter(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<UIsometricRPGCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
 	PrimaryActorTick.bCanEverTick = true;
 	// 创建输入组件
 	IRPGInputComponent = CreateDefaultSubobject<UIsometricInputComponent>(TEXT("IRPGInputComponent"));
+	PathFollowingComponent = CreateDefaultSubobject<UIsometricPathFollowingComponent>(TEXT("PathFollowingComponent"));
 	// 不要让角色面朝摄像机方向
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;

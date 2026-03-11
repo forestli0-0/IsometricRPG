@@ -10,7 +10,6 @@ class UAbilitySystemComponent;
 class AIsometricRPGCharacter;
 class APlayerController;
 
-
 #include "IsometricInputComponent.generated.h"
 
 
@@ -20,7 +19,7 @@ class ISOMETRICRPG_API UIsometricInputComponent : public UActorComponent
 {
 	GENERATED_BODY()
 
-public:	
+public:
 	UIsometricInputComponent();
 
 protected:
@@ -30,14 +29,14 @@ public:
 	// 这些方法由 AIsometricPlayerController（或 AI 控制器）调用
 	void HandleLeftClick(const FHitResult& HitResult);
 
-    void HandleRightClickTriggered(const FHitResult& HitResult, TWeakObjectPtr<AActor> LastHitActor);
+    void HandleRightClickTriggered(const FHitResult& HitResult, bool bIsHeldInput = false);
 
 	void HandleSkillInput(EAbilityInputID InputID, const FHitResult& TargetData);
 
 
 	// 游戏行为请求，可由该组件内部或 AI 调用
-	void RequestMoveToLocation(const FVector& TargetLocation);
-	void RequestBasicAttack(AActor* TargetActor);
+	void RequestMoveToLocation(const FVector& TargetLocation, bool bIsHeldInput = false);
+	void RequestBasicAttack(AActor* TargetActor, bool bUseUnreliableRemoteUpdate = false);
 
 public:
 	/**
@@ -80,5 +79,10 @@ public:
 	UFUNCTION(Server, Reliable)
 	void Server_RequestBasicAttack(AActor* TargetActor);
 
+	UFUNCTION(Server, Unreliable)
+	void Server_UpdateBasicAttack(AActor* TargetActor);
 
+private:
+	void HandleMoveIntentOnAuthority();
+	void StopPredictedClickMove();
 };
