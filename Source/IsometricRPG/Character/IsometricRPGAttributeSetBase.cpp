@@ -36,6 +36,28 @@ void UIsometricRPGAttributeSetBase::PostGameplayEffectExecute(const FGameplayEff
    {
        SetHealth(FMath::Clamp(GetHealth(), 0.0f, GetMaxHealth()));
 
+       // 触发伤害飘字 GameplayCue
+       float Magnitude = Data.EvaluatedData.Magnitude;
+       if (Magnitude < -1.0f) // 忽略微小伤害
+       {
+           FGameplayCueParameters CueParams;
+           CueParams.RawMagnitude = -Magnitude; // 传递正数伤害值
+           CueParams.Location = GetOwningActor()->GetActorLocation();
+
+           // 尝试获取更精确的击中位置
+           if (const FHitResult* Hit = Data.EffectSpec.GetContext().GetHitResult())
+           {
+               CueParams.Location = Hit->Location;
+           }
+
+           // 触发 GameplayCue.Combat.Damage
+           // 注意：需要在编辑器 Project Settings -> GameplayTags 中添加此 Tag
+           if (UAbilitySystemComponent* ASC = GetOwningAbilitySystemComponent())
+           {
+               ASC->ExecuteGameplayCue(FGameplayTag::RequestGameplayTag(FName("GameplayCue.Combat.Damage")), CueParams);
+           }
+       }
+
        if (GetHealth() <= 0.0f)
        {
            UAbilitySystemComponent* TargetASC = GetOwningAbilitySystemComponent();
