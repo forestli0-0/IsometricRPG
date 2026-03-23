@@ -62,6 +62,15 @@ void UGA_HeroBaseAbility::ActivateAbility(
     }
     // 主动从角色身上拉取暂存的目标数据
     CurrentTargetDataHandle = RPGCharacter->GetAbilityTargetData();
+
+    // 服务端校验客户端传来的目标数据合法性
+    if (ActorInfo->IsNetAuthority() && !ServerValidateTargetData(CurrentTargetDataHandle, ActorInfo))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s: Server rejected client target data. Cancelling."), *GetName());
+        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+        return;
+    }
+
     // 获取Avatar Actor
     AActor* SelfActor = GetAvatarActorFromActorInfo();
     if (!SelfActor)
@@ -603,6 +612,86 @@ void UGA_HeroBaseAbility::NotifyCooldownTriggered(const FGameplayAbilitySpecHand
 bool UGA_HeroBaseAbility::RequiresTargetData_Implementation() const
 {
     return bRequiresTargetData;
+}
+
+bool UGA_HeroBaseAbility::ServerValidateTargetData(
+    const FGameplayAbilityTargetDataHandle& TargetData,
+    const FGameplayAbilityActorInfo* ActorInfo) const
+{
+    // 客户端不做校验，保持预测流畅
+    if (!ActorInfo || !ActorInfo->IsNetAuthority())
+    {
+        return true;
+    }
+
+    // 不需要目标数据的技能（SelfCast / SkillShot 等）直接通过
+    if (!RequiresTargetData())
+    {
+        return true;
+    }
+
+    const AActor* AvatarActor = ActorInfo->AvatarActor.Get();
+    if (!AvatarActor)
+    {
+        return false;
+    }
+
+    // 从 TargetData 中提取目标 Actor
+    AActor* TargetActor = nullptr;
+    FVector TargetLocation = FVector::ZeroVector;
+
+    const FGameplayAbilityTargetData* Data = TargetData.Get(0);
+    if (!Data)
+    {
+        // 没有目标数据——后续 StartTargetSelection 会处理
+        return true;
+    }
+
+    if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_ActorArray::StaticStruct()))
+    {
+        const auto* ActorArrayData = static_cast<const FGameplayAbilityTargetData_ActorArray*>(Data);
+        if (ActorArrayData && ActorArrayData->TargetActorArray.Num() > 0)
+        {
+            TargetActor = ActorArrayData->TargetActorArray[0].Get();
+        }
+    }
+    else if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
+    {
+        const auto* HitResultData = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(Data);
+        if (HitResultData && HitResultData->GetHitResult())
+        {
+            TargetActor = HitResultData->GetHitResult()->GetActor();
+            TargetLocation = HitResultData->GetHitResult()->Location;
+        }
+    }
+
+    if (!TargetActor)
+    {
+        // 只有位置数据（如 AreaEffect），基类不做额外限制
+        return true;
+    }
+
+    // 检查目标 Actor 是否仍然存活
+    if (TargetActor->IsPendingKillPending())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s: ServerValidate FAILED - target %s is pending kill."),
+            *GetName(), *TargetActor->GetName());
+        return false;
+    }
+
+    // 距离校验（仅当 ServerMaxTargetDistance > 0 时启用）
+    if (ServerMaxTargetDistance > 0.f)
+    {
+        const float Distance = FVector::Dist(AvatarActor->GetActorLocation(), TargetActor->GetActorLocation());
+        if (Distance > ServerMaxTargetDistance)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("%s: ServerValidate FAILED - target %s at distance %.1f exceeds max %.1f."),
+                *GetName(), *TargetActor->GetName(), Distance, ServerMaxTargetDistance);
+            return false;
+        }
+    }
+
+    return true;
 }
 
 void UGA_HeroBaseAbility::PostInitProperties()

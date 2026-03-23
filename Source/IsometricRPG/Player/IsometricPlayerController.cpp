@@ -151,18 +151,25 @@ void AIsometricPlayerController::SetupInputComponent()
 	if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(InputComponent))
 	{
 		EIC->BindAction(Action_LeftClick, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleLeftClickInput);
-		// 【修改】绑定右键的Started, Triggered, Completed事件
 		EIC->BindAction(Action_RightClick, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleRightClickStarted);
 		EIC->BindAction(Action_RightClick, ETriggerEvent::Completed, this, &AIsometricPlayerController::HandleRightClickCompleted);
 		
-		// 绑定技能按键, 使用 EAbilityInputID 枚举替换魔术数字
-		EIC->BindAction(Action_A, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, EAbilityInputID::Ability_A);
-		EIC->BindAction(Action_Q, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, EAbilityInputID::Ability_Q);
-		EIC->BindAction(Action_W, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, EAbilityInputID::Ability_W);
-		EIC->BindAction(Action_E, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, EAbilityInputID::Ability_E);
-		EIC->BindAction(Action_R, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, EAbilityInputID::Ability_R);
-		EIC->BindAction(Action_Summoner1, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, EAbilityInputID::Ability_Summoner1);
-		EIC->BindAction(Action_Summoner2, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillInput, EAbilityInputID::Ability_Summoner2);
+		// 技能按键：绑定 Press/Release 语义
+		EIC->BindAction(Action_A, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillPressed, EAbilityInputID::Ability_A);
+		EIC->BindAction(Action_Q, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillPressed, EAbilityInputID::Ability_Q);
+		EIC->BindAction(Action_W, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillPressed, EAbilityInputID::Ability_W);
+		EIC->BindAction(Action_E, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillPressed, EAbilityInputID::Ability_E);
+		EIC->BindAction(Action_R, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillPressed, EAbilityInputID::Ability_R);
+		EIC->BindAction(Action_Summoner1, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillPressed, EAbilityInputID::Ability_Summoner1);
+		EIC->BindAction(Action_Summoner2, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillPressed, EAbilityInputID::Ability_Summoner2);
+
+		EIC->BindAction(Action_A, ETriggerEvent::Completed, this, &AIsometricPlayerController::HandleSkillReleased, EAbilityInputID::Ability_A);
+		EIC->BindAction(Action_Q, ETriggerEvent::Completed, this, &AIsometricPlayerController::HandleSkillReleased, EAbilityInputID::Ability_Q);
+		EIC->BindAction(Action_W, ETriggerEvent::Completed, this, &AIsometricPlayerController::HandleSkillReleased, EAbilityInputID::Ability_W);
+		EIC->BindAction(Action_E, ETriggerEvent::Completed, this, &AIsometricPlayerController::HandleSkillReleased, EAbilityInputID::Ability_E);
+		EIC->BindAction(Action_R, ETriggerEvent::Completed, this, &AIsometricPlayerController::HandleSkillReleased, EAbilityInputID::Ability_R);
+		EIC->BindAction(Action_Summoner1, ETriggerEvent::Completed, this, &AIsometricPlayerController::HandleSkillReleased, EAbilityInputID::Ability_Summoner1);
+		EIC->BindAction(Action_Summoner2, ETriggerEvent::Completed, this, &AIsometricPlayerController::HandleSkillReleased, EAbilityInputID::Ability_Summoner2);
 	}
 	else
 	{
@@ -235,16 +242,32 @@ void AIsometricPlayerController::HandleLeftClickInput(const FInputActionValue& V
 
 void AIsometricPlayerController::HandleSkillInput(EAbilityInputID InputID)
 {
-	FHitResult HitResult; 
+	HandleSkillPressed(InputID);
+}
+
+void AIsometricPlayerController::HandleSkillPressed(EAbilityInputID InputID)
+{
+	FHitResult HitResult;
 	GetHitResultUnderCursorSafe(ECC_Visibility, true, HitResult);
 
-   if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))  
-   {  
-       if (UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>())  
-       {  
-           InputComp->HandleSkillInput(InputID, HitResult); // 将枚举传递下去
-       }  
-   }  
+	if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
+	{
+		if (UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>())
+		{
+			InputComp->HandleSkillPressed(InputID, HitResult);
+		}
+	}
+}
+
+void AIsometricPlayerController::HandleSkillReleased(EAbilityInputID InputID)
+{
+	if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
+	{
+		if (UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>())
+		{
+			InputComp->HandleSkillReleased(InputID);
+		}
+	}
 }
 
 bool AIsometricPlayerController::GetHitResultUnderCursorSafe(ECollisionChannel TraceChannel, bool bTraceComplex, FHitResult& HitResult)

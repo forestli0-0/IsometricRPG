@@ -169,6 +169,20 @@ protected:
         const FGameplayAbilityActivationInfo ActivationInfo);
 
     virtual bool OtherCheckBeforeCommit();
+
+    /**
+     * 服务端对客户端传来的目标数据进行合法性校验。
+     * 基类实现：检查目标 Actor 是否存活、是否在最大允许距离内、是否有视线。
+     * 子类可覆写以添加阵营、状态等额外校验。
+     * 仅在服务端 ActivateAbility 时调用；客户端直接返回 true 以保持预测流畅。
+     */
+    virtual bool ServerValidateTargetData(const FGameplayAbilityTargetDataHandle& TargetData,
+                                          const FGameplayAbilityActorInfo* ActorInfo) const;
+
+    /** 服务端校验使用的最大容忍距离（超出此距离的目标视为非法）。0 表示不做距离限制。 */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ability|Validation")
+    float ServerMaxTargetDistance = 0.f;
+
     // 播放技能动画
     virtual void PlayAbilityMontage(
         const FGameplayAbilitySpecHandle Handle,

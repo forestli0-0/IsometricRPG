@@ -1,7 +1,7 @@
 // IsometricInputComponent.cpp
 #include "IsometricInputComponent.h"
-#include "EnhancedInputComponent.h" // Should be removed if not used for direct binding here
-#include "EnhancedInputSubsystems.h" // Should be removed if not used for direct binding here
+#include "EnhancedInputComponent.h"
+#include "EnhancedInputSubsystems.h" 
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
 #include "AbilitySystemComponent.h"
@@ -31,10 +31,9 @@ void UIsometricInputComponent::HandleLeftClick(const FHitResult& HitResult)
 		return;
 	}
 
-	if (!OwnerASC) // ASC可能尚未复制到客户端，允许照常进行选取逻辑，只是无法发送 Confirm 输入
+	if (!OwnerASC)
 	{
 		OwnerASC = OwnerCharacter->GetAbilitySystemComponent();
-		// 不再因为 ASC为空而提前返回，下面的 Confirm 输入仅在 ASC 存在时发送
 	}
 
 	// 仅当 ASC 存在时才发送确认输入，避免卡死输入链路
@@ -62,10 +61,9 @@ void UIsometricInputComponent::HandleRightClickTriggered(const FHitResult& HitRe
 {
 	if (!OwnerCharacter)
 	{
-		return; // 允许在 ASC 未就绪前移动
+		return;
 	}
 
-	// 尝试缓存 ASC，但不要因为拿不到而阻断移动
 	if (!OwnerASC)
 	{
 		OwnerASC = OwnerCharacter->GetAbilitySystemComponent();
@@ -104,7 +102,7 @@ void UIsometricInputComponent::HandleRightClickTriggered(const FHitResult& HitRe
 }
 
 
-void UIsometricInputComponent::HandleSkillInput(EAbilityInputID InputID, const FHitResult& TargetData)
+void UIsometricInputComponent::HandleSkillPressed(EAbilityInputID InputID, const FHitResult& TargetData)
 {
 	if (!OwnerCharacter)
 	{
@@ -121,44 +119,33 @@ void UIsometricInputComponent::HandleSkillInput(EAbilityInputID InputID, const F
 		return;
 	}
 
-	// 先在本地缓存，再RPC同步给服务器，确保服务器拿到同一份目标数据
 	OwnerCharacter->SetAbilityTargetDataByHit(TargetData);
 	if (OwnerCharacter->GetLocalRole() < ROLE_Authority)
 	{
 		OwnerCharacter->Server_SetAbilityTargetDataByHit(TargetData);
 	}
 
-	const TSubclassOf<UGameplayAbility>* AbilityClassPtr = SkillInputMappings.Find(InputID);
-	if (!AbilityClassPtr || !(*AbilityClassPtr))
+	OwnerASC->AbilityLocalInputPressed((int32)InputID);
+}
+
+void UIsometricInputComponent::HandleSkillReleased(EAbilityInputID InputID)
+{
+	if (!OwnerCharacter)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("InputID %d has no valid mapping."), InputID);
 		return;
 	}
 
-	const TSubclassOf<UGameplayAbility> MappedClass = *AbilityClassPtr;
-	// 在ASC中查找已授予的能力（允许子类）
-	FGameplayAbilitySpec* FoundSpec = nullptr;
-	for (FGameplayAbilitySpec& Spec : OwnerASC->GetActivatableAbilities())
+	if (!OwnerASC)
 	{
-		if (Spec.Ability && Spec.Ability->GetClass()->IsChildOf(MappedClass))
-		{
-			FoundSpec = &Spec;
-			break;
-		}
+		OwnerASC = OwnerCharacter->GetAbilitySystemComponent();
 	}
 
-	if (!FoundSpec || !FoundSpec->Ability)
+	if (!OwnerASC)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("ASC has not granted %s (or child)."), *MappedClass->GetName());
 		return;
 	}
 
-	// 直接通过Spec Handle激活（更稳妥），目标数据已缓存在角色上
-	bool bSuccessful = OwnerASC->TryActivateAbility(FoundSpec->Handle);
-	if (OwnerCharacter->HasAuthority())
-	{
-		UE_LOG(LogTemp, Display, TEXT("TryActivateAbility Tag=%s -> %d"), *FoundSpec->Ability->GetName(), bSuccessful);
-	}
+	OwnerASC->AbilityLocalInputReleased((int32)InputID);
 }
 
 

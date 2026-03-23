@@ -31,22 +31,13 @@ public:
 
     void HandleRightClickTriggered(const FHitResult& HitResult, bool bIsHeldInput = false);
 
-	void HandleSkillInput(EAbilityInputID InputID, const FHitResult& TargetData);
+	void HandleSkillPressed(EAbilityInputID InputID, const FHitResult& TargetData);
+	void HandleSkillReleased(EAbilityInputID InputID);
 
 
 	// 游戏行为请求，可由该组件内部或 AI 调用
 	void RequestMoveToLocation(const FVector& TargetLocation, bool bIsHeldInput = false);
 	void RequestBasicAttack(AActor* TargetActor, bool bUseUnreliableRemoteUpdate = false);
-
-public:
-	/**
-	 * 【新的技能映射】
-	 * 在蓝图中直接为每个输入动作（键）分配一个技能类。
-	 * 这比使用 GameplayTag 更加直观和类型安全。
-	 * 例如：Key = EAbilityInputID::Skill1, Value = GA_Fireball::StaticClass()
-	 */
-	UPROPERTY(EditDefaultsOnly, Category = "Input|Skills", meta = (DisplayName = "Skill Input Mappings"))
-	TMap<EAbilityInputID, TSubclassOf<class UGameplayAbility>> SkillInputMappings;
 
 private:
 	UPROPERTY()

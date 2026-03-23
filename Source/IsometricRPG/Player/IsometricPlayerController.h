@@ -60,6 +60,10 @@ protected:
 	// 处理技能输入
 	void HandleSkillInput(EAbilityInputID InputID);
 
+	// 处理技能输入（新：Pressed/Released 语义，用于蓄力/引导/持续施法）
+	void HandleSkillPressed(EAbilityInputID InputID);
+	void HandleSkillReleased(EAbilityInputID InputID);
+
 	UPROPERTY(EditDefaultsOnly, Category = "Input|RightClick")
 	float HeldMoveRepathInterval = 0.1f;
 

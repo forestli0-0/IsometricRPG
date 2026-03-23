@@ -19,13 +19,14 @@
 #include "UI/HUD/HUDRootWidget.h"
 #include "UI/HUD/HUDViewModelTypes.h"
 #include "UI/SkillLoadout/HUDSkillSlotWidget.h"
+#include "GameFramework/PlayerController.h"
 
 AIsoPlayerState::AIsoPlayerState()
 {
     // 创建ASC
     AbilitySystemComponent = CreateDefaultSubobject<UAbilitySystemComponent>("AbilitySystemComponent");
     AbilitySystemComponent->SetIsReplicated(true);
-    AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Full); // 推荐使用Mixed模式
+    AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
 
     // 创建AttributeSet
     AttributeSet = CreateDefaultSubobject<UIsometricRPGAttributeSetBase>("AttributeSet");
@@ -43,44 +44,28 @@ void AIsoPlayerState::BeginPlay()
         InitializeAttributes(); // 先初始化属性
         InitAbilities(); // 再初始化技能
     }
-    if (AbilitySystemComponent)
+
+    // 仅在本地控制且非专用服务器时绑定输入
+    if (AbilitySystemComponent && GetNetMode() != NM_DedicatedServer)
     {
-        UE_LOG(LogTemp, Log, TEXT("UIsometricInputComponent: OwnerCharacter and OwnerASC cached in BeginPlay."));
-        // 绑定输入
-        auto CachedPlayerController = Cast<APlayerController>(GetOwningController());
-        if (!CachedPlayerController)
+        APlayerController* CachedPlayerController = Cast<APlayerController>(GetOwningController());
+        if (CachedPlayerController && CachedPlayerController->IsLocalController())
         {
-            UE_LOG(LogTemp, Warning, TEXT("UIsometricInputComponent: CachedPlayerController is null in BeginPlay. Input binding might fail or be delayed."));
-            return;
+            UInputComponent* PCInputComponent = CachedPlayerController->InputComponent;
+            if (PCInputComponent)
+            {
+                FTopLevelAssetPath EnumPath = FTopLevelAssetPath(TEXT("/Script/IsometricRPG.EAbilityInputID"));
+                FGameplayAbilityInputBinds BindInfo(
+                    TEXT(""), // Confirm action name
+                    TEXT(""), // Cancel action name
+                    EnumPath,
+                    (int32)EAbilityInputID::Confirm,
+                    (int32)EAbilityInputID::Cancel
+                );
+                AbilitySystemComponent->BindAbilityActivationToInputComponent(PCInputComponent, BindInfo);
+                UE_LOG(LogTemp, Log, TEXT("AIsoPlayerState: GAS Input successfully bound for %s"), *GetName());
+            }
         }
-        UInputComponent* PCInputComponent = CachedPlayerController->InputComponent;
-        if (!PCInputComponent)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("UIsometricInputComponent: PlayerController's InputComponent is null in BeginPlay. GAS Input Binding cannot occur yet."));
-            return;
-        }
-        // 获取 UEnum*
-        UEnum* EnumBinds = StaticEnum<EAbilityInputID>();
-        if (!EnumBinds)
-        {
-            UE_LOG(LogTemp, Error, TEXT("UIsometricInputComponent: StaticEnum<EAbilityInputID>() failed. Ensure EAbilityInputID is correctly defined in a header and UHT has run."));
-            return;
-        }
-        FTopLevelAssetPath EnumPath = FTopLevelAssetPath(TEXT("/Script/IsometricRPG.EAbilityInputID"));
-        FString ConfirmCommand = TEXT("");
-        FString CancelCommand = TEXT("");
-        FGameplayAbilityInputBinds BindInfo(
-            ConfirmCommand,      // 项目输入设置中用于“确认”的 Action Mapping 名称
-            CancelCommand,       // 项目输入设置中用于“取消”的 Action Mapping 名称
-            EnumPath,
-            (int32)EAbilityInputID::Confirm, // 对应枚举中的 Confirm
-            (int32)EAbilityInputID::Cancel   // 对应枚举中的 Cancel
-        );
-        AbilitySystemComponent->BindAbilityActivationToInputComponent(CachedPlayerController->InputComponent, BindInfo);
-    }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("UIsometricInputComponent owned by non-AIsometricRPGCharacter or null owner."));
     }
 }
 
@@ -107,7 +92,7 @@ UAbilitySystemComponent* AIsoPlayerState::GetAbilitySystemComponent() const
 int32 AIsoPlayerState::GetSkillBarSlotCount() const
 {
     // 显示在技能栏的真实槽位：Passive, Q, W, E, R, D, F -> 7 个
-    return 8;
+    return 7;
 }
 
 int32 AIsoPlayerState::IndexFromSlot(ESkillSlot Slot) const
@@ -138,17 +123,32 @@ void AIsoPlayerState::Server_EquipAbilityToSlot_Implementation(TSubclassOf<UGame
 {
     if (!NewAbilityClass || Slot == ESkillSlot::Invalid || Slot == ESkillSlot::MAX)
         return;
+
     const int32 Index = IndexFromSlot(Slot);
     if (Index == INDEX_NONE) return;
+
     if (!EquippedAbilities.IsValidIndex(Index))
         EquippedAbilities.SetNum(GetSkillBarSlotCount());
+
     FEquippedAbilityInfo& Info = EquippedAbilities[Index];
+    
+    // 如果技能类没变且 Handle 有效，则不需要重新授予
+    // 修复：TSoftClassPtr 没有直接的 == 运算符重载，需用 ToSoftObjectPath() 比较路径
+   // 修复：TSubclassOf 没有 ToSoftObjectPath()，应先转为 TSoftClassPtr 再比较路径
+    if (TSoftClassPtr<UGameplayAbility>(Info.AbilityClass).ToSoftObjectPath() == TSoftClassPtr<UGameplayAbility>(NewAbilityClass).ToSoftObjectPath() && Info.AbilitySpecHandle.IsValid())
+    {
+        return;
+    }
+
     Info.AbilityClass = NewAbilityClass;
     Info.Slot = Slot;
     GrantAbilityInternal(Info, true);
-    //FTimerHandle InitialDelayHandle;
-    //GetWorld()->GetTimerManager().SetTimer(InitialDelayHandle, this, &AIsoPlayerState::OnRep_EquippedAbilities, 3.0f, false);
-    //OnRep_EquippedAbilities();
+    
+    // 强制触发同步回调以更新 UI（在 Listen Server/Standalone 下）
+    if (GetNetMode() != NM_DedicatedServer)
+    {
+        OnRep_EquippedAbilities();
+    }
 }
 
 void AIsoPlayerState::Server_UnequipAbilityFromSlot_Implementation(ESkillSlot Slot)
@@ -156,10 +156,18 @@ void AIsoPlayerState::Server_UnequipAbilityFromSlot_Implementation(ESkillSlot Sl
     const int32 Index = IndexFromSlot(Slot);
     if (!EquippedAbilities.IsValidIndex(Index))
         return;
+
     FEquippedAbilityInfo& Info = EquippedAbilities[Index];
-    ClearAbilityInternal(Info);
+    if (Info.AbilitySpecHandle.IsValid())
+    {
+        ClearAbilityInternal(Info);
+    }
     Info = FEquippedAbilityInfo();
-    OnRep_EquippedAbilities();
+    
+    if (GetNetMode() != NM_DedicatedServer)
+    {
+        OnRep_EquippedAbilities();
+    }
 }
 
 void AIsoPlayerState::OnRep_EquippedAbilities()
@@ -207,27 +215,36 @@ void AIsoPlayerState::OnRep_EquippedAbilities()
 
 void AIsoPlayerState::GrantAbilityInternal(FEquippedAbilityInfo& Info, bool bRemoveExistingFirst)
 {
-    if (GetLocalRole() != ROLE_Authority || !AbilitySystemComponent)
+    if (!HasAuthority() || !AbilitySystemComponent)
         return;
+
     if (bRemoveExistingFirst && Info.AbilitySpecHandle.IsValid())
         ClearAbilityInternal(Info);
 
-    // 关键：判断是否存在资源路径，而不是是否已加载对象
     if (Info.AbilityClass.ToSoftObjectPath().IsNull())
         return;
 
-    // 从软引用加载类。因为这是在服务器上授权技能，通常可以接受同步加载。
     TSubclassOf<UGameplayAbility> LoadedAbilityClass = Info.AbilityClass.LoadSynchronous();
     if (!LoadedAbilityClass) return;
 
     if (!Info.AbilitySpecHandle.IsValid())
     {
-        // 创建技能规格(Spec)时，将 InputID 硬编码为 -1。
-        // -1 是一个特殊值，代表“没有绑定到任何直接输入”。
-        FGameplayAbilitySpec Spec(LoadedAbilityClass, 1, -1, this);
+        int32 InputID = -1;
+        switch (Info.Slot)
+        {
+        case ESkillSlot::Skill_Q: InputID = (int32)EAbilityInputID::Ability_Q; break;
+        case ESkillSlot::Skill_W: InputID = (int32)EAbilityInputID::Ability_W; break;
+        case ESkillSlot::Skill_E: InputID = (int32)EAbilityInputID::Ability_E; break;
+        case ESkillSlot::Skill_R: InputID = (int32)EAbilityInputID::Ability_R; break;
+        case ESkillSlot::Skill_D: InputID = (int32)EAbilityInputID::Ability_Summoner1; break;
+        case ESkillSlot::Skill_F: InputID = (int32)EAbilityInputID::Ability_Summoner2; break;
+        default: break;
+        }
+
+        FGameplayAbilitySpec Spec(LoadedAbilityClass, 1, InputID, this);
         Info.AbilitySpecHandle = AbilitySystemComponent->GiveAbility(Spec);
-        UE_LOG(LogTemp, Log, TEXT("[PassiveDebug][Grant] Granted %s -> HandleValid=%d Slot=%d"),
-            *GetNameSafe(LoadedAbilityClass), Info.AbilitySpecHandle.IsValid(), static_cast<int32>(Info.Slot));
+        UE_LOG(LogTemp, Log, TEXT("[AbilityGrant] Granted %s -> HandleValid=%d Slot=%d InputID=%d"),
+            *GetNameSafe(LoadedAbilityClass), Info.AbilitySpecHandle.IsValid(), static_cast<int32>(Info.Slot), InputID);
     }
 }
 
@@ -242,27 +259,25 @@ void AIsoPlayerState::ClearAbilityInternal(FEquippedAbilityInfo& Info)
 
 void AIsoPlayerState::InitAbilities()
 {
-    if (GetLocalRole() != ROLE_Authority || !AbilitySystemComponent || DefaultAbilities.Num() == 0 || bAbilitiesInitialized)
+    if (!HasAuthority() || !AbilitySystemComponent || DefaultAbilities.Num() == 0 || bAbilitiesInitialized)
         return;
+
     EquippedAbilities.Empty();
     EquippedAbilities.SetNum(GetSkillBarSlotCount());
 
     for (const FEquippedAbilityInfo& AbilityInfo : DefaultAbilities)
     {
-        auto a = AbilityInfo;
-        // 使用软路径判空，避免未加载时被跳过
         if (AbilityInfo.AbilityClass.ToSoftObjectPath().IsNull())
             continue;
         if (AbilityInfo.Slot == ESkillSlot::MAX)
-            continue; // 保护：MAX 永远不应被使用
+            continue;
 
-        UE_LOG(LogTemp, Log, TEXT("[PassiveDebug][Init] 授予默认技能 %s 给 槽 %d (Invalid=%d)"),
-            *GetNameSafe(AbilityInfo.AbilityClass.Get()), static_cast<int32>(AbilityInfo.Slot), AbilityInfo.Slot == ESkillSlot::Invalid);
+        UE_LOG(LogTemp, Log, TEXT("[InitAbilities] Granting default ability %s to Slot %d"),
+            *AbilityInfo.AbilityClass.ToString(), static_cast<int32>(AbilityInfo.Slot));
 
         const int32 Index = IndexFromSlot(AbilityInfo.Slot);
         if (Index == INDEX_NONE)
         {
-            // Slot=Invalid：授予但不占用技能栏（如基础攻击/某些被动）
             FEquippedAbilityInfo TempInfo = AbilityInfo;
             GrantAbilityInternal(TempInfo, true);
         }
@@ -276,11 +291,10 @@ void AIsoPlayerState::InitAbilities()
 
     bAbilitiesInitialized = true;
     bPendingPassiveActivation = true;
-    UE_LOG(LogTemp, Log, TEXT("[PassiveDebug][Init] 已授予默认技能组, 等待激活被动技能"));
+    
     LogActivatableAbilities();
     TryActivatePassiveAbilities();
 
-    // Listen-server/Standalone UI won't receive OnRep, so trigger asset load here
     if (GetNetMode() != NM_DedicatedServer)
     {
         OnRep_EquippedAbilities();
@@ -364,12 +378,10 @@ void AIsoPlayerState::LogActivatableAbilities() const
     for (const FGameplayAbilitySpec& Spec : Specs)
     {
         const UGameplayAbility* AbilityCDO = Spec.Ability;
-        const FString AbilityName = GetNameSafe(AbilityCDO);
-        const FString TagString = AbilityCDO ? AbilityCDO->AbilityTags.ToStringSimple() : TEXT("<NoTags>");
-        UE_LOG(LogTemp, Log, TEXT("[PassiveDebug][Spec] %s Tags=%s HandleValid=%d"),
-            *AbilityName,
-            *TagString,
-            Spec.Handle.IsValid());
+        UE_LOG(LogTemp, Log, TEXT("[GASLog] Ability: %s, HandleValid: %d, InputID: %d"),
+            *GetNameSafe(AbilityCDO),
+            Spec.Handle.IsValid(),
+            Spec.InputID);
     }
 }
 
@@ -524,19 +536,17 @@ void AIsoPlayerState::RefreshActionBar(UHUDRootWidget& HUD)
 
     HUD.ClearAllAbilitySlots();
 
+    // 建立映射减少循环开销
+    TMap<ESkillSlot, const FEquippedAbilityInfo*> SlotMap;
+    for (const FEquippedAbilityInfo& Info : EquippedAbilities)
+    {
+        SlotMap.Add(Info.Slot, &Info);
+    }
+
     for (ESkillSlot Slot : DisplayableSlots)
     {
-        const FEquippedAbilityInfo* FoundInfo = nullptr;
-        for (const FEquippedAbilityInfo& Info : EquippedAbilities)
-        {
-            if (Info.Slot == Slot)
-            {
-                FoundInfo = &Info;
-                break;
-            }
-        }
-
-        const FHUDSkillSlotViewModel ViewModel = FoundInfo ? BuildSlotViewModel(*FoundInfo)
+        const FEquippedAbilityInfo** FoundInfoPtr = SlotMap.Find(Slot);
+        const FHUDSkillSlotViewModel ViewModel = FoundInfoPtr ? BuildSlotViewModel(**FoundInfoPtr)
                                                            : BuildEmptySlotViewModel(Slot);
         HUD.SetAbilitySlot(ViewModel);
     }
@@ -800,6 +810,7 @@ void AIsoPlayerState::HandleAbilityCooldownTriggered(const FGameplayAbilitySpecH
         HUD->UpdateAbilityCooldown(FoundInfo->Slot, DurationSeconds, DurationSeconds);
     }
 }
+
 
 const FEquippedAbilityInfo* AIsoPlayerState::FindEquippedInfoByHandle(const FGameplayAbilitySpecHandle& SpecHandle) const
 {
