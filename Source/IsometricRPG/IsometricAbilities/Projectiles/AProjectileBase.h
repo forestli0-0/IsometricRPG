@@ -39,30 +39,30 @@ struct FProjectileInitializationData
 
     // 投射物碰撞后应用的主要伤害效果 (可选)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
-    TSubclassOf<UGameplayEffect> DamageEffect;
+    TSubclassOf<UGameplayEffect> DamageEffect = nullptr;
 
 	// 投射物碰撞后应用的主要伤害数值 (可选)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
 	float DamageAmount = 10.0f;
     // 投射物视觉特效 (可选)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
-    UNiagaraSystem* VisualEffect;
+    UNiagaraSystem* VisualEffect = nullptr;
 
     // 投射物击中时的爆炸/冲击特效 (可选)  
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")  
-    UNiagaraSystem* ImpactEffect;
+    UNiagaraSystem* ImpactEffect = nullptr;
 
     // 投射物飞行音效 (可选)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
-    USoundBase* FlyingSound;
+    USoundBase* FlyingSound = nullptr;
 
     // 投射物击中音效 (可选)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
-    USoundBase* ImpactSound;
+    USoundBase* ImpactSound = nullptr;
 
     // 溅射伤害效果 (可选)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
-    TSubclassOf<UGameplayEffect> SplashDamageEffect;
+    TSubclassOf<UGameplayEffect> SplashDamageEffect = nullptr;
 
     // 溅射半径
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
@@ -75,13 +75,35 @@ struct FProjectileInitializationData
     // 是否反弹
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
     bool bShouldBounce = false;
+
+    // 是否返航到发射者（用于阿狸Q等往返投射物）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
+    bool bReturnToOwner = false;
+
+    // 返航速度缩放（1 表示与 InitialSpeed 一致）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
+    float ReturnSpeedMultiplier = 1.0f;
+
+    // 是否启用追踪（Homing），用于 W/R 等自动追踪弹体
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
+    bool bEnableHoming = false;
+
+    // 追踪加速度（越大转向越快）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
+    float HomingAcceleration = 8000.0f;
+
+    // 追踪目标（若为空则不启用追踪）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile Data")
+    TWeakObjectPtr<AActor> HomingTargetActor;
 };
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FProjectileHitActorSignature, AActor*, HitActor, const FHitResult&, Hit);
 
 UCLASS()
 class ISOMETRICRPG_API AProjectileBase : public AActor
 {
-	GENERATED_BODY()
-	
+    GENERATED_BODY()
+
 public:	
 	// 为该 Actor 的属性设置默认值
 	AProjectileBase();
@@ -162,6 +184,10 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Projectile Data")
 	bool bShouldBounce;
 
+    /** 命中事件：供技能侧（如阿狸E魅惑）做额外逻辑 */
+    UPROPERTY(BlueprintAssignable, Category = "Projectile")
+    FProjectileHitActorSignature OnProjectileHitActor;
+
 private:
     UPROPERTY(VisibleDefaultsOnly, Category = "Projectile")
     class USphereComponent* CollisionComp;
@@ -174,6 +200,11 @@ private:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Effects", meta = (AllowPrivateAccess = "true"))
     class UAudioComponent* FlyingSoundComp;
+
+    // 往返投射物状态
+    bool bIsReturning = false;
+    TSet<TWeakObjectPtr<AActor>> HitActorsForward;
+    TSet<TWeakObjectPtr<AActor>> HitActorsReturn;
 
     float TravelDistance;
     FTimerHandle TimerHandle_Lifespan;
@@ -191,10 +222,23 @@ protected:
     // 检查是否超出最大飞行距离
     virtual void CheckMaxFlyDistance();
 
+    UFUNCTION()
+    void OnBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+        UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+    void HandleImpactActor(AActor* OtherActor, const FHitResult& Hit);
+
+    /** 进入返航（若开启 bReturnToOwner） */
+    void StartReturnToOwner();
+
+    /** 应用 Homing 配置（若开启 bEnableHoming） */
+    void ApplyHomingConfig();
+
     // 生命周期结束处理
     virtual void OnLifespanExpired();
     
 public:
     FORCEINLINE class USphereComponent* GetCollisionComp() const { return CollisionComp; }
     FORCEINLINE class UProjectileMovementComponent* GetProjectileMovement() const { return ProjectileMovement; }
+    FORCEINLINE bool IsReturning() const { return bIsReturning; }
 };

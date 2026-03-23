@@ -22,8 +22,9 @@ AProjectileBase::AProjectileBase()
 
     CollisionComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
     CollisionComp->InitSphereRadius(15.0f);
-    CollisionComp->SetCollisionProfileName("Projectile"); // 确保在项目中定义了这个碰撞配置
+    CollisionComp->SetCollisionProfileName("Projectile");
     CollisionComp->OnComponentHit.AddDynamic(this, &AProjectileBase::OnHit);
+    CollisionComp->OnComponentBeginOverlap.AddDynamic(this, &AProjectileBase::OnBeginOverlap);
     RootComponent = CollisionComp;
 
     VisualEffectComp = CreateDefaultSubobject<UNiagaraComponent>(TEXT("VisualEffectComp"));
@@ -62,6 +63,8 @@ void AProjectileBase::OnRep_InitData()
         ProjectileMovement->bShouldBounce = InitData.bShouldBounce;
     }
 
+    ApplyHomingConfig();
+
     // 生成视觉特效
     if (InitData.VisualEffect)
     {
@@ -82,6 +85,7 @@ void AProjectileBase::OnRep_InitData()
         );
     }
 
+
     // 播放飞行音效
     if (FlyingSoundComp && InitData.FlyingSound)
     {
@@ -97,55 +101,49 @@ void AProjectileBase::InitializeProjectile(const UGameplayAbility* InSourceAbili
     ProjectileInstigator = InInstigator;
     SourceAbilitySystemComponent = InSourceASC;
     SourceAbility = const_cast<UGameplayAbility*>(InSourceAbility);
+
     if (ProjectileMovement)
     {
         ProjectileMovement->InitialSpeed = InitData.InitialSpeed;
-        ProjectileMovement->MaxSpeed = InitData.MaxSpeed > 0 ? InitData.MaxSpeed : InitData.InitialSpeed; // MaxSpeed为0则使用InitialSpeed
+        ProjectileMovement->MaxSpeed = InitData.MaxSpeed > 0 ? InitData.MaxSpeed : InitData.InitialSpeed;
         ProjectileMovement->ProjectileGravityScale = InitData.GravityScale;
         ProjectileMovement->bShouldBounce = InitData.bShouldBounce;
+
+        // 初始速度/方向
         if (ProjectileMovement->Velocity.IsZero() && ProjectileMovement->InitialSpeed > 0.f)
         {
-            // GetActorRotation() 应该能拿到生成时设置的 SpawnRotation
-            FRotator CurrentActorRotation = GetActorRotation();
+            const FRotator CurrentActorRotation = GetActorRotation();
             ProjectileMovement->Velocity = CurrentActorRotation.Vector() * ProjectileMovement->InitialSpeed;
-            UE_LOG(LogTemp, Warning, TEXT("AProjectileBase::InitializeProjectile - Manually set Velocity to: %s (Speed: %f) using ActorRotation: %s"),
-                *ProjectileMovement->Velocity.ToString(),
-                ProjectileMovement->Velocity.Size(),
-                *CurrentActorRotation.ToString()
-            );
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("AProjectileBase::InitializeProjectile - Velocity was NOT zero (%s) or InitialSpeed was not positive (%f). Not setting velocity manually."),
-                *ProjectileMovement->Velocity.ToString(),
-                ProjectileMovement->InitialSpeed
-            );
         }
     }
 
+    bIsReturning = false;
+    HitActorsForward.Reset();
+    HitActorsReturn.Reset();
 
-    if (VisualEffectComp && InitData.VisualEffect)
+    ApplyHomingConfig();
+
+    if (InitData.VisualEffect)
     {
-        //if (UNiagaraComponent* NiagaraComp = Cast<UNiagaraComponent>(VisualEffectComp))
-        //{
-        //    NiagaraComp->SetAsset(InitData.VisualEffect);
-        //    NiagaraComp->Activate();
-        //}
+        if (VisualEffectComp)
+        {
+            VisualEffectComp->Deactivate();
+        }
 
+        UNiagaraFunctionLibrary::SpawnSystemAttached(
+            InitData.VisualEffect,
+            RootComponent,
+            NAME_None,
+            FVector::ZeroVector,
+            FRotator::ZeroRotator,
+            EAttachLocation::KeepRelativeOffset,
+            true // 自动销毁
+        );
     }
     else if (VisualEffectComp)
     {
         VisualEffectComp->Deactivate();
     }
-    UNiagaraFunctionLibrary::SpawnSystemAttached(
-        InitData.VisualEffect,
-        RootComponent,
-        NAME_None,
-        FVector::ZeroVector,
-        FRotator::ZeroRotator,
-        EAttachLocation::KeepRelativeOffset,
-        true // 自动销毁
-    );
     if (FlyingSoundComp && InitData.FlyingSound)
     {
         FlyingSoundComp->SetSound(InitData.FlyingSound);
@@ -182,6 +180,21 @@ void AProjectileBase::Tick(float DeltaTime)
         CheckMaxFlyDistance();
     }
 
+    // 返航投射物：持续朝 Owner 当前坐标调整速度，保证追随实时位置
+    if (bIsReturning && ProjectileOwner && ProjectileMovement)
+    {
+        const FVector Dir = (ProjectileOwner->GetActorLocation() - GetActorLocation()).GetSafeNormal();
+        const float Speed = InitData.InitialSpeed * FMath::Max(0.1f, InitData.ReturnSpeedMultiplier);
+        ProjectileMovement->Velocity = Dir * Speed;
+
+        // 接近 Owner 后销毁
+        const float DistSq = FVector::DistSquared(GetActorLocation(), ProjectileOwner->GetActorLocation());
+        if (DistSq <= FMath::Square(60.0f))
+        {
+            Destroy();
+        }
+    }
+
 }
 
 void AProjectileBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -196,29 +209,49 @@ void AProjectileBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void AProjectileBase::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
+    HandleImpactActor(OtherActor, Hit);
+
+    // 对于阻挡型命中，如果不是往返/穿透，并且不弹跳，则销毁
+    if (!InitData.bReturnToOwner && !InitData.bShouldBounce)
+    {
+        Destroy();
+    }
+}
+
+void AProjectileBase::OnBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+    UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+    HandleImpactActor(OtherActor, SweepResult);
+
+    // overlap 默认认为是“穿透”，不在这里销毁；若需要非穿透投射物，可通过 bReturnToOwner/bShouldBounce 控制 OnHit 的销毁
+}
+
+void AProjectileBase::HandleImpactActor(AActor* OtherActor, const FHitResult& Hit)
+{
     if (!OtherActor || OtherActor == ProjectileOwner || OtherActor == this)
     {
-        // 忽略对自身或发射者的碰撞，除非特定逻辑允许 (例如，某些技能可能希望投射物能与发射者交互)
         return;
     }
 
-    // 播放击中效果
-    PlayImpactEffects(Hit.ImpactPoint);
+    // 往返投射物：允许同一目标去程/回程各命中一次，但同一阶段只命中一次
+    if (InitData.bReturnToOwner)
+    {
+        TSet<TWeakObjectPtr<AActor>>& HitSet = bIsReturning ? HitActorsReturn : HitActorsForward;
+        if (HitSet.Contains(OtherActor))
+        {
+            return;
+        }
+        HitSet.Add(OtherActor);
+    }
 
-    // 应用直接伤害
+    OnProjectileHitActor.Broadcast(OtherActor, Hit);
+
+    PlayImpactEffects(Hit.ImpactPoint);
     ApplyDamageEffects(OtherActor, Hit);
 
-    // 处理溅射伤害
     if (InitData.SplashRadius > 0.0f)
     {
         HandleSplashDamage(Hit.ImpactPoint, OtherActor);
-    }
-
-    // 销毁投射物
-    // 可以根据InitData.bShouldBounce和其他逻辑决定是否立即销毁
-    if (!InitData.bShouldBounce) // 假设ProjectileMovement有类似MaxBounceAmountBeforeDeath的属性
-    {
-        Destroy();
     }
 }
 
@@ -311,15 +344,79 @@ void AProjectileBase::PlayImpactEffects(const FVector& ImpactLocation)
 
 void AProjectileBase::CheckMaxFlyDistance()
 {
-    if (InitData.MaxFlyDistance > 0.0f && TravelDistance >= InitData.MaxFlyDistance)
+    if (InitData.MaxFlyDistance <= 0.0f)
     {
-        PlayImpactEffects(GetActorLocation()); // 在最大距离处播放效果（可选）
-        Destroy();
+        return;
     }
+
+    if (TravelDistance < InitData.MaxFlyDistance)
+    {
+        return;
+    }
+
+    if (InitData.bReturnToOwner && !bIsReturning)
+    {
+        StartReturnToOwner();
+        return;
+    }
+
+    PlayImpactEffects(GetActorLocation());
+    Destroy();
 }
 
 void AProjectileBase::OnLifespanExpired()
 {
     PlayImpactEffects(GetActorLocation()); // 在生命周期结束时播放效果（可选）
     Destroy();
+}
+
+void AProjectileBase::ApplyHomingConfig()
+{
+    if (!ProjectileMovement)
+    {
+        return;
+    }
+
+    const AActor* HomingTarget = InitData.HomingTargetActor.Get();
+    const bool bShouldHome = InitData.bEnableHoming && HomingTarget;
+
+    ProjectileMovement->bIsHomingProjectile = bShouldHome;
+    if (bShouldHome)
+    {
+        ProjectileMovement->HomingTargetComponent = HomingTarget->GetRootComponent();
+        ProjectileMovement->HomingAccelerationMagnitude = InitData.HomingAcceleration;
+    }
+    else
+    {
+        ProjectileMovement->HomingTargetComponent = nullptr;
+        ProjectileMovement->HomingAccelerationMagnitude = 0.f;
+    }
+}
+
+void AProjectileBase::StartReturnToOwner()
+{
+    if (bIsReturning)
+    {
+        return;
+    }
+
+    if (!ProjectileOwner || !ProjectileMovement)
+    {
+        Destroy();
+        return;
+    }
+
+    bIsReturning = true;
+    TravelDistance = 0.0f;
+
+    // 返航时强制朝向 Owner
+    const FVector Dir = (ProjectileOwner->GetActorLocation() - GetActorLocation()).GetSafeNormal();
+    const float Speed = InitData.InitialSpeed * FMath::Max(0.1f, InitData.ReturnSpeedMultiplier);
+
+    ProjectileMovement->Velocity = Dir * Speed;
+
+    // 返航阶段一般不启用 homing（避免抖动）；如果需要也可以改成追踪 Owner
+    ProjectileMovement->bIsHomingProjectile = false;
+    ProjectileMovement->HomingTargetComponent = nullptr;
+    ProjectileMovement->HomingAccelerationMagnitude = 0.f;
 }

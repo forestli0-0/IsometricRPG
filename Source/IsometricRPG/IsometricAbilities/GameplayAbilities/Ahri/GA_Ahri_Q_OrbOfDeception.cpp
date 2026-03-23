@@ -23,14 +23,13 @@ UGA_Ahri_Q_OrbOfDeception::UGA_Ahri_Q_OrbOfDeception()
 	SkillShotWidth = 80.0f;
 
 	// 为这个技能配置投射物数据
-	// 这些数据将被传递给基类生成的投射物
 	ProjectileData.InitialSpeed = 1600.f;
-	ProjectileData.MaxFlyDistance = RangeToApply; // 直接使用基类的射程
-	ProjectileData.SplashRadius = SkillShotWidth; // 使用技能宽度作为碰撞半径
-	// 注意：阿狸的Q技能有独特的返回机制，这需要在投射物类本身 (蓝图或C++) 中实现。
-	// 这个C++技能类只负责提供初始数据。
-	// ProjectileData.VisualEffect = OrbVFX; // 这些应该在蓝图中设置
-	// ProjectileData.ImpactEffect = HitVFX;
+	ProjectileData.MaxFlyDistance = RangeToApply;
+	ProjectileData.SplashRadius = SkillShotWidth;
+
+	// 往返
+	ProjectileData.bReturnToOwner = true;
+	ProjectileData.ReturnSpeedMultiplier = 1.0f;
 }
 
 void UGA_Ahri_Q_OrbOfDeception::ExecuteSkillShot(const FVector& Direction, const FVector& StartLocation)
