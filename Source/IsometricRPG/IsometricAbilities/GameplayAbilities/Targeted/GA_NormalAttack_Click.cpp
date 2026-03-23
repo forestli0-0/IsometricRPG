@@ -6,6 +6,7 @@
 #include "IsometricAbilities/TargetTrace/GATA_CursorTrace.h"
 #include "Abilities/GameplayAbilityTargetTypes.h"
 #include "IsometricAbilities/AbilityTasks/AbilityTask_WaitMoveToLocation.h"
+#include "Character/IsometricRPGCharacter.h"
 #include "GameFramework/Character.h"
 #include "Components/CapsuleComponent.h"
 
@@ -128,6 +129,11 @@ void UGA_NormalAttack_Click::OnTargetDataReady(const FGameplayAbilityTargetDataH
                 CachedTargetLocation = CachedTargetActor->GetActorLocation();
             }
         }
+    }
+
+    if (AIsometricRPGCharacter* SourceCharacter = Cast<AIsometricRPGCharacter>(GetAvatarActorFromActorInfo()))
+    {
+        SourceCharacter->RecordRecentBasicAttackTarget(CachedTargetActor.Get(), GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f);
     }
 
     // 交回基类，继续原有流程（会调用 OtherCheckBeforeCommit → Commit/移动任务）

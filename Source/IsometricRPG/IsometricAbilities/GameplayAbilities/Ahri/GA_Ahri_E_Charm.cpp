@@ -1,6 +1,7 @@
 #include "GA_Ahri_E_Charm.h"
 #include "IsometricAbilities/Projectiles/AProjectileBase.h"
 #include "Character/IsometricRPGAttributeSetBase.h"
+#include "Character/IsometricRPGCharacter.h"
 #include "GameFramework/Character.h"
 #include "Engine/World.h"
 #include "NiagaraSystem.h"
@@ -174,6 +175,12 @@ void UGA_Ahri_E_Charm::ApplyCharmEffect(AActor* Target)
 
 	CharmedTarget = Target;
 
+	if (AIsometricRPGCharacter* SourceCharacter = Cast<AIsometricRPGCharacter>(GetAvatarActorFromActorInfo()))
+	{
+		const float ExpireTime = GetWorld() ? (GetWorld()->GetTimeSeconds() + CharmDuration) : CharmDuration;
+		SourceCharacter->RecordRecentCharmTarget(Target, ExpireTime);
+	}
+
 	// 获取目标的ASC
 	UAbilitySystemComponent* TargetASC = nullptr;
 	// TargetASC = Target->GetAbilitySystemComponent();  // TODO: 获取目标的ASC
@@ -284,4 +291,12 @@ void UGA_Ahri_E_Charm::OnCharmEffectEnd(AActor* Target)
 
 	// 清理状态
 	CharmedTarget = nullptr;
+
+	if (AIsometricRPGCharacter* SourceCharacter = Cast<AIsometricRPGCharacter>(GetAvatarActorFromActorInfo()))
+	{
+		if (SourceCharacter->GetRecentCharmTarget() == Target)
+		{
+			SourceCharacter->RecordRecentCharmTarget(nullptr, 0.0f);
+		}
+	}
 } 

@@ -127,21 +127,18 @@ FEquippedAbilityInfo AIsometricRPGCharacter::GetEquippedAbilityInfo(ESkillSlot S
 
 float AIsometricRPGCharacter::GetCurrentHealth() const
 {
-    AIsoPlayerState* PS = Cast<AIsoPlayerState>(GetPlayerState());
-    if (PS && PS->GetAttributeSet())
+    if (const UIsometricRPGAttributeSetBase* CurrentAttributeSet = GetAttributeSet())
     {
-        return PS->GetAttributeSet()->GetHealth();
-
+        return CurrentAttributeSet->GetHealth();
     }
     return 0.f;
 }
 
 float AIsometricRPGCharacter::GetMaxHealth() const
 {
-    AIsoPlayerState* PS = Cast<AIsoPlayerState>(GetPlayerState());
-    if (PS && PS->GetAttributeSet())
+    if (const UIsometricRPGAttributeSetBase* CurrentAttributeSet = GetAttributeSet())
     {
-        return PS->GetAttributeSet()->GetMaxHealth();
+        return CurrentAttributeSet->GetMaxHealth();
     }
     return 0.f;
 }
@@ -246,9 +243,52 @@ void AIsometricRPGCharacter::Client_SetMovementLocked_Implementation(bool bLocke
 
 float AIsometricRPGCharacter::GetAttackRange() const
 {
-    if (UIsometricRPGAttributeSetBase* AttributeSet = GetAttributeSet())
+    if (const UIsometricRPGAttributeSetBase* CurrentAttributeSet = GetAttributeSet())
     {
-        return AttributeSet->GetAttackRange();
+        return CurrentAttributeSet->GetAttackRange();
     }
     return 0.0f;
+}
+
+void AIsometricRPGCharacter::RecordRecentBasicAttackTarget(AActor* Target, float WorldTime)
+{
+    RecentBasicAttackTarget = Target;
+    RecentBasicAttackTimestamp = Target ? WorldTime : -FLT_MAX;
+}
+
+void AIsometricRPGCharacter::RecordRecentCharmTarget(AActor* Target, float ExpireTime)
+{
+    RecentCharmTarget = Target;
+    RecentCharmExpireTime = Target ? ExpireTime : -FLT_MAX;
+}
+
+AActor* AIsometricRPGCharacter::GetRecentBasicAttackTarget(float MaxAgeSeconds) const
+{
+    if (!RecentBasicAttackTarget.IsValid() || !GetWorld())
+    {
+        return nullptr;
+    }
+
+    const float WorldTime = GetWorld()->GetTimeSeconds();
+    if ((WorldTime - RecentBasicAttackTimestamp) > MaxAgeSeconds)
+    {
+        return nullptr;
+    }
+
+    return RecentBasicAttackTarget.Get();
+}
+
+AActor* AIsometricRPGCharacter::GetRecentCharmTarget() const
+{
+    if (!RecentCharmTarget.IsValid() || !GetWorld())
+    {
+        return nullptr;
+    }
+
+    if (GetWorld()->GetTimeSeconds() > RecentCharmExpireTime)
+    {
+        return nullptr;
+    }
+
+    return RecentCharmTarget.Get();
 }

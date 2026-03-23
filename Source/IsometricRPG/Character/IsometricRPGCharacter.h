@@ -86,6 +86,18 @@ public:
     UFUNCTION(BlueprintPure, Category="Attributes")
     float GetAttackRange() const;
 
+    UFUNCTION(BlueprintCallable, Category = "Ability Context")
+    void RecordRecentBasicAttackTarget(AActor* Target, float WorldTime);
+
+    UFUNCTION(BlueprintCallable, Category = "Ability Context")
+    void RecordRecentCharmTarget(AActor* Target, float ExpireTime);
+
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Ability Context")
+    AActor* GetRecentBasicAttackTarget(float MaxAgeSeconds) const;
+
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Ability Context")
+    AActor* GetRecentCharmTarget() const;
+
 public:
     /** 由InputComponent在激活技能前调用，用于暂存目标数据 */
     UFUNCTION(BlueprintCallable, meta = (DisplayName = "SetAbilityTargetDataByHit"))
@@ -110,6 +122,18 @@ public:
 
 protected:
     /** 技能的目标数据暂存区 */
-    UPROPERTY(Replicated)
+    UPROPERTY()
     FGameplayAbilityTargetDataHandle StoredTargetData;
+
+    UPROPERTY(Transient)
+    TWeakObjectPtr<AActor> RecentBasicAttackTarget;
+
+    UPROPERTY(Transient)
+    float RecentBasicAttackTimestamp = -FLT_MAX;
+
+    UPROPERTY(Transient)
+    TWeakObjectPtr<AActor> RecentCharmTarget;
+
+    UPROPERTY(Transient)
+    float RecentCharmExpireTime = -FLT_MAX;
 };
