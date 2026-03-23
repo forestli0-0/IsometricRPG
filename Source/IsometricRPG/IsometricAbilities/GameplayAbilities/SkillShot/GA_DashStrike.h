@@ -9,6 +9,8 @@
 #include "Engine/EngineTypes.h"
 #include "GA_DashStrike.generated.h"
 
+class UAbilityTask_ApplyRootMotionMoveToForce;
+
 /**
  * 突进冲撞技能 - SkillShot类型
  * 朝指定方向快速突进，撞击路径上的敌人并造成击飞效果
@@ -72,7 +74,7 @@ protected:
 	UFUNCTION()
 	virtual void ExecuteDash(const FVector& DashDirection, const FVector& StartLocation);
 
-	// 突进过程中的碰撞检测
+	// 使用真实位移轨迹做 sweep，避免纯终点判定漏伤害。
 	UFUNCTION()
 	virtual void PerformDashCollisionCheck(const FVector& CurrentLocation, const FVector& PreviousLocation);
 
@@ -84,9 +86,12 @@ protected:
 	UFUNCTION()
 	virtual void OnDashComplete();
 
-	// 突进计时器
-	UPROPERTY()
-	FTimerHandle DashTimerHandle;
+	virtual void EndAbility(
+		const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo,
+		bool bReplicateEndAbility,
+		bool bWasCancelled) override;
 
 	// 存储突进相关数据
 	UPROPERTY()
@@ -105,12 +110,16 @@ protected:
 	class ANiagaraActor* ActiveDashEffect;
 
 private:
-	// 渐进式突进相关
 	UPROPERTY()
-	float DashProgress = 0.0f;
+	TObjectPtr<UAbilityTask_ApplyRootMotionMoveToForce> ActiveDashMoveTask;
 
-	UPROPERTY()
-	FTimerHandle ProgressiveDashTimerHandle;
+	FTimerHandle DashCollisionTimerHandle;
+	float ActiveDashDuration = 0.0f;
+	FVector LastCollisionSampleLocation = FVector::ZeroVector;
+	bool bDashEndRequested = false;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dash", meta = (AllowPrivateAccess = "true", ClampMin = "0.008"))
+	float CollisionCheckInterval = 0.016f;
 
 	// 验证突进目标位置是否可达
 	UFUNCTION()
@@ -124,17 +133,23 @@ private:
 	UFUNCTION()
 	void RemoveInvulnerabilityEffect();
 
-	// 开始渐进式突进
+	// 启动 GAS RootMotion dash，让 CharacterMovement 负责预测/复制/纠正。
 	UFUNCTION()
-	void StartProgressiveDash();
+	void StartDashMovement();
 
-	// 更新突进位置
+	// dash 期间只负责沿真实位移轨迹做命中检测，不直接改 Actor 位置。
 	UFUNCTION()
-	void UpdateDashPosition();
+	void UpdateDashCollisionSweep();
+
+	UFUNCTION()
+	void HandleDashMovementFinished();
 
 	// 判断是否是敌人
 	UFUNCTION()
 	bool IsEnemyActor(AActor* Actor) const;
+
+	void StopConflictingMovement(ACharacter& SourceCharacter) const;
+	void CleanupDashState();
 
 	virtual void PlayAbilityMontage(
 		const FGameplayAbilitySpecHandle Handle,

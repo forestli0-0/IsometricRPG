@@ -1,10 +1,12 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "GA_DashStrike.h"
+#include "Abilities/Tasks/AbilityTask_ApplyRootMotionMoveToForce.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/RootMotionSource.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
@@ -16,6 +18,7 @@
 #include "GameplayEffectTypes.h"
 #include "GameplayTagContainer.h"
 #include "Character/IsometricRPGCharacter.h"
+#include "IsometricComponents/IsometricPathFollowingComponent.h"
 #include "Engine/OverlapResult.h"
 
 
@@ -32,6 +35,7 @@ UGA_DashStrike::UGA_DashStrike()
 
 	// 需要目标数据（方向选择）
 	bRequiresTargetData = true;
+	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 
 	// 设置标签
 	AbilityTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Player.DashStrike")));
@@ -54,6 +58,11 @@ void UGA_DashStrike::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const
 	// 获取突进方向
 	FVector DashDirection = GetSkillShotDirection();
 	FVector StartLocation = GetAvatarActorFromActorInfo()->GetActorLocation();
+	if (DashDirection.IsNearlyZero())
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
 
 	UE_LOG(LogTemp, Log, TEXT("DashStrike: Starting dash in direction: %s"), *DashDirection.ToString());
 
@@ -63,31 +72,41 @@ void UGA_DashStrike::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const
 
 void UGA_DashStrike::ExecuteDash(const FVector& DashDirection, const FVector& StartLocation)
 {
-	AActor* AvatarActor = GetAvatarActorFromActorInfo();
-	if (!AvatarActor)
+	ACharacter* SourceCharacter = Cast<ACharacter>(GetAvatarActorFromActorInfo());
+	if (!SourceCharacter)
 	{
 		OnDashComplete();
 		return;
 	}
-	// 初始化突进数据
-	DashStartLocation = StartLocation;
-	CurrentDashDirection = DashDirection;
-	DashTargetLocation = StartLocation + (DashDirection * DashDistance);
-	HitActors.Empty();
 
-	// 记录调试信息
-	float ActualDashDistance = FVector::Dist(StartLocation, DashTargetLocation);
+	bDashEndRequested = false;
+	DashStartLocation = StartLocation;
+	CurrentDashDirection = DashDirection.GetSafeNormal2D();
+	DashTargetLocation = StartLocation + (DashDirection * DashDistance);
+	DashTargetLocation.Z = StartLocation.Z;
+	HitActors.Empty();
+	StopConflictingMovement(*SourceCharacter);
+	LastCollisionSampleLocation = StartLocation;
+
+	float ActualDashDistance = FVector::Dist2D(StartLocation, DashTargetLocation);
 	UE_LOG(LogTemp, Log, TEXT("DashStrike: Start=%s, Target=%s, Distance=%f"), 
 		*StartLocation.ToString(), *DashTargetLocation.ToString(), ActualDashDistance);
 
 	// 检查目标位置是否可达，避免穿墙
 	FVector AdjustedTargetLocation = ValidateDashDestination(StartLocation, DashTargetLocation);
 	DashTargetLocation = AdjustedTargetLocation;
+	DashTargetLocation.Z = StartLocation.Z;
+	ActiveDashDuration = FVector::Dist2D(StartLocation, DashTargetLocation) / FMath::Max(DashSpeed, 1.0f);
+	if (ActiveDashDuration <= KINDA_SMALL_NUMBER)
+	{
+		OnDashComplete();
+		return;
+	}
 
 	// 如果位置被调整了，记录调整后的距离
 	if (!AdjustedTargetLocation.Equals(StartLocation + (DashDirection * DashDistance), 1.0f))
 	{
-		float AdjustedDistance = FVector::Dist(StartLocation, AdjustedTargetLocation);
+		float AdjustedDistance = FVector::Dist2D(StartLocation, AdjustedTargetLocation);
 		UE_LOG(LogTemp, Warning, TEXT("DashStrike: Target adjusted due to wall collision. New distance: %f"), AdjustedDistance);
 	}
 
@@ -103,32 +122,20 @@ void UGA_DashStrike::ExecuteDash(const FVector& DashDirection, const FVector& St
 		ActiveDashEffect = GetWorld()->SpawnActor<ANiagaraActor>(
 			DashEffectClass,
 			StartLocation,
-			DashDirection.Rotation()
+			CurrentDashDirection.Rotation()
 		);
 		if (ActiveDashEffect)
 		{
 			// 附加到角色
-			ActiveDashEffect->AttachToActor(AvatarActor, FAttachmentTransformRules::KeepWorldTransform);
+			ActiveDashEffect->AttachToActor(SourceCharacter, FAttachmentTransformRules::KeepWorldTransform);
 
 			// 获取 Niagara 组件
 			UNiagaraComponent* NiagaraComp = ActiveDashEffect->GetNiagaraComponent();
 
 			if (NiagaraComp)
 			{
-				// 设置 Beam End 参数
-				// "Beam End" 是你在Niagara系统中定义的参数名称
-				// 假设它是一个FVector类型的用户参数
-				FVector BeamEndLocation = DashStartLocation + CurrentDashDirection * (-10.f) ; // 你要设置的值
-
+				// dash 朝向交给 Niagara，用于驱动拖尾或锥形特效。
 				NiagaraComp->SetNiagaraVariableVec3(TEXT("Cone Axis"), CurrentDashDirection * (-10.f));
-
-
-				// 如果 Beam End 下的 X, Y, Z 是独立的浮点参数，你可以这样设置：
-				// NiagaraComp->SetNiagaraVariableFloat(TEXT("Beam End.X"), 200.0f);
-				// NiagaraComp->SetNiagaraVariableFloat(TEXT("Beam End.Y"), 0.0f);
-				// NiagaraComp->SetNiagaraVariableFloat(TEXT("Beam End.Z"), 0.0f);
-				// 注意：具体是 Vec3 还是独立的 Float 取决于你在 Niagara 系统中如何定义这个用户参数。
-				// 鉴于图片显示为 X, Y, Z 嵌套在 Beam End 下，很可能 Beam End 是一个 FVector 类型。
 			}
 		}
 	}
@@ -136,8 +143,8 @@ void UGA_DashStrike::ExecuteDash(const FVector& DashDirection, const FVector& St
 	// 应用无敌效果（如果有的话）
 	ApplyInvulnerabilityEffect();
 
-	// 执行渐进式突进（更平滑的移动）
-	StartProgressiveDash();
+	// 用 GAS RootMotion task 驱动 dash，底层走 CharacterMovement 的预测/复制链路。
+	StartDashMovement();
 }
 
 void UGA_DashStrike::PerformDashCollisionCheck(const FVector& CurrentLocation, const FVector& PreviousLocation)
@@ -208,7 +215,9 @@ void UGA_DashStrike::PerformDashCollisionCheck(const FVector& CurrentLocation, c
 void UGA_DashStrike::OnHitEnemy(AActor* HitActor, const FVector& HitLocation)
 {
 	if (!HitActor)
+	{
 		return;
+	}
 
 	UE_LOG(LogTemp, Log, TEXT("DashStrike: Hit enemy %s"), *HitActor->GetName());
 
@@ -228,14 +237,25 @@ void UGA_DashStrike::OnHitEnemy(AActor* HitActor, const FVector& HitLocation)
 		);
 	}
 
+	const AActor* AvatarActor = GetAvatarActorFromActorInfo();
+	const bool bIsAuthority = AvatarActor && AvatarActor->HasAuthority();
+	if (!bIsAuthority)
+	{
+		return;
+	}
+
 	// 获取敌人的AbilitySystemComponent
 	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(HitActor);
 	if (!TargetASC)
+	{
 		return;
+	}
 
 	UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo();
 	if (!SourceASC)
+	{
 		return;
+	}
 
 	// 应用伤害效果
 	if (DamageEffect)
@@ -300,27 +320,12 @@ void UGA_DashStrike::OnHitEnemy(AActor* HitActor, const FVector& HitLocation)
 
 void UGA_DashStrike::OnDashComplete()
 {
-	// 清理所有计时器
-	if (GetWorld())
+	if (bDashEndRequested)
 	{
-		GetWorld()->GetTimerManager().ClearTimer(DashTimerHandle);
-		GetWorld()->GetTimerManager().ClearTimer(ProgressiveDashTimerHandle);
+		return;
 	}
 
-	// 移除无敌效果
-	RemoveInvulnerabilityEffect();
-
-	// 清理特效
-	if (ActiveDashEffect && IsValid(ActiveDashEffect))
-	{
-		ActiveDashEffect->Destroy();
-		ActiveDashEffect = nullptr;
-	}
-
-	// 重置突进数据
-	DashProgress = 0.0f;
-	HitActors.Empty();
-
+	bDashEndRequested = true;
 	UE_LOG(LogTemp, Log, TEXT("DashStrike: Dash completed"));
 
 	// 结束技能
@@ -329,6 +334,17 @@ void UGA_DashStrike::OnDashComplete()
 	const FGameplayAbilityActivationInfo ActivationInfo = CurrentActivationInfo;
 
 	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+}
+
+void UGA_DashStrike::EndAbility(const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	bool bReplicateEndAbility,
+	bool bWasCancelled)
+{
+	CleanupDashState();
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
+	bDashEndRequested = false;
 }
 
 bool UGA_DashStrike::IsEnemyActor(AActor* Actor) const
@@ -356,15 +372,14 @@ bool UGA_DashStrike::IsEnemyActor(AActor* Actor) const
 
 void UGA_DashStrike::PlayAbilityMontage(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo)
 {
-	// 停止移动，否则在发射后会出现很怪的逻辑
-	auto Owener = GetAvatarActorFromActorInfo();
-	auto SourCharacter = Cast<ACharacter>(Owener);
-	if(SourCharacter == nullptr)
+	ACharacter* SourceCharacter = Cast<ACharacter>(GetAvatarActorFromActorInfo());
+	if (SourceCharacter == nullptr)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("UGA_DashStrike::PlayAbilityMontage: Owener is not a Character!"));
 		return;
 	}
-	SourCharacter->GetController()->StopMovement();
+
+	StopConflictingMovement(*SourceCharacter);
 	Super::PlayAbilityMontage(Handle, ActorInfo, ActivationInfo);
 }
 
@@ -436,34 +451,43 @@ void UGA_DashStrike::RemoveInvulnerabilityEffect()
 	}
 }
 
-void UGA_DashStrike::StartProgressiveDash()
+void UGA_DashStrike::StartDashMovement()
 {
-	DashProgress = 0.0f;
-	
-	// 计算突进总时间
-	float DashTime = DashDistance / DashSpeed;
-	float UpdateInterval = 0.016f; // 约60FPS更新率
-
-	// 开始计时器进行渐进式移动
-	GetWorld()->GetTimerManager().SetTimer(
-		ProgressiveDashTimerHandle,
+	ActiveDashMoveTask = UAbilityTask_ApplyRootMotionMoveToForce::ApplyRootMotionMoveToForce(
 		this,
-		&UGA_DashStrike::UpdateDashPosition,
-		UpdateInterval,
-		true
-	);
+		FName(TEXT("DashStrikeMove")),
+		DashTargetLocation,
+		ActiveDashDuration,
+		true,
+		MOVE_Flying,
+		true,
+		nullptr,
+		ERootMotionFinishVelocityMode::SetVelocity,
+		FVector::ZeroVector,
+		0.0f);
 
-	// 设置总时间结束计时器
-	GetWorld()->GetTimerManager().SetTimer(
-		DashTimerHandle,
-		this,
-		&UGA_DashStrike::OnDashComplete,
-		DashTime,
-		false
-	);
+	if (!ActiveDashMoveTask)
+	{
+		OnDashComplete();
+		return;
+	}
+
+	ActiveDashMoveTask->OnTimedOut.AddDynamic(this, &UGA_DashStrike::HandleDashMovementFinished);
+	ActiveDashMoveTask->OnTimedOutAndDestinationReached.AddDynamic(this, &UGA_DashStrike::HandleDashMovementFinished);
+	ActiveDashMoveTask->ReadyForActivation();
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			DashCollisionTimerHandle,
+			this,
+			&UGA_DashStrike::UpdateDashCollisionSweep,
+			CollisionCheckInterval,
+			true);
+	}
 }
 
-void UGA_DashStrike::UpdateDashPosition()
+void UGA_DashStrike::UpdateDashCollisionSweep()
 {
 	AActor* AvatarActor = GetAvatarActorFromActorInfo();
 	if (!AvatarActor)
@@ -472,26 +496,63 @@ void UGA_DashStrike::UpdateDashPosition()
 		return;
 	}
 
-	// 更新突进进度
-	float DashTime = DashDistance / DashSpeed;
-	DashProgress += 0.016f; // 更新间隔
-	float Alpha = FMath::Clamp(DashProgress / DashTime, 0.0f, 1.0f);
+	const FVector CurrentLocation = AvatarActor->GetActorLocation();
+	PerformDashCollisionCheck(CurrentLocation, LastCollisionSampleLocation);
+	LastCollisionSampleLocation = CurrentLocation;
+}
 
-	// 计算当前位置
-	FVector PreviousLocation = AvatarActor->GetActorLocation();
-	FVector CurrentLocation = FMath::Lerp(DashStartLocation, DashTargetLocation, Alpha);
-
-	// 移动角色
-	AvatarActor->SetActorLocation(CurrentLocation);
-
-	// 执行碰撞检测
-	PerformDashCollisionCheck(CurrentLocation, PreviousLocation);
-
-	// 如果到达目标位置，提前结束
-	if (Alpha >= 1.0f)
+void UGA_DashStrike::HandleDashMovementFinished()
+{
+	if (AActor* AvatarActor = GetAvatarActorFromActorInfo())
 	{
-		OnDashComplete();
+		const FVector CurrentLocation = AvatarActor->GetActorLocation();
+		PerformDashCollisionCheck(CurrentLocation, LastCollisionSampleLocation);
+		LastCollisionSampleLocation = CurrentLocation;
 	}
+
+	OnDashComplete();
+}
+
+void UGA_DashStrike::StopConflictingMovement(ACharacter& SourceCharacter) const
+{
+	if (AIsometricRPGCharacter* RPGCharacter = Cast<AIsometricRPGCharacter>(&SourceCharacter))
+	{
+		if (RPGCharacter->PathFollowingComponent)
+		{
+			RPGCharacter->PathFollowingComponent->StopMove();
+		}
+	}
+
+	if (UCharacterMovementComponent* MovementComponent = SourceCharacter.GetCharacterMovement())
+	{
+		MovementComponent->StopMovementImmediately();
+	}
+
+	if (AController* Controller = SourceCharacter.GetController())
+	{
+		Controller->StopMovement();
+	}
+}
+
+void UGA_DashStrike::CleanupDashState()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(DashCollisionTimerHandle);
+	}
+
+	RemoveInvulnerabilityEffect();
+
+	if (ActiveDashEffect && IsValid(ActiveDashEffect))
+	{
+		ActiveDashEffect->Destroy();
+		ActiveDashEffect = nullptr;
+	}
+
+	ActiveDashMoveTask = nullptr;
+	ActiveDashDuration = 0.0f;
+	LastCollisionSampleLocation = FVector::ZeroVector;
+	HitActors.Empty();
 }
 
 FVector UGA_DashStrike::GetSkillShotDirection() const
