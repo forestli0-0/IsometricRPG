@@ -28,6 +28,7 @@ class ISOMETRICRPG_API UHUDActionBarWidget : public UUserWidget
 public:
     /** 当 WidgetTree 就绪时构建槽位映射表以便快速查找与更新。 */
     virtual void NativeConstruct() override;
+    virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
     /** 将视图模型数据分配给指定的技能槽（更新图标/冷却/名称等）。 */
     void SetSlot(const FHUDSkillSlotViewModel& ViewModel);
@@ -127,8 +128,12 @@ private:
 
     TArray<FName> CachedBuffTags; // 旧的调试路径（遗留用途）
     TArray<FHUDBuffIconViewModel> CachedBuffIcons;
+    float CachedBuffSnapshotTime = 0.f;
     TArray<FBuffIconEntryWidgets> BuffIconEntries;
     TArray<TObjectPtr<UTextBlock>> BuffTagLabels;
+    bool bNeedBuffCooldownRefresh = false;
+    float BuffRefreshInterval = 0.1f;
+    float BuffRefreshAccumulator = 0.f;
 
     /** 风格设定：Buff 图标在条上的显示尺寸（XY）。 */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Style", meta = (AllowPrivateAccess = "true"))

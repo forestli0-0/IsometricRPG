@@ -13,6 +13,7 @@
 #include "IsometricAbilities/Types/EquippedAbilityInfo.h"
 #include "IsometricRPGAttributeSetBase.h"
 #include <AbilitySystemBlueprintLibrary.h>
+#include "Abilities/GameplayAbilityTargetTypes.h"
 // 设置默认值
 AIsometricRPGCharacter::AIsometricRPGCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<UIsometricRPGCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
@@ -175,27 +176,99 @@ void AIsometricRPGCharacter::InitAbilityActorInfo()
 
 void AIsometricRPGCharacter::SetAbilityTargetDataByHit(const FHitResult& HitResult)
 {
-    // 将FHitResult打包成GAS可以理解的FGameplayAbilityTargetDataHandle
-    StoredTargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(HitResult);
+    FPendingAbilityActivationContext Context = PendingAbilityActivationContext;
+    Context.bUseActorTarget = false;
+    Context.TargetActor = nullptr;
+    Context.HitResult = HitResult;
+    Context.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(HitResult);
+    SetPendingAbilityActivationContext(Context);
 }
 
 void AIsometricRPGCharacter::SetAbilityTargetDataByActor(AActor* TargetActor)
 {
+    FPendingAbilityActivationContext Context = PendingAbilityActivationContext;
+    Context.bUseActorTarget = true;
+    Context.TargetActor = TargetActor;
+    Context.HitResult = FHitResult();
     if (TargetActor)
     {
-        // 将AActor打包成FGameplayAbilityTargetDataHandle
-        StoredTargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromActor(TargetActor);
+        Context.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromActor(TargetActor);
     }
     else
     {
-        // 如果目标为空，则清空数据
-        StoredTargetData.Clear();
+        Context.TargetData.Clear();
     }
+    SetPendingAbilityActivationContext(Context);
 }
 
 FGameplayAbilityTargetDataHandle AIsometricRPGCharacter::GetAbilityTargetData() const
 {
     return StoredTargetData;
+}
+
+void AIsometricRPGCharacter::SetPendingAbilityActivationContext(const FPendingAbilityActivationContext& InContext)
+{
+    PendingAbilityActivationContext = InContext;
+
+    if (InContext.TargetData.Num() > 0)
+    {
+        StoredTargetData = InContext.TargetData;
+    }
+    else if (InContext.bUseActorTarget && InContext.TargetActor.IsValid())
+    {
+        StoredTargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromActor(InContext.TargetActor.Get());
+    }
+    else if (InContext.HitResult.bBlockingHit || InContext.HitResult.GetActor() != nullptr)
+    {
+        StoredTargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(InContext.HitResult);
+    }
+    else
+    {
+        StoredTargetData.Clear();
+    }
+
+    PendingAbilityActivationContext.TargetData = StoredTargetData;
+}
+
+const FPendingAbilityActivationContext& AIsometricRPGCharacter::GetPendingAbilityActivationContext() const
+{
+    return PendingAbilityActivationContext;
+}
+
+void AIsometricRPGCharacter::ClearPendingAbilityActivationContext()
+{
+    PendingAbilityActivationContext = FPendingAbilityActivationContext();
+    StoredTargetData.Clear();
+}
+
+bool AIsometricRPGCharacter::HasStoredTargetActor(const AActor* InTargetActor) const
+{
+    if (!InTargetActor || !StoredTargetData.IsValid(0))
+    {
+        return false;
+    }
+
+    if (const FGameplayAbilityTargetData* Data = StoredTargetData.Get(0))
+    {
+        if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_ActorArray::StaticStruct()))
+        {
+            const auto* ActorArrayData = static_cast<const FGameplayAbilityTargetData_ActorArray*>(Data);
+            if (ActorArrayData && ActorArrayData->TargetActorArray.Num() > 0)
+            {
+                return ActorArrayData->TargetActorArray[0].Get() == InTargetActor;
+            }
+        }
+        else if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
+        {
+            const auto* HitData = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(Data);
+            if (HitData && HitData->GetHitResult())
+            {
+                return HitData->GetHitResult()->GetActor() == InTargetActor;
+            }
+        }
+    }
+
+    return false;
 }
 
 void AIsometricRPGCharacter::Server_SetAbilityTargetDataByHit_Implementation(const FHitResult& HitResult)

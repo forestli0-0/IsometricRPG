@@ -74,6 +74,25 @@ void UHUDActionBarWidget::NativeConstruct()
 	RefreshBuffWidgets();
 }
 
+void UHUDActionBarWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	if (!bNeedBuffCooldownRefresh)
+	{
+		return;
+	}
+
+	BuffRefreshAccumulator += InDeltaTime;
+	if (BuffRefreshAccumulator < BuffRefreshInterval)
+	{
+		return;
+	}
+
+	BuffRefreshAccumulator = 0.f;
+	RefreshBuffWidgets();
+}
+
 void UHUDActionBarWidget::SetSlot(const FHUDSkillSlotViewModel& ViewModel)
 {
 	if (ViewModel.Slot == ESkillSlot::Invalid || ViewModel.Slot == ESkillSlot::MAX || !ViewModel.bIsEquipped)
@@ -207,6 +226,8 @@ void UHUDActionBarWidget::SetStatusBuffs(const TArray<FHUDBuffIconViewModel>& In
 	}
 
 	CachedBuffIcons = InBuffs;
+	CachedBuffSnapshotTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+	BuffRefreshAccumulator = 0.f;
 	RefreshBuffWidgets();
 }
 
@@ -400,12 +421,15 @@ void UHUDActionBarWidget::RefreshBuffWidgets()
 	}
 
 	HideAllBuffWidgets();
+	bNeedBuffCooldownRefresh = false;
 
 	// 优先使用预先策划并在 PlayerState 中指定的图标（更美观且可控）；
 	// 当没有可用图标时退回到显示调试用的标签名（避免出现白色占位方块）
 	if (CachedBuffIcons.Num() > 0)
 	{
 		int32 VisibleIconCount = 0;
+		const float WorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : CachedBuffSnapshotTime;
+		const float ElapsedSinceSnapshot = FMath::Max(0.f, WorldTime - CachedBuffSnapshotTime);
 
 		for (const FHUDBuffIconViewModel& Buff : CachedBuffIcons)
 		{
@@ -428,7 +452,10 @@ void UHUDActionBarWidget::RefreshBuffWidgets()
 			Entry.IconImage->SetDesiredSizeOverride(BuffIconSize);
 			Entry.IconImage->SetColorAndOpacity(Buff.bIsDebuff ? FLinearColor(1.f, 0.3f, 0.3f, 1.f) : FLinearColor::White);
 
-			const bool bShowCooldown = Buff.TimeRemaining >= 0.f && Buff.TotalDuration > KINDA_SMALL_NUMBER && Entry.CooldownMask;
+			const float EffectiveTimeRemaining = Buff.TimeRemaining >= 0.f
+				? FMath::Max(0.f, Buff.TimeRemaining - ElapsedSinceSnapshot)
+				: Buff.TimeRemaining;
+			const bool bShowCooldown = EffectiveTimeRemaining > 0.f && Buff.TotalDuration > KINDA_SMALL_NUMBER && Entry.CooldownMask;
 			if (bShowCooldown)
 			{
 				if (!Entry.CooldownMID && BuffCooldownMaterial)
@@ -441,12 +468,13 @@ void UHUDActionBarWidget::RefreshBuffWidgets()
 				}
 				if (Entry.CooldownMID)
 				{
-					const float Percent = FMath::Clamp(Buff.TimeRemaining / Buff.TotalDuration, 0.f, 1.f);
+					const float Percent = FMath::Clamp(EffectiveTimeRemaining / Buff.TotalDuration, 0.f, 1.f);
 					Entry.CooldownMID->SetScalarParameterValue(BuffCooldownPercentParam, Percent);
 				}
 				Entry.CooldownMask->SetColorAndOpacity(BuffCooldownTint);
 				Entry.CooldownMask->SetDesiredSizeOverride(BuffIconSize);
 				Entry.CooldownMask->SetVisibility(Entry.CooldownMID ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+				bNeedBuffCooldownRefresh = true;
 			}
 			else if (Entry.CooldownMask)
 			{

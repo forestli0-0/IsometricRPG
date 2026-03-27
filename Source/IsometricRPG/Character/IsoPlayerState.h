@@ -139,6 +139,7 @@ private:
     TArray<FHUDItemSlotViewModel> BuildUtilityButtonViewModels() const;
 
     const FEquippedAbilityInfo* FindEquippedInfoByHandle(const FGameplayAbilitySpecHandle& Handle) const;
+    bool QueryCooldownState(const UGameplayAbility* AbilityCDO, float& OutDuration, float& OutRemaining) const;
 
     /** Build curated buff icon view models from owned tags */
     TArray<struct FHUDBuffIconViewModel> BuildBuffViewModels(const FGameplayTagContainer& OwnedTags) const;

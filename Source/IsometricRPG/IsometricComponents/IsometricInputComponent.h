@@ -4,6 +4,7 @@
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
 #include "Engine/HitResult.h"
+#include "Abilities/GameplayAbilityTypes.h"
 #include "IsometricRPG/IsometricAbilities/Types/HeroAbilityTypes.h"
 // 前向声明
 class UAbilitySystemComponent;
@@ -12,7 +13,32 @@ class APlayerController;
 
 #include "IsometricInputComponent.generated.h"
 
+enum class EAbilityActivationIntent : uint8
+{
+	Cast,
+	BasicAttack
+};
 
+struct FAbilityActivationRequest
+{
+	EAbilityActivationIntent Intent = EAbilityActivationIntent::Cast;
+	EAbilityInputID InputID = EAbilityInputID::None;
+	bool bIsHeldInput = false;
+	bool bUseActorTarget = false;
+	FHitResult HitResult;
+	TWeakObjectPtr<AActor> TargetActor;
+};
+
+struct FPendingAbilityActivationContext
+{
+	EAbilityActivationIntent Intent = EAbilityActivationIntent::Cast;
+	EAbilityInputID InputID = EAbilityInputID::None;
+	bool bIsHeldInput = false;
+	bool bUseActorTarget = false;
+	FHitResult HitResult;
+	TWeakObjectPtr<AActor> TargetActor;
+	FGameplayAbilityTargetDataHandle TargetData;
+};
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class ISOMETRICRPG_API UIsometricInputComponent : public UActorComponent
@@ -29,10 +55,11 @@ public:
 	// 这些方法由 AIsometricPlayerController（或 AI 控制器）调用
 	void HandleLeftClick(const FHitResult& HitResult);
 
-    void HandleRightClickTriggered(const FHitResult& HitResult, bool bIsHeldInput = false);
+	void HandleRightClickTriggered(const FHitResult& HitResult, bool bIsHeldInput = false);
 
 	void HandleSkillPressed(EAbilityInputID InputID, const FHitResult& TargetData);
 	void HandleSkillReleased(EAbilityInputID InputID);
+	void RequestAbilityActivation(const FAbilityActivationRequest& Request);
 
 
 	// 游戏行为请求，可由该组件内部或 AI 调用
@@ -76,4 +103,6 @@ public:
 private:
 	void HandleMoveIntentOnAuthority();
 	void StopPredictedClickMove();
+	FPendingAbilityActivationContext BuildActivationContext(const FAbilityActivationRequest& Request) const;
+	void SyncActivationContextToServer(const FPendingAbilityActivationContext& Context) const;
 };

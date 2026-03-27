@@ -123,45 +123,48 @@ void UIsometricRPGAttributeSetBase::PostGameplayEffectExecute(const FGameplayEff
                     SetExperienceToNextLevel(NewExpToNextLevel);
                 }
 
-                // 4. 应用升级属性增益 GameplayEffect
-
-
-                UAbilitySystemComponent* ASC = GetOwningAbilitySystemComponent();
-                if (ASC)
+                // 4. 读取升级表数据（用于属性成长与技能点发放）
+                FLevelUpData* RowData = nullptr;
+                if (LevelUpTable)
                 {
-                        if (LevelUpTable)
-                        {
-                            // 定义ContextString
-                            static const FString ContextString(TEXT("IsometricRPGAttributeSetBase::LevelUp"));
+                    static const FString ContextString(TEXT("IsometricRPGAttributeSetBase::LevelUp"));
+                    FString RowName = FString::FromInt(NewLevel);
+                    RowData = LevelUpTable->FindRow<FLevelUpData>(FName(*RowName), ContextString);
+                }
 
-                            FString RowName = FString::FromInt(NewLevel);
-                            // FindRow模板参数写法修正，且ContextString已定义
-                            FLevelUpData* RowData = LevelUpTable->FindRow<FLevelUpData>(FName(*RowName), ContextString);
-                            if (RowData)
-                            {
-                                if (LevelUpEffectClass)
-                                {
-                                    FGameplayEffectContextHandle ContextHandle = ASC->MakeEffectContext();
-                                    ContextHandle.AddSourceObject(OwningActor);
-                                    FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(LevelUpEffectClass, NewLevel, ContextHandle);
-                            
-                                    // 4.4 使用SetByCaller将表格中的数据填入GE Spec
-                                    SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.LevelUp.MaxHealth")), RowData->MaxHealthGain);
-                                    SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.LevelUp.MaxMana")), RowData->MaxManaGain);
-                                    SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.LevelUp.AttackDamage")), RowData->AttackDamageGain);
-                                    SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.LevelUp.PhysicalDefense")), RowData->PhysicalDefenseGain);
-                                    SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.LevelUp.MagicDefense")), RowData->MagicDefenseGain);
-                            
-                                    // 应用这个填满了数据的GE Spec
-                                    ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-                            
-                                    UE_LOG(LogTemp, Warning, TEXT("Level Up to %d! Health Gain: %f, Damage Gain: %f"), (int32)NewLevel, RowData->MaxHealthGain, RowData->AttackDamageGain);
-                            
-                                    // 升级后自动回满血蓝
-                                    SetHealth(GetMaxHealth());
-                                    SetMana(GetMaxMana());
-                                }
-                            }
+                // 4.1 技能点发放独立于 LevelUpEffectClass
+                if (RowData && RowData->SkillPointsAwarded != 0)
+                {
+                    const float SkillPointsDelta = static_cast<float>(RowData->SkillPointsAwarded);
+                    SetTotalSkillPoint(GetTotalSkillPoint() + SkillPointsDelta);
+                    SetUnUsedSkillPoint(GetUnUsedSkillPoint() + SkillPointsDelta);
+                }
+
+                // 4.2 应用升级属性增益 GameplayEffect
+                UAbilitySystemComponent* ASC = GetOwningAbilitySystemComponent();
+                if (ASC && RowData && LevelUpEffectClass)
+                {
+                    FGameplayEffectContextHandle ContextHandle = ASC->MakeEffectContext();
+                    ContextHandle.AddSourceObject(OwningActor);
+                    FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(LevelUpEffectClass, NewLevel, ContextHandle);
+
+                    if (SpecHandle.IsValid() && SpecHandle.Data.IsValid())
+                    {
+                        // 使用 SetByCaller 将表格中的数据填入 GE Spec
+                        SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.LevelUp.MaxHealth")), RowData->MaxHealthGain);
+                        SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.LevelUp.MaxMana")), RowData->MaxManaGain);
+                        SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.LevelUp.AttackDamage")), RowData->AttackDamageGain);
+                        SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.LevelUp.PhysicalDefense")), RowData->PhysicalDefenseGain);
+                        SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.LevelUp.MagicDefense")), RowData->MagicDefenseGain);
+
+                        // 应用这个填满了数据的 GE Spec
+                        ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+
+                        UE_LOG(LogTemp, Warning, TEXT("Level Up to %d! Health Gain: %f, Damage Gain: %f"), (int32)NewLevel, RowData->MaxHealthGain, RowData->AttackDamageGain);
+
+                        // 升级后自动回满血蓝
+                        SetHealth(GetMaxHealth());
+                        SetMana(GetMaxMana());
                     }
                 }
                 // 5. 广播等级变化事件
@@ -227,6 +230,10 @@ void UIsometricRPGAttributeSetBase::GetLifetimeReplicatedProps(TArray<FLifetimeP
 
     // Bounty
     DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, ExperienceBounty, COND_None, REPNOTIFY_Always);
+
+    // Skill Points
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, TotalSkillPoint, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, UnUsedSkillPoint, COND_None, REPNOTIFY_Always);
 }
 
 // OnRep 实现（统一使用宏）

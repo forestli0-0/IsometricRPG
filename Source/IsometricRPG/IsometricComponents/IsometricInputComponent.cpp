@@ -8,7 +8,6 @@
 #include "Character/IsometricRPGCharacter.h"
 #include "IsometricComponents/IsometricPathFollowingComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
-#include "IsometricAbilities/GameplayAbilities/GA_HeroBaseAbility.h"
 
 UIsometricInputComponent::UIsometricInputComponent()
 {
@@ -80,12 +79,15 @@ void UIsometricInputComponent::HandleRightClickTriggered(const FHitResult& HitRe
 	// 优先攻击敌人；若 ASC 尚未就绪，则先向目标位置移动作为降级方案
 	if (CurrentHitActor && CurrentHitActor != OwnerCharacter && CurrentHitActor->ActorHasTag(FName("Enemy")))
 	{
-		// 先缓存能力目标数据，ASC 不在也可以缓存
-		OwnerCharacter->SetAbilityTargetDataByHit(HitResult);
-
 		if (OwnerASC)
 		{
-			RequestBasicAttack(CurrentHitActor, bIsHeldInput);
+			FAbilityActivationRequest Request;
+			Request.Intent = EAbilityActivationIntent::BasicAttack;
+			Request.bIsHeldInput = bIsHeldInput;
+			Request.bUseActorTarget = true;
+			Request.HitResult = HitResult;
+			Request.TargetActor = CurrentHitActor;
+			RequestAbilityActivation(Request);
 		}
 		else
 		{
@@ -104,28 +106,12 @@ void UIsometricInputComponent::HandleRightClickTriggered(const FHitResult& HitRe
 
 void UIsometricInputComponent::HandleSkillPressed(EAbilityInputID InputID, const FHitResult& TargetData)
 {
-	if (!OwnerCharacter)
-	{
-		return;
-	}
-
-	if (!OwnerASC)
-	{
-		OwnerASC = OwnerCharacter->GetAbilitySystemComponent();
-	}
-
-	if (!OwnerASC)
-	{
-		return;
-	}
-
-	OwnerCharacter->SetAbilityTargetDataByHit(TargetData);
-	if (OwnerCharacter->GetLocalRole() < ROLE_Authority)
-	{
-		OwnerCharacter->Server_SetAbilityTargetDataByHit(TargetData);
-	}
-
-	OwnerASC->AbilityLocalInputPressed((int32)InputID);
+	FAbilityActivationRequest Request;
+	Request.Intent = EAbilityActivationIntent::Cast;
+	Request.InputID = InputID;
+	Request.bUseActorTarget = false;
+	Request.HitResult = TargetData;
+	RequestAbilityActivation(Request);
 }
 
 void UIsometricInputComponent::HandleSkillReleased(EAbilityInputID InputID)
@@ -206,10 +192,9 @@ void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor, bool bUse
 		return;
 	}
 
-	OwnerCharacter->SetAbilityTargetDataByActor(TargetActor);
-	if (OwnerCharacter->GetLocalRole() < ROLE_Authority)
+	if (!OwnerCharacter->HasStoredTargetActor(TargetActor))
 	{
-		OwnerCharacter->Server_SetAbilityTargetDataByActor(TargetActor);
+		OwnerCharacter->SetAbilityTargetDataByActor(TargetActor);
 	}
 
 	FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.DirBasicAttack"));
@@ -228,6 +213,42 @@ void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor, bool bUse
 	else
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Basic Attack ability tag is invalid for RequestBasicAttack."));
+	}
+}
+
+void UIsometricInputComponent::RequestAbilityActivation(const FAbilityActivationRequest& Request)
+{
+	if (!OwnerCharacter)
+	{
+		return;
+	}
+
+	if (!OwnerASC)
+	{
+		OwnerASC = OwnerCharacter->GetAbilitySystemComponent();
+	}
+
+	if (!OwnerASC)
+	{
+		return;
+	}
+
+	const FPendingAbilityActivationContext Context = BuildActivationContext(Request);
+	OwnerCharacter->SetPendingAbilityActivationContext(Context);
+	SyncActivationContextToServer(Context);
+
+	if (Request.Intent == EAbilityActivationIntent::BasicAttack)
+	{
+		if (Context.TargetActor.IsValid())
+		{
+			RequestBasicAttack(Context.TargetActor.Get(), Request.bIsHeldInput);
+		}
+		return;
+	}
+
+	if (Request.InputID != EAbilityInputID::None)
+	{
+		OwnerASC->AbilityLocalInputPressed((int32)Request.InputID);
 	}
 }
 
@@ -306,6 +327,45 @@ void UIsometricInputComponent::Server_RequestBasicAttack_Implementation(AActor* 
 void UIsometricInputComponent::Server_UpdateBasicAttack_Implementation(AActor* TargetActor)
 {
 	RequestBasicAttack(TargetActor);
+}
+
+FPendingAbilityActivationContext UIsometricInputComponent::BuildActivationContext(const FAbilityActivationRequest& Request) const
+{
+	FPendingAbilityActivationContext Context;
+	Context.Intent = Request.Intent;
+	Context.InputID = Request.InputID;
+	Context.bIsHeldInput = Request.bIsHeldInput;
+	Context.bUseActorTarget = Request.bUseActorTarget;
+	Context.HitResult = Request.HitResult;
+	Context.TargetActor = Request.TargetActor;
+
+	if (Context.bUseActorTarget && Context.TargetActor.IsValid())
+	{
+		Context.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromActor(Context.TargetActor.Get());
+	}
+	else
+	{
+		Context.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(Context.HitResult);
+	}
+
+	return Context;
+}
+
+void UIsometricInputComponent::SyncActivationContextToServer(const FPendingAbilityActivationContext& Context) const
+{
+	if (!OwnerCharacter || OwnerCharacter->GetLocalRole() >= ROLE_Authority)
+	{
+		return;
+	}
+
+	if (Context.bUseActorTarget)
+	{
+		OwnerCharacter->Server_SetAbilityTargetDataByActor(Context.TargetActor.Get());
+	}
+	else
+	{
+		OwnerCharacter->Server_SetAbilityTargetDataByHit(Context.HitResult);
+	}
 }
 
 

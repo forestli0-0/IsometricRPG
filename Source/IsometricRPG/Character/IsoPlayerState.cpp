@@ -469,8 +469,7 @@ TArray<FHUDBuffIconViewModel> AIsoPlayerState::BuildBuffViewModels(const FGamepl
             QueryTags.AddTag(DisplayTag);
             const FGameplayEffectQuery Query = FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(QueryTags);
 
-            TArray<FActiveGameplayEffectHandle> MatchingEffects;
-            ASC->GetActiveEffects(Query);
+            const TArray<FActiveGameplayEffectHandle> MatchingEffects = ASC->GetActiveEffects(Query);
 
             for (const FActiveGameplayEffectHandle& Handle : MatchingEffects)
             {
@@ -807,7 +806,22 @@ void AIsoPlayerState::HandleAbilityCooldownTriggered(const FGameplayAbilitySpecH
 
     if (UHUDRootWidget* HUD = ResolveHUDWidget())
     {
-        HUD->UpdateAbilityCooldown(FoundInfo->Slot, DurationSeconds, DurationSeconds);
+        float CooldownDuration = DurationSeconds;
+        float CooldownRemaining = DurationSeconds;
+
+        if (UClass* AbilityClass = FoundInfo->AbilityClass.Get())
+        {
+            if (const UGameplayAbility* AbilityCDO = AbilityClass->GetDefaultObject<UGameplayAbility>())
+            {
+                QueryCooldownState(AbilityCDO, CooldownDuration, CooldownRemaining);
+            }
+        }
+
+        HUD->UpdateAbilityCooldown(FoundInfo->Slot, CooldownDuration, CooldownRemaining);
+    }
+    else
+    {
+        bPendingUIUpdate = true;
     }
 }
 
@@ -823,6 +837,57 @@ const FEquippedAbilityInfo* AIsoPlayerState::FindEquippedInfoByHandle(const FGam
     }
 
     return nullptr;
+}
+
+bool AIsoPlayerState::QueryCooldownState(const UGameplayAbility* AbilityCDO, float& OutDuration, float& OutRemaining) const
+{
+    if (!AbilitySystemComponent || !AbilityCDO)
+    {
+        return false;
+    }
+
+    const FGameplayTagContainer* CooldownTags = AbilityCDO->GetCooldownTags();
+    if (!(CooldownTags && !CooldownTags->IsEmpty()))
+    {
+        return false;
+    }
+
+    const FGameplayEffectQuery Query = FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(*CooldownTags);
+    const TArray<FActiveGameplayEffectHandle> ActiveCooldownEffects = AbilitySystemComponent->GetActiveEffects(Query);
+    if (ActiveCooldownEffects.Num() == 0)
+    {
+        return false;
+    }
+
+    const float WorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+    float BestRemaining = -1.f;
+    float BestDuration = 0.f;
+
+    for (const FActiveGameplayEffectHandle& Handle : ActiveCooldownEffects)
+    {
+        const FActiveGameplayEffect* ActiveEffect = AbilitySystemComponent->GetActiveGameplayEffect(Handle);
+        if (!ActiveEffect)
+        {
+            continue;
+        }
+
+        const float Duration = ActiveEffect->GetDuration();
+        const float Remaining = ActiveEffect->GetTimeRemaining(WorldTime);
+        if (Remaining > BestRemaining)
+        {
+            BestRemaining = Remaining;
+            BestDuration = Duration;
+        }
+    }
+
+    if (BestRemaining <= 0.f)
+    {
+        return false;
+    }
+
+    OutDuration = BestDuration > 0.f ? BestDuration : BestRemaining;
+    OutRemaining = BestRemaining;
+    return true;
 }
 
 FHUDSkillSlotViewModel AIsoPlayerState::BuildSlotViewModel(const FEquippedAbilityInfo& Info) const
@@ -854,7 +919,6 @@ FHUDSkillSlotViewModel AIsoPlayerState::BuildSlotViewModel(const FEquippedAbilit
                 ViewModel.DisplayName = HeroCDO->GetAbilityDisplayNameText();
                 ViewModel.ResourceCost = HeroCDO->GetResourceCost();
                 ViewModel.CooldownDuration = HeroCDO->CooldownDuration;
-                ViewModel.CooldownRemaining = 0.f; // TODO: query ASC for active cooldowns
             }
             else
             {
@@ -865,6 +929,8 @@ FHUDSkillSlotViewModel AIsoPlayerState::BuildSlotViewModel(const FEquippedAbilit
             {
                 ViewModel.DisplayName = FText::FromName(AbilityClass->GetFName());
             }
+
+            QueryCooldownState(AbilityCDO, ViewModel.CooldownDuration, ViewModel.CooldownRemaining);
 
             FGameplayTagContainer AssetTags;
             AssetTags = AbilityCDO->GetAssetTags();

@@ -113,6 +113,10 @@ public:
 
     /** 供GameplayAbility在激活时调用，用于获取目标数据 */
     FGameplayAbilityTargetDataHandle GetAbilityTargetData() const;
+    void SetPendingAbilityActivationContext(const FPendingAbilityActivationContext& InContext);
+    const FPendingAbilityActivationContext& GetPendingAbilityActivationContext() const;
+    void ClearPendingAbilityActivationContext();
+    bool HasStoredTargetActor(const AActor* InTargetActor) const;
 
     // 客户端本地表现：用于能力阶段时同步动画与停止行走
     UFUNCTION(Client, Reliable)
@@ -136,4 +140,6 @@ protected:
 
     UPROPERTY(Transient)
     float RecentCharmExpireTime = -FLT_MAX;
+
+    FPendingAbilityActivationContext PendingAbilityActivationContext;
 };
