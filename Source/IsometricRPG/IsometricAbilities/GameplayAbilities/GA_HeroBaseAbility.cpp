@@ -13,6 +13,29 @@
 #include <Character/IsometricRPGCharacter.h>
 #include "Character/IsoPlayerState.h"
 
+namespace
+{
+FString DescribeTagContainer(const FGameplayTagContainer& Tags)
+{
+    TArray<FGameplayTag> TagArray;
+    Tags.GetGameplayTagArray(TagArray);
+
+    if (TagArray.Num() == 0)
+    {
+        return TEXT("(None)");
+    }
+
+    TArray<FString> TagStrings;
+    TagStrings.Reserve(TagArray.Num());
+    for (const FGameplayTag& Tag : TagArray)
+    {
+        TagStrings.Add(Tag.ToString());
+    }
+
+    return FString::Join(TagStrings, TEXT(", "));
+}
+}
+
 UGA_HeroBaseAbility::UGA_HeroBaseAbility()
 {
     InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
@@ -352,6 +375,7 @@ void UGA_HeroBaseAbility::DirectExecuteAbility(
     }
     if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
     {
+        LogCommitFailureDiagnostics(Handle, ActorInfo, ActivationInfo, TEXT("DirectExecute"));
         UE_LOG(LogTemp, Warning, TEXT("%s: 技能提交失败，可能是由于消耗或冷却问题。"), *GetName());
         CancelAbility(Handle, ActorInfo, ActivationInfo, true);
         return;
@@ -505,6 +529,7 @@ void UGA_HeroBaseAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHand
     }
     if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
     {
+        LogCommitFailureDiagnostics(Handle, ActorInfo, ActivationInfo, TEXT("OnTargetDataReady"));
         UE_LOG(LogTemp, Warning, TEXT("%s: 技能提交失败，可能是由于消耗或冷却问题。"), *GetName());
         CancelAbility(Handle, ActorInfo, ActivationInfo, true);
         return;
@@ -603,6 +628,87 @@ void UGA_HeroBaseAbility::NotifyCooldownTriggered(const FGameplayAbilitySpecHand
     {
         IsoPlayerState->HandleAbilityCooldownTriggered(Handle, CooldownDuration);
     }
+}
+
+void UGA_HeroBaseAbility::LogCommitFailureDiagnostics(
+    const FGameplayAbilitySpecHandle Handle,
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo ActivationInfo,
+    const TCHAR* Phase) const
+{
+    if (!ActorInfo)
+    {
+        return;
+    }
+
+    UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
+    if (!ASC)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s: CommitAbility failed at %s, ASC is null."), *GetName(), Phase);
+        return;
+    }
+
+    const UIsometricRPGAttributeSetBase* LocalAttributeSet = ASC->GetSet<UIsometricRPGAttributeSetBase>();
+    const float CurrentMana = LocalAttributeSet ? LocalAttributeSet->GetMana() : -1.f;
+    const float MaxMana = LocalAttributeSet ? LocalAttributeSet->GetMaxMana() : -1.f;
+
+    FGameplayTagContainer CostFailureTags;
+    const bool bCostOk = CheckCost(Handle, ActorInfo, &CostFailureTags);
+
+    FGameplayTagContainer CooldownFailureTags;
+    const bool bCooldownOk = CheckCooldown(Handle, ActorInfo, &CooldownFailureTags);
+
+    FGameplayTagContainer OwnedTags;
+    ASC->GetOwnedGameplayTags(OwnedTags);
+
+    FString CooldownTagsText = TEXT("(None)");
+    FString MatchedOwnedCooldownTagsText = TEXT("(None)");
+    if (const FGameplayTagContainer* CooldownTags = GetCooldownTags())
+    {
+        CooldownTagsText = DescribeTagContainer(*CooldownTags);
+
+        TArray<FGameplayTag> CooldownTagArray;
+        CooldownTags->GetGameplayTagArray(CooldownTagArray);
+
+        TArray<FGameplayTag> OwnedTagArray;
+        OwnedTags.GetGameplayTagArray(OwnedTagArray);
+
+        TArray<FString> MatchedOwnedTagStrings;
+        for (const FGameplayTag& OwnedTag : OwnedTagArray)
+        {
+            for (const FGameplayTag& CooldownTag : CooldownTagArray)
+            {
+                if (OwnedTag.MatchesTag(CooldownTag))
+                {
+                    MatchedOwnedTagStrings.AddUnique(OwnedTag.ToString());
+                    break;
+                }
+            }
+        }
+
+        if (MatchedOwnedTagStrings.Num() > 0)
+        {
+            MatchedOwnedCooldownTagsText = FString::Join(MatchedOwnedTagStrings, TEXT(", "));
+        }
+    }
+
+    UE_LOG(
+        LogTemp,
+        Warning,
+        TEXT("%s: CommitAbility failed at %s. CostOk=%s CooldownOk=%s Mana=%.2f/%.2f CostMagnitude=%.2f CooldownDuration=%.2f CooldownTags=[%s] MatchedOwnedCooldownTags=[%s] CostFailureTags=[%s] CooldownFailureTags=[%s] OwnedTags=[%s]"),
+        *GetName(),
+        Phase,
+        bCostOk ? TEXT("true") : TEXT("false"),
+        bCooldownOk ? TEXT("true") : TEXT("false"),
+        CurrentMana,
+        MaxMana,
+        GetResourceCost(),
+        CooldownDuration,
+        *CooldownTagsText,
+        *MatchedOwnedCooldownTagsText,
+        *DescribeTagContainer(CostFailureTags),
+        *DescribeTagContainer(CooldownFailureTags),
+        *DescribeTagContainer(OwnedTags));
 }
 
 // =================================================================================================================

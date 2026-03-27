@@ -191,6 +191,13 @@ protected:
 
     /** Pushes cooldown info to the owning player state for HUD updates. */
     void NotifyCooldownTriggered(const FGameplayAbilitySpecHandle& Handle, const FGameplayAbilityActorInfo* ActorInfo) const;
+
+    /** Logs detailed state when CommitAbility fails so runtime blockers are visible in logs. */
+    void LogCommitFailureDiagnostics(
+        const FGameplayAbilitySpecHandle Handle,
+        const FGameplayAbilityActorInfo* ActorInfo,
+        const FGameplayAbilityActivationInfo ActivationInfo,
+        const TCHAR* Phase) const;
 public:
     // WaitTargetData 任务的委托回调
     UFUNCTION()
