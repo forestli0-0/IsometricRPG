@@ -396,6 +396,7 @@ void AIsoPlayerState::OnAssetsLoadedForUI()
 
     EnsureAttributeDelegatesBound();
     EnsureGameplayTagDelegatesBound();
+    EnsureGameplayEffectDelegatesBound();
 
     if (!bUIInitialized)
     {
@@ -420,6 +421,7 @@ void AIsoPlayerState::OnUIInitialized()
     UE_LOG(LogTemp, Log, TEXT("UI initialized in PlayerState"));
     EnsureAttributeDelegatesBound();
     EnsureGameplayTagDelegatesBound();
+    EnsureGameplayEffectDelegatesBound();
     UpdateUIWhenReady();
 }
 
@@ -505,6 +507,7 @@ void AIsoPlayerState::UpdateUIWhenReady()
 {
     EnsureAttributeDelegatesBound();
     EnsureGameplayTagDelegatesBound();
+    EnsureGameplayEffectDelegatesBound();
 
     AIsometricPlayerController* PC = Cast<AIsometricPlayerController>(GetPlayerController());
     if (!PC) return;
@@ -660,6 +663,29 @@ void AIsoPlayerState::EnsureAttributeDelegatesBound()
     AttributeSet->OnExperienceChanged.AddDynamic(this, &AIsoPlayerState::HandleExperienceChanged);
     AttributeSet->OnLevelChanged.AddDynamic(this, &AIsoPlayerState::HandleLevelChanged);
 
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(UIsometricRPGAttributeSetBase::GetMaxHealthAttribute())
+        .AddUObject(this, &AIsoPlayerState::HandleVitalAttributeValueChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(UIsometricRPGAttributeSetBase::GetMaxManaAttribute())
+        .AddUObject(this, &AIsoPlayerState::HandleVitalAttributeValueChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(UIsometricRPGAttributeSetBase::GetAttackDamageAttribute())
+        .AddUObject(this, &AIsoPlayerState::HandleChampionStatAttributeValueChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(UIsometricRPGAttributeSetBase::GetAbilityPowerAttribute())
+        .AddUObject(this, &AIsoPlayerState::HandleChampionStatAttributeValueChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(UIsometricRPGAttributeSetBase::GetPhysicalDefenseAttribute())
+        .AddUObject(this, &AIsoPlayerState::HandleChampionStatAttributeValueChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(UIsometricRPGAttributeSetBase::GetMagicDefenseAttribute())
+        .AddUObject(this, &AIsoPlayerState::HandleChampionStatAttributeValueChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(UIsometricRPGAttributeSetBase::GetAttackSpeedAttribute())
+        .AddUObject(this, &AIsoPlayerState::HandleChampionStatAttributeValueChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(UIsometricRPGAttributeSetBase::GetCriticalChanceAttribute())
+        .AddUObject(this, &AIsoPlayerState::HandleChampionStatAttributeValueChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(UIsometricRPGAttributeSetBase::GetMoveSpeedAttribute())
+        .AddUObject(this, &AIsoPlayerState::HandleChampionStatAttributeValueChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(UIsometricRPGAttributeSetBase::GetTotalSkillPointAttribute())
+        .AddUObject(this, &AIsoPlayerState::HandleSkillPointAttributeValueChanged);
+    AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(UIsometricRPGAttributeSetBase::GetUnUsedSkillPointAttribute())
+        .AddUObject(this, &AIsoPlayerState::HandleSkillPointAttributeValueChanged);
+
     bAttributeDelegatesBound = true;
 }
 
@@ -671,14 +697,6 @@ void AIsoPlayerState::EnsureGameplayTagDelegatesBound()
     }
 
     TSet<FGameplayTag> ObservedTags;
-    for (const TPair<FGameplayTag, TSoftObjectPtr<UTexture2D>>& Pair : BuffIconMap)
-    {
-        if (Pair.Key.IsValid())
-        {
-            ObservedTags.Add(Pair.Key);
-        }
-    }
-
     static const FGameplayTag CombatTag = FGameplayTag::RequestGameplayTag(FName("State.Combat"), false);
     if (CombatTag.IsValid())
     {
@@ -692,6 +710,31 @@ void AIsoPlayerState::EnsureGameplayTagDelegatesBound()
     }
 
     bGameplayTagDelegatesBound = true;
+}
+
+void AIsoPlayerState::EnsureGameplayEffectDelegatesBound()
+{
+    if (bGameplayEffectDelegatesBound || !AbilitySystemComponent)
+    {
+        return;
+    }
+
+    AbilitySystemComponent->OnActiveGameplayEffectAddedDelegateToSelf.AddUObject(this, &AIsoPlayerState::HandleActiveGameplayEffectAdded);
+    AbilitySystemComponent->OnAnyGameplayEffectRemovedDelegate().AddUObject(this, &AIsoPlayerState::HandleActiveGameplayEffectRemoved);
+
+    const TArray<FActiveGameplayEffectHandle> ActiveEffectHandles = AbilitySystemComponent->GetActiveEffects(FGameplayEffectQuery());
+    for (const FActiveGameplayEffectHandle& ActiveHandle : ActiveEffectHandles)
+    {
+        if (const FActiveGameplayEffect* ActiveEffect = AbilitySystemComponent->GetActiveGameplayEffect(ActiveHandle))
+        {
+            if (ShouldTrackBuffEffect(*ActiveEffect))
+            {
+                BindBuffEffectDelegates(ActiveHandle);
+            }
+        }
+    }
+
+    bGameplayEffectDelegatesBound = true;
 }
 
 UHUDRootWidget* AIsoPlayerState::ResolveHUDWidget() const
@@ -789,6 +832,161 @@ void AIsoPlayerState::HandleObservedGameplayTagChanged(const FGameplayTag Change
     }
 
     bPendingUIUpdate = true;
+}
+
+void AIsoPlayerState::HandleVitalAttributeValueChanged(const FOnAttributeChangeData& ChangeData)
+{
+    if (!AttributeSet)
+    {
+        return;
+    }
+
+    if (UHUDRootWidget* HUD = ResolveHUDWidget())
+    {
+        RefreshVitals(*HUD);
+    }
+    else
+    {
+        bPendingUIUpdate = true;
+    }
+}
+
+void AIsoPlayerState::HandleChampionStatAttributeValueChanged(const FOnAttributeChangeData& ChangeData)
+{
+    if (!AttributeSet)
+    {
+        return;
+    }
+
+    if (UHUDRootWidget* HUD = ResolveHUDWidget())
+    {
+        RefreshChampionStats(*HUD);
+    }
+    else
+    {
+        bPendingUIUpdate = true;
+    }
+}
+
+void AIsoPlayerState::HandleSkillPointAttributeValueChanged(const FOnAttributeChangeData& ChangeData)
+{
+    if (!AttributeSet)
+    {
+        return;
+    }
+
+    if (UHUDRootWidget* HUD = ResolveHUDWidget())
+    {
+        RefreshGameplayTagPresentation(*HUD);
+    }
+    else
+    {
+        bPendingUIUpdate = true;
+    }
+}
+
+void AIsoPlayerState::HandleActiveGameplayEffectAdded(UAbilitySystemComponent* TargetASC, const FGameplayEffectSpec& SpecApplied, FActiveGameplayEffectHandle ActiveHandle)
+{
+    if (TargetASC != AbilitySystemComponent || !ShouldTrackBuffEffect(SpecApplied))
+    {
+        return;
+    }
+
+    BindBuffEffectDelegates(ActiveHandle);
+    RefreshBuffPresentationIfReady();
+}
+
+void AIsoPlayerState::HandleActiveGameplayEffectRemoved(const FActiveGameplayEffect& ActiveEffect)
+{
+    const bool bWasTracked = TrackedBuffEffectHandles.Remove(ActiveEffect.Handle) > 0;
+    if (!bWasTracked && !ShouldTrackBuffEffect(ActiveEffect))
+    {
+        return;
+    }
+
+    RefreshBuffPresentationIfReady();
+}
+
+void AIsoPlayerState::HandleTrackedGameplayEffectStackChanged(FActiveGameplayEffectHandle ActiveHandle, int32 NewStackCount, int32 PreviousStackCount)
+{
+    if (!TrackedBuffEffectHandles.Contains(ActiveHandle))
+    {
+        return;
+    }
+
+    RefreshBuffPresentationIfReady();
+}
+
+void AIsoPlayerState::HandleTrackedGameplayEffectTimeChanged(FActiveGameplayEffectHandle ActiveHandle, float NewStartTime, float NewDuration)
+{
+    if (!TrackedBuffEffectHandles.Contains(ActiveHandle))
+    {
+        return;
+    }
+
+    RefreshBuffPresentationIfReady();
+}
+
+void AIsoPlayerState::RefreshBuffPresentationIfReady()
+{
+    if (UHUDRootWidget* HUD = ResolveHUDWidget())
+    {
+        RefreshGameplayTagPresentation(*HUD);
+    }
+    else
+    {
+        bPendingUIUpdate = true;
+    }
+}
+
+bool AIsoPlayerState::ShouldTrackBuffEffect(const FGameplayEffectSpec& EffectSpec) const
+{
+    if (BuffIconMap.Num() == 0)
+    {
+        return false;
+    }
+
+    FGameplayTagContainer GrantedTags;
+    EffectSpec.GetAllGrantedTags(GrantedTags);
+    if (GrantedTags.IsEmpty())
+    {
+        return false;
+    }
+
+    for (const TPair<FGameplayTag, TSoftObjectPtr<UTexture2D>>& Pair : BuffIconMap)
+    {
+        if (Pair.Key.IsValid() && GrantedTags.HasTag(Pair.Key))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool AIsoPlayerState::ShouldTrackBuffEffect(const FActiveGameplayEffect& ActiveEffect) const
+{
+    return ShouldTrackBuffEffect(ActiveEffect.Spec);
+}
+
+void AIsoPlayerState::BindBuffEffectDelegates(FActiveGameplayEffectHandle ActiveHandle)
+{
+    if (!AbilitySystemComponent || !ActiveHandle.IsValid() || TrackedBuffEffectHandles.Contains(ActiveHandle))
+    {
+        return;
+    }
+
+    if (FOnActiveGameplayEffectStackChange* StackChangedDelegate = AbilitySystemComponent->OnGameplayEffectStackChangeDelegate(ActiveHandle))
+    {
+        StackChangedDelegate->AddUObject(this, &AIsoPlayerState::HandleTrackedGameplayEffectStackChanged);
+    }
+
+    if (FOnActiveGameplayEffectTimeChange* TimeChangedDelegate = AbilitySystemComponent->OnGameplayEffectTimeChangeDelegate(ActiveHandle))
+    {
+        TimeChangedDelegate->AddUObject(this, &AIsoPlayerState::HandleTrackedGameplayEffectTimeChanged);
+    }
+
+    TrackedBuffEffectHandles.Add(ActiveHandle);
 }
 
 void AIsoPlayerState::HandleAbilityCooldownTriggered(const FGameplayAbilitySpecHandle& SpecHandle, float DurationSeconds)

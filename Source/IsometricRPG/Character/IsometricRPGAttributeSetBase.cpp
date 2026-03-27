@@ -212,6 +212,7 @@ void UIsometricRPGAttributeSetBase::GetLifetimeReplicatedProps(TArray<FLifetimeP
     // Attack
     DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, AttackRange, COND_None, REPNOTIFY_Always);
     DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, AttackDamage, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, AbilityPower, COND_None, REPNOTIFY_Always);
     DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, AttackSpeed, COND_None, REPNOTIFY_Always);
     DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, CriticalChance, COND_None, REPNOTIFY_Always);
     DOREPLIFETIME_CONDITION_NOTIFY(UIsometricRPGAttributeSetBase, CriticalDamage, COND_None, REPNOTIFY_Always);

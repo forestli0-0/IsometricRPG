@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerState.h"
 #include "AbilitySystemInterface.h"
+#include "GameplayEffectTypes.h"
 #include "IsometricAbilities/Types/EquippedAbilityInfo.h"
 #include "UI/HUD/HUDViewModelTypes.h"
 #include "GameplayTagContainer.h"
@@ -15,6 +16,8 @@ class UIsometricRPGAttributeSetBase;
 class UGameplayAbility;
 class UHUDRootWidget;
 struct FHUDSkillSlotViewModel;
+struct FOnAttributeChangeData;
+struct FGameplayEffectSpec;
 /**
  * 
  */
@@ -105,8 +108,20 @@ private:
     void RefreshUtilityButtons(UHUDRootWidget& HUD) const;
     void EnsureAttributeDelegatesBound();
     void EnsureGameplayTagDelegatesBound();
+    void EnsureGameplayEffectDelegatesBound();
     UHUDRootWidget* ResolveHUDWidget() const;
     void HandleObservedGameplayTagChanged(const FGameplayTag ChangedTag, int32 NewCount);
+    void HandleVitalAttributeValueChanged(const FOnAttributeChangeData& ChangeData);
+    void HandleChampionStatAttributeValueChanged(const FOnAttributeChangeData& ChangeData);
+    void HandleSkillPointAttributeValueChanged(const FOnAttributeChangeData& ChangeData);
+    void HandleActiveGameplayEffectAdded(UAbilitySystemComponent* TargetASC, const FGameplayEffectSpec& SpecApplied, FActiveGameplayEffectHandle ActiveHandle);
+    void HandleActiveGameplayEffectRemoved(const FActiveGameplayEffect& ActiveEffect);
+    void HandleTrackedGameplayEffectStackChanged(FActiveGameplayEffectHandle ActiveHandle, int32 NewStackCount, int32 PreviousStackCount);
+    void HandleTrackedGameplayEffectTimeChanged(FActiveGameplayEffectHandle ActiveHandle, float NewStartTime, float NewDuration);
+    void RefreshBuffPresentationIfReady();
+    bool ShouldTrackBuffEffect(const FGameplayEffectSpec& EffectSpec) const;
+    bool ShouldTrackBuffEffect(const FActiveGameplayEffect& ActiveEffect) const;
+    void BindBuffEffectDelegates(FActiveGameplayEffectHandle ActiveHandle);
 
     UFUNCTION()
     void HandleHealthChanged(UIsometricRPGAttributeSetBase* AttributeSetChanged, float NewHealth);
@@ -122,6 +137,8 @@ private:
 
     bool bAttributeDelegatesBound = false;
     bool bGameplayTagDelegatesBound = false;
+    bool bGameplayEffectDelegatesBound = false;
+    TSet<FActiveGameplayEffectHandle> TrackedBuffEffectHandles;
 
     // --- Slot/Index 映射与工具 ---
     // 有些默认技能（如基础攻击/被动）可能不在技能栏显示，但仍需授予。
