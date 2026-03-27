@@ -97,6 +97,7 @@ void UGA_SkillShotAbility::ExecuteSkillShot(const FVector& Direction, const FVec
 		ActiveAimIndicator = nullptr;
 	}
 
+	// 基类只保留最小演示路径，实际技能应在子类中覆写该函数。
 	// If we have a projectile class, spawn the projectile
 	if (SkillShotProjectileClass)
 	{

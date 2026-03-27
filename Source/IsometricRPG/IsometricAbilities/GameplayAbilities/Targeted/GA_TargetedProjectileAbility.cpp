@@ -97,13 +97,28 @@ void UGA_TargetedProjectileAbility::GetLaunchTransform(const FGameplayAbilityTar
 		UE_LOG(LogTemp, Warning, TEXT("%s: GetLaunchTransform - SourceActor is null, defaulting OutLocation to ZeroVector."), *GetName());
 	}
 
+	if (SelfPawn)
+	{
+		OutRotation = SelfPawn->GetControlRotation();
+	}
+	else if (SourceActor)
+	{
+		OutRotation = SourceActor->GetActorRotation();
+	}
+	else
+	{
+		OutRotation = FRotator::ZeroRotator;
+		UE_LOG(LogTemp, Warning, TEXT("%s: GetLaunchTransform - SourceActor is null, defaulting OutRotation to ZeroRotator."), *GetName());
+	}
+
 	// 确定旋转方向（朝向目标）
 	FVector TargetLocation = FVector::ZeroVector;
 	bool bTargetFound = false;
-	if (inCurrentTargetDataHandle.Num() > 0)
+	if (inCurrentTargetDataHandle.IsValid(0))
 	{
 		// 优先使用命中点/指向点，其次再用目标Actor
-		const FHitResult* HitResult = inCurrentTargetDataHandle.Data[0]->GetHitResult();
+		const FGameplayAbilityTargetData* TargetData = inCurrentTargetDataHandle.Get(0);
+		const FHitResult* HitResult = TargetData ? TargetData->GetHitResult() : nullptr;
 		if (HitResult)
 		{
 			if (HitResult->bBlockingHit)
@@ -126,8 +141,8 @@ void UGA_TargetedProjectileAbility::GetLaunchTransform(const FGameplayAbilityTar
 
 		if (!bTargetFound)
 		{
-			auto TargetActor = inCurrentTargetDataHandle.Data[0]->GetActors().Num() > 0
-				? inCurrentTargetDataHandle.Data[0]->GetActors()[0].Get()
+			auto TargetActor = TargetData && TargetData->GetActors().Num() > 0
+				? TargetData->GetActors()[0].Get()
 				: nullptr;
 			if (TargetActor)
 			{
@@ -138,8 +153,7 @@ void UGA_TargetedProjectileAbility::GetLaunchTransform(const FGameplayAbilityTar
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("%s: GetLaunchTransform - No target data available in CurrentTargetDataHandle."), *GetName());
-		return;
+		UE_LOG(LogTemp, Warning, TEXT("%s: GetLaunchTransform - No target data available, using fallback rotation."), *GetName());
 	}
 
 	if (bTargetFound)
@@ -155,21 +169,8 @@ void UGA_TargetedProjectileAbility::GetLaunchTransform(const FGameplayAbilityTar
 		}
 		else
 		{
-			OutRotation = SourceActor ? SourceActor->GetActorRotation() : FRotator::ZeroRotator;
+			OutRotation = SourceActor ? SourceActor->GetActorRotation() : OutRotation;
 		}
-	}
-	else if (SelfPawn)
-	{
-		OutRotation = SelfPawn->GetControlRotation();
-	}
-	else if (SourceActor)
-	{
-		OutRotation = SourceActor->GetActorRotation();
-	}
-	else
-	{
-		OutRotation = FRotator::ZeroRotator;
-		UE_LOG(LogTemp, Warning, TEXT("%s: GetLaunchTransform - No target data and SourceActor is null, defaulting OutRotation to ZeroRotator."), *GetName());
 	}
 }
 

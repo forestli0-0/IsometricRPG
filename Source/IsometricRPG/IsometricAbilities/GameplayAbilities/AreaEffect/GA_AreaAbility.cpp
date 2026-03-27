@@ -27,6 +27,7 @@ void UGA_AreaAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, cons
 
    UE_LOG(LogTemp, Log, TEXT("%s: Executing area skill at location %s with radius %.2f."), *GetName(), *AoECenterLocation.ToString(), AreaRadius);
 
+   // 基类当前只负责解析 AoE 中心点，效果应用逻辑应由具体技能覆写。
    // Example: Find overlapping actors and apply an effect
    TArray<AActor*> OverlappingActors;
    TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;

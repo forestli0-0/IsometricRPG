@@ -268,9 +268,9 @@ void AProjectileBase::ApplyDamageEffects(AActor* TargetActor, const FHitResult& 
             EffectContext.AddHitResult(HitResult);
 
             FGameplayEffectSpecHandle SpecHandle = SourceAbilitySystemComponent->MakeOutgoingSpec(InitData.DamageEffect, 1.0f, EffectContext);
-			SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.Damage")), -InitData.DamageAmount); // 设置伤害量
-            if (SpecHandle.IsValid())
+            if (SpecHandle.IsValid() && SpecHandle.Data.IsValid())
             {
+			    SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.Damage")), -InitData.DamageAmount); // 设置伤害量
                 SourceAbilitySystemComponent->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
             }
         }
@@ -310,9 +310,9 @@ void AProjectileBase::HandleSplashDamage(const FVector& ImpactLocation, AActor* 
 
                     FGameplayEffectSpecHandle SpecHandle = SourceAbilitySystemComponent->MakeOutgoingSpec(InitData.SplashDamageEffect, 1.0f, EffectContext);
                     float SplashDamage = -InitData.DamageAmount * 0.3;
-                    SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.Damage")), SplashDamage);
-                    if (SpecHandle.IsValid())
+                    if (SpecHandle.IsValid() && SpecHandle.Data.IsValid())
                     {
+                        SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.Damage")), SplashDamage);
                         SourceAbilitySystemComponent->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
                     }
                 }
