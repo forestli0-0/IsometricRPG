@@ -83,16 +83,6 @@ void UGA_HeroBaseAbility::ActivateAbility(
         CancelAbility(Handle, ActorInfo, ActivationInfo, true);
         return;
     }
-    // 主动从角色身上拉取暂存的目标数据
-    CurrentTargetDataHandle = RPGCharacter->GetAbilityTargetData();
-
-    // 服务端校验客户端传来的目标数据合法性
-    if (ActorInfo->IsNetAuthority() && !ServerValidateTargetData(CurrentTargetDataHandle, ActorInfo))
-    {
-        UE_LOG(LogTemp, Warning, TEXT("%s: Server rejected client target data. Cancelling."), *GetName());
-        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
-        return;
-    }
 
     // 获取Avatar Actor
     AActor* SelfActor = GetAvatarActorFromActorInfo();
@@ -121,53 +111,216 @@ void UGA_HeroBaseAbility::ActivateAbility(
         return;
     }
 
-    // 根据技能是否需要目标选择来决定执行流程
+    CurrentTargetDataHandle = RPGCharacter->GetAbilityTargetData();
+
+    if (ShouldWaitForReplicatedTargetData(ActorInfo, ActivationInfo))
+    {
+        WaitForReplicatedTargetData(Handle, ActorInfo, ActivationInfo);
+        return;
+    }
+
+    SendInitialTargetDataToServer(Handle, ActorInfo, ActivationInfo);
+
+    if (ActorInfo->IsNetAuthority() && !ServerValidateTargetData(CurrentTargetDataHandle, ActorInfo))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s: Server rejected client target data. Cancelling."), *GetName());
+        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+        return;
+    }
+
+    ContinueAbilityActivation(Handle, ActorInfo, ActivationInfo);
+}
+
+void UGA_HeroBaseAbility::ContinueAbilityActivation(
+    const FGameplayAbilitySpecHandle Handle,
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo ActivationInfo)
+{
     if (RequiresTargetData())
     {
         const FGameplayAbilityTargetData* Data = CurrentTargetDataHandle.Get(0);
         bool bSuccessfullyFoundTarget = false;
-        // 情况一：目标是 Actor
         if (Data && Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_ActorArray::StaticStruct()))
         {
             const auto* ActorArrayData = static_cast<const FGameplayAbilityTargetData_ActorArray*>(Data);
             if (ActorArrayData && ActorArrayData->TargetActorArray.Num() > 0)
             {
-                auto TargetActor = ActorArrayData->TargetActorArray[0].Get();
-                if (TargetActor)
+                if (ActorArrayData->TargetActorArray[0].IsValid())
                 {
                     bSuccessfullyFoundTarget = true;
                 }
             }
         }
-        // 情况二：目标是射线检测点
         else if (Data && Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
         {
             const auto* HitResultData = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(Data);
             if (HitResultData && HitResultData->GetHitResult())
             {
-                auto TargetActor = Cast<APawn>(HitResultData->GetHitResult()->GetActor()); // 尝试获取被击中的Actor
-                if (TargetActor)
+                if (Cast<APawn>(HitResultData->GetHitResult()->GetActor()))
                 {
                     bSuccessfullyFoundTarget = true;
                 }
             }
         }
-		// 如果已经有目标数据，直接执行技能(比如按下技能时，鼠标已经指向了一个目标)
+
         if (bSuccessfullyFoundTarget)
         {
             OnTargetDataReady(CurrentTargetDataHandle);
         }
         else
         {
-            // 如果需要目标但数据为空（例如直接按Q但没点目标），则开始等待目标数据
             StartTargetSelection(Handle, ActorInfo, ActivationInfo);
         }
     }
     else
     {
-        // 不需要目标选择，直接执行技能
         DirectExecuteAbility(Handle, ActorInfo, ActivationInfo);
     }
+}
+
+bool UGA_HeroBaseAbility::ShouldWaitForReplicatedTargetData(
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo& ActivationInfo) const
+{
+    if (!RequiresTargetData() || !ActorInfo)
+    {
+        return false;
+    }
+
+    if (!ActorInfo->IsNetAuthority() || ActorInfo->IsLocallyControlled())
+    {
+        return false;
+    }
+
+    if (NetExecutionPolicy != EGameplayAbilityNetExecutionPolicy::LocalPredicted)
+    {
+        return false;
+    }
+
+    return ActivationInfo.GetActivationPredictionKey().IsValidKey();
+}
+
+void UGA_HeroBaseAbility::SendInitialTargetDataToServer(
+    const FGameplayAbilitySpecHandle Handle,
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo& ActivationInfo)
+{
+    if (!RequiresTargetData() || !ActorInfo || ActorInfo->IsNetAuthority() || !ActorInfo->IsLocallyControlled())
+    {
+        return;
+    }
+
+    if (!Handle.IsValid() || !CurrentTargetDataHandle.IsValid(0))
+    {
+        return;
+    }
+
+    UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
+    if (!ASC)
+    {
+        return;
+    }
+
+    const FPredictionKey ActivationPredictionKey = ActivationInfo.GetActivationPredictionKey();
+    if (!ActivationPredictionKey.IsValidKey())
+    {
+        return;
+    }
+
+    ASC->CallServerSetReplicatedTargetData(
+        Handle,
+        ActivationPredictionKey,
+        CurrentTargetDataHandle,
+        FGameplayTag(),
+        ASC->ScopedPredictionKey);
+}
+
+void UGA_HeroBaseAbility::WaitForReplicatedTargetData(
+    const FGameplayAbilitySpecHandle Handle,
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo& ActivationInfo)
+{
+    UAbilitySystemComponent* ASC = ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
+    if (!ASC || !Handle.IsValid())
+    {
+        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+        return;
+    }
+
+    CleanupReplicatedTargetDataDelegates();
+
+    const FPredictionKey ActivationPredictionKey = ActivationInfo.GetActivationPredictionKey();
+    ReplicatedTargetDataDelegateHandle = ASC->AbilityTargetDataSetDelegate(Handle, ActivationPredictionKey)
+        .AddUObject(this, &UGA_HeroBaseAbility::HandleReplicatedTargetDataReceived);
+    ReplicatedTargetDataCancelledDelegateHandle = ASC->AbilityTargetDataCancelledDelegate(Handle, ActivationPredictionKey)
+        .AddUObject(this, &UGA_HeroBaseAbility::HandleReplicatedTargetDataCancelled);
+
+    if (!ASC->CallReplicatedTargetDataDelegatesIfSet(Handle, ActivationPredictionKey))
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("%s: Waiting for replicated target data."), *GetName());
+    }
+}
+
+void UGA_HeroBaseAbility::CleanupReplicatedTargetDataDelegates()
+{
+    UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
+    if (ASC && CurrentSpecHandle.IsValid())
+    {
+        const FPredictionKey ActivationPredictionKey = CurrentActivationInfo.GetActivationPredictionKey();
+        if (ReplicatedTargetDataDelegateHandle.IsValid())
+        {
+            ASC->AbilityTargetDataSetDelegate(CurrentSpecHandle, ActivationPredictionKey).Remove(ReplicatedTargetDataDelegateHandle);
+        }
+        if (ReplicatedTargetDataCancelledDelegateHandle.IsValid())
+        {
+            ASC->AbilityTargetDataCancelledDelegate(CurrentSpecHandle, ActivationPredictionKey).Remove(ReplicatedTargetDataCancelledDelegateHandle);
+        }
+    }
+
+    ReplicatedTargetDataDelegateHandle.Reset();
+    ReplicatedTargetDataCancelledDelegateHandle.Reset();
+}
+
+void UGA_HeroBaseAbility::HandleReplicatedTargetDataReceived(const FGameplayAbilityTargetDataHandle& Data, FGameplayTag ActivationTag)
+{
+    UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
+    if (ASC && CurrentSpecHandle.IsValid())
+    {
+        ASC->ConsumeClientReplicatedTargetData(CurrentSpecHandle, CurrentActivationInfo.GetActivationPredictionKey());
+    }
+
+    CleanupReplicatedTargetDataDelegates();
+    CurrentTargetDataHandle = Data;
+
+    if (AIsometricRPGCharacter* RPGCharacter = Cast<AIsometricRPGCharacter>(GetAvatarActorFromActorInfo()))
+    {
+        FPendingAbilityActivationContext Context = RPGCharacter->GetPendingAbilityActivationContext();
+        Context.TargetData = Data;
+        RPGCharacter->SetPendingAbilityActivationContext(Context);
+    }
+
+    const FGameplayAbilityActorInfo* ActorInfo = GetCurrentActorInfo();
+    if (!ActorInfo)
+    {
+        CancelAbility(CurrentSpecHandle, ActorInfo, CurrentActivationInfo, true);
+        return;
+    }
+
+    if (!ServerValidateTargetData(CurrentTargetDataHandle, ActorInfo))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s: Server rejected replicated target data. Cancelling."), *GetName());
+        CancelAbility(CurrentSpecHandle, ActorInfo, CurrentActivationInfo, true);
+        return;
+    }
+
+    ContinueAbilityActivation(CurrentSpecHandle, ActorInfo, CurrentActivationInfo);
+}
+
+void UGA_HeroBaseAbility::HandleReplicatedTargetDataCancelled()
+{
+    CleanupReplicatedTargetDataDelegates();
+    UE_LOG(LogTemp, Warning, TEXT("%s: Replicated target data cancelled."), *GetName());
+    CancelAbility(CurrentSpecHandle, GetCurrentActorInfo(), CurrentActivationInfo, true);
 }
 
 bool UGA_HeroBaseAbility::CheckCost(
@@ -175,26 +328,37 @@ bool UGA_HeroBaseAbility::CheckCost(
     const FGameplayAbilityActorInfo* ActorInfo,
     OUT FGameplayTagContainer* OptionalRelevantTags) const
 {
-    // 获取AbilitySystemComponent
+    const bool bBaseCostOk = Super::CheckCost(Handle, ActorInfo, OptionalRelevantTags);
+    if (!bBaseCostOk)
+    {
+        return false;
+    }
+
+    if (CostMagnitude <= 0.f)
+    {
+        return true;
+    }
+
     UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
+    if (!ASC && ActorInfo)
+    {
+        ASC = ActorInfo->AbilitySystemComponent.Get();
+    }
+
     if (!ASC)
     {
-        UE_LOG(LogTemp, Error, TEXT("%s: AbilitySystemComponent is null in ActivateAbility."), *GetName());
+        UE_LOG(LogTemp, Error, TEXT("%s: AbilitySystemComponent is null in CheckCost."), *GetName());
         return false;
     }
 
-    // 获取属性集
-    auto AttriSet = const_cast<UIsometricRPGAttributeSetBase*>(ASC->GetSet<UIsometricRPGAttributeSetBase>());
-    if (!AttriSet)
+    const UIsometricRPGAttributeSetBase* LocalAttributeSet = ASC->GetSet<UIsometricRPGAttributeSetBase>();
+    if (!LocalAttributeSet)
     {
-        UE_LOG(LogTemp, Error, TEXT("%s: AttributeSet is null in ActivateAbility."), *GetName());
+        UE_LOG(LogTemp, Error, TEXT("%s: AttributeSet is null in CheckCost."), *GetName());
         return false;
     }
-    // 获取当前资源值（比如 Mana）
-    float CurrentMana = AttriSet->GetMana();
 
-    // 假设我们从 Ability 属性里设定 CostMagnitude
-    if (CurrentMana < CostMagnitude)
+    if (LocalAttributeSet->GetMana() < CostMagnitude)
     {
         if (OptionalRelevantTags)
         {
@@ -212,7 +376,6 @@ void UGA_HeroBaseAbility::ApplyCost(
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo ActivationInfo) const
 {
-    // 使用自定义消耗效果类或退回到基类实现
     if (CostGameplayEffectClass)
     {
         UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
@@ -235,18 +398,10 @@ void UGA_HeroBaseAbility::ApplyCost(
                 ASC->ApplyGameplayEffectSpecToSelf(GESpec);
                 return;
 			}
-            if (SpecHandle.Data.IsValid())
-            {
-                ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-                return;
-            }
         }
     }
-    else
-    {
-        // 退回到基类实现
-        Super::ApplyCost(Handle, ActorInfo, ActivationInfo);
-    }
+
+    Super::ApplyCost(Handle, ActorInfo, ActivationInfo);
 }
 
 void UGA_HeroBaseAbility::ApplyCooldown(
@@ -295,6 +450,7 @@ void UGA_HeroBaseAbility::EndAbility(
     bool bWasCancelled)
 {
     UE_LOG(LogTemp, Display, TEXT("%s: EndAbility called. bWasCancelled=%s"), *GetName(), bWasCancelled ? TEXT("true") : TEXT("false"));
+    CleanupReplicatedTargetDataDelegates();
     if (MontageTask)
     {
         if (MontageTask->IsActive())
@@ -586,6 +742,8 @@ void UGA_HeroBaseAbility::CancelAbility(
     UE_LOG(LogTemp, Warning, TEXT("%s: CancelAbility invoked. Replicate=%s. MontageTaskActive=%s"),
         *GetName(), bReplicateCancelAbility ? TEXT("true") : TEXT("false"),
         (MontageTask && MontageTask->IsActive()) ? TEXT("true") : TEXT("false"));
+
+    CleanupReplicatedTargetDataDelegates();
 
     if (MontageTask && MontageTask->IsActive())
     {

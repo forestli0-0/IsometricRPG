@@ -217,10 +217,30 @@ protected:
     UPROPERTY()
     class UAbilityTask_PlayMontageAndWait* MontageTask;
     void OnMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+    void ContinueAbilityActivation(
+        const FGameplayAbilitySpecHandle Handle,
+        const FGameplayAbilityActorInfo* ActorInfo,
+        const FGameplayAbilityActivationInfo ActivationInfo);
+    bool ShouldWaitForReplicatedTargetData(
+        const FGameplayAbilityActorInfo* ActorInfo,
+        const FGameplayAbilityActivationInfo& ActivationInfo) const;
+    void SendInitialTargetDataToServer(
+        const FGameplayAbilitySpecHandle Handle,
+        const FGameplayAbilityActorInfo* ActorInfo,
+        const FGameplayAbilityActivationInfo& ActivationInfo);
+    void WaitForReplicatedTargetData(
+        const FGameplayAbilitySpecHandle Handle,
+        const FGameplayAbilityActorInfo* ActorInfo,
+        const FGameplayAbilityActivationInfo& ActivationInfo);
+    void CleanupReplicatedTargetDataDelegates();
+    void HandleReplicatedTargetDataReceived(const FGameplayAbilityTargetDataHandle& Data, FGameplayTag ActivationTag);
+    void HandleReplicatedTargetDataCancelled();
 
     FGameplayAbilityActivationInfo CurrentActivationInfo;
 
     FGameplayAbilityTargetDataHandle CurrentTargetDataHandle;
+    FDelegateHandle ReplicatedTargetDataDelegateHandle;
+    FDelegateHandle ReplicatedTargetDataCancelledDelegateHandle;
 protected:
         virtual void PostInitProperties() override;
 
