@@ -25,8 +25,8 @@ UGA_Death::UGA_Death()
     TriggerData.TriggerSource = EGameplayAbilityTriggerSource::GameplayEvent;
     AbilityTriggers.Add(TriggerData);
 
-    // 为了防止这个技能被手动激活，可以清空AbilityTags
-    AbilityTags.Reset();
+    // 为了防止这个技能被手动激活，清空 AssetTags
+    SetAssetTags(FGameplayTagContainer());
 }
 
 

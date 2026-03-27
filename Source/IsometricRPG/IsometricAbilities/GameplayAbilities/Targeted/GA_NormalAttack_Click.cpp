@@ -30,7 +30,9 @@ UGA_NormalAttack_Click::UGA_NormalAttack_Click()
         checkNoEntry();
     }
     // 设置标签/触发
-    AbilityTags.AddTag(FGameplayTag::RequestGameplayTag("Ability.Player.DirBasicAttack"));
+    FGameplayTagContainer AssetTagContainer = GetAssetTags();
+    AssetTagContainer.AddTag(FGameplayTag::RequestGameplayTag("Ability.Player.DirBasicAttack"));
+    SetAssetTags(AssetTagContainer);
 
     ActivationOwnedTags.AddTag(FGameplayTag::RequestGameplayTag("Ability.Player.DirBasicAttack"));
 

@@ -37,7 +37,9 @@ UGA_HeroMeleeAttackAbility::UGA_HeroMeleeAttackAbility()
         checkNoEntry();
     }
     // 设置触发条件
-    AbilityTags.AddTag(FGameplayTag::RequestGameplayTag("Ability.Player.BasicAttack"));
+    FGameplayTagContainer AssetTagContainer = GetAssetTags();
+    AssetTagContainer.AddTag(FGameplayTag::RequestGameplayTag("Ability.Player.BasicAttack"));
+    SetAssetTags(AssetTagContainer);
 
     ActivationOwnedTags.AddTag(FGameplayTag::RequestGameplayTag("Ability.Player.BasicAttack"));
 

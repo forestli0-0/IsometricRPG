@@ -38,7 +38,9 @@ UGA_DashStrike::UGA_DashStrike()
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 
 	// 设置标签
-	AbilityTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Player.DashStrike")));
+	FGameplayTagContainer AssetTagContainer = GetAssetTags();
+	AssetTagContainer.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Player.DashStrike")));
+	SetAssetTags(AssetTagContainer);
 	ActivationOwnedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Dashing")));
 	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Dead")));
 	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Stunned")));
@@ -135,7 +137,7 @@ void UGA_DashStrike::ExecuteDash(const FVector& DashDirection, const FVector& St
 			if (NiagaraComp)
 			{
 				// dash 朝向交给 Niagara，用于驱动拖尾或锥形特效。
-				NiagaraComp->SetNiagaraVariableVec3(TEXT("Cone Axis"), CurrentDashDirection * (-10.f));
+				NiagaraComp->SetVariableVec3(FName(TEXT("Cone Axis")), CurrentDashDirection * (-10.f));
 			}
 		}
 	}
