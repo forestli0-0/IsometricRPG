@@ -62,4 +62,8 @@ public:
 	// 计算技能伤害
 	UFUNCTION(BlueprintCallable, Category = "Orb of Deception")
 	float CalculateDamage() const;
-}; 
+
+#if WITH_EDITOR
+	virtual EDataValidationResult IsDataValid(FDataValidationContext& Context) const override;
+#endif
+};

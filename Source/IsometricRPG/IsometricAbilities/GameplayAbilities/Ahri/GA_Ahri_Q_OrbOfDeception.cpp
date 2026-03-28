@@ -71,3 +71,68 @@ float UGA_Ahri_Q_OrbOfDeception::CalculateDamage() const
 
 	return TotalDamage;
 }
+
+#if WITH_EDITOR
+EDataValidationResult UGA_Ahri_Q_OrbOfDeception::IsDataValid(FDataValidationContext& Context) const
+{
+	EDataValidationResult Result = Super::IsDataValid(Context);
+
+	if (!GetClass()->HasAnyClassFlags(CLASS_CompiledFromBlueprint))
+	{
+		return Result;
+	}
+
+	const TSubclassOf<AProjectileBase> ConfiguredProjectileClass = GetConfiguredProjectileClass();
+	const UClass* ConfiguredProjectileUClass = ConfiguredProjectileClass.Get();
+	const FString ExpectedProjectileClassPath = TEXT("/Game/Blueprints/Projectiles/BP_Projectile_AhriQ.BP_Projectile_AhriQ_C");
+	if (!ConfiguredProjectileUClass || ConfiguredProjectileUClass->GetPathName() != ExpectedProjectileClassPath)
+	{
+		Context.AddError(FText::Format(
+			NSLOCTEXT("AhriOrbOfDeception", "WrongProjectileClass", "{0}: Ahri Q must use BP_Projectile_AhriQ as its projectile class."),
+			FText::FromString(GetName())));
+		Result = EDataValidationResult::Invalid;
+	}
+
+	const UGA_Ahri_Q_OrbOfDeception* SuperDefaults = Cast<UGA_Ahri_Q_OrbOfDeception>(GetClass()->GetSuperClass()->GetDefaultObject());
+	if (!SuperDefaults)
+	{
+		return Result;
+	}
+
+	const auto AddLockedFieldError = [&](const TCHAR* FieldName)
+	{
+		Context.AddError(FText::Format(
+			NSLOCTEXT("AhriOrbOfDeception", "LockedProjectileDataOverride", "{0}: ProjectileData.{1} should stay on the Ahri Q native defaults."),
+			FText::FromString(GetName()),
+			FText::FromString(FieldName)));
+		Result = EDataValidationResult::Invalid;
+	};
+
+	if (!FMath::IsNearlyEqual(ProjectileData.MaxFlyDistance, SuperDefaults->ProjectileData.MaxFlyDistance))
+	{
+		AddLockedFieldError(TEXT("MaxFlyDistance"));
+	}
+
+	if (!FMath::IsNearlyEqual(ProjectileData.Lifespan, SuperDefaults->ProjectileData.Lifespan))
+	{
+		AddLockedFieldError(TEXT("Lifespan"));
+	}
+
+	if (ProjectileData.DamageEffect != SuperDefaults->ProjectileData.DamageEffect)
+	{
+		AddLockedFieldError(TEXT("DamageEffect"));
+	}
+
+	if (ProjectileData.SplashDamageEffect != SuperDefaults->ProjectileData.SplashDamageEffect)
+	{
+		AddLockedFieldError(TEXT("SplashDamageEffect"));
+	}
+
+	if (ProjectileData.VisualEffect != SuperDefaults->ProjectileData.VisualEffect)
+	{
+		AddLockedFieldError(TEXT("VisualEffect"));
+	}
+
+	return Result;
+}
+#endif
