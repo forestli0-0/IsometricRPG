@@ -29,6 +29,8 @@ AProjectileBase::AProjectileBase()
 
     VisualEffectComp = CreateDefaultSubobject<UNiagaraComponent>(TEXT("VisualEffectComp"));
     VisualEffectComp->SetupAttachment(RootComponent);
+    VisualEffectComp->SetAutoActivate(false);
+    VisualEffectComp->SetAutoDestroy(false);
 
     ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovementComp"));
     ProjectileMovement->UpdatedComponent = CollisionComp;
@@ -61,29 +63,17 @@ void AProjectileBase::OnRep_InitData()
         ProjectileMovement->MaxSpeed = InitData.MaxSpeed > 0 ? InitData.MaxSpeed : InitData.InitialSpeed;
         ProjectileMovement->ProjectileGravityScale = InitData.GravityScale;
         ProjectileMovement->bShouldBounce = InitData.bShouldBounce;
+
+        if (ProjectileMovement->Velocity.IsZero() && ProjectileMovement->InitialSpeed > 0.f)
+        {
+            const FRotator CurrentActorRotation = GetActorRotation();
+            ProjectileMovement->Velocity = CurrentActorRotation.Vector() * ProjectileMovement->InitialSpeed;
+        }
     }
 
     ApplyHomingConfig();
 
-    // 生成视觉特效
-    if (InitData.VisualEffect)
-    {
-        // 清理旧的（如果有）- 这里简单起见直接生成新的，通常 InitData 只会设置一次
-        if (VisualEffectComp)
-        {
-             VisualEffectComp->Deactivate();
-        }
-        
-        UNiagaraFunctionLibrary::SpawnSystemAttached(
-            InitData.VisualEffect,
-            RootComponent,
-            NAME_None,
-            FVector::ZeroVector,
-            FRotator::ZeroRotator,
-            EAttachLocation::KeepRelativeOffset,
-            true // 自动销毁
-        );
-    }
+    RefreshVisualEffect();
 
 
     // 播放飞行音效
@@ -123,27 +113,8 @@ void AProjectileBase::InitializeProjectile(const UGameplayAbility* InSourceAbili
 
     ApplyHomingConfig();
 
-    if (InitData.VisualEffect)
-    {
-        if (VisualEffectComp)
-        {
-            VisualEffectComp->Deactivate();
-        }
+    RefreshVisualEffect();
 
-        UNiagaraFunctionLibrary::SpawnSystemAttached(
-            InitData.VisualEffect,
-            RootComponent,
-            NAME_None,
-            FVector::ZeroVector,
-            FRotator::ZeroRotator,
-            EAttachLocation::KeepRelativeOffset,
-            true // 自动销毁
-        );
-    }
-    else if (VisualEffectComp)
-    {
-        VisualEffectComp->Deactivate();
-    }
     if (FlyingSoundComp && InitData.FlyingSound)
     {
         FlyingSoundComp->SetSound(InitData.FlyingSound);
@@ -200,6 +171,7 @@ void AProjectileBase::Tick(float DeltaTime)
 void AProjectileBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     GetWorldTimerManager().ClearTimer(TimerHandle_Lifespan);
+    StopVisualEffect(true);
     if (FlyingSoundComp && FlyingSoundComp->IsPlaying())
     {
         FlyingSoundComp->Stop();
@@ -391,6 +363,53 @@ void AProjectileBase::ApplyHomingConfig()
         ProjectileMovement->HomingTargetComponent = nullptr;
         ProjectileMovement->HomingAccelerationMagnitude = 0.f;
     }
+}
+
+void AProjectileBase::RefreshVisualEffect()
+{
+    if (VisualEffectComp)
+    {
+        VisualEffectComp->DeactivateImmediate();
+        VisualEffectComp->SetAsset(nullptr);
+    }
+
+    StopVisualEffect(true);
+
+    if (!InitData.VisualEffect || !RootComponent)
+    {
+        return;
+    }
+
+    SpawnedVisualEffectComp = UNiagaraFunctionLibrary::SpawnSystemAttached(
+        InitData.VisualEffect,
+        RootComponent,
+        NAME_None,
+        FVector::ZeroVector,
+        FRotator::ZeroRotator,
+        EAttachLocation::KeepRelativeOffset,
+        false,
+        true
+    );
+}
+
+void AProjectileBase::StopVisualEffect(bool bImmediate)
+{
+    if (!SpawnedVisualEffectComp)
+    {
+        return;
+    }
+
+    if (bImmediate)
+    {
+        SpawnedVisualEffectComp->DeactivateImmediate();
+    }
+    else
+    {
+        SpawnedVisualEffectComp->Deactivate();
+    }
+
+    SpawnedVisualEffectComp->DestroyComponent();
+    SpawnedVisualEffectComp = nullptr;
 }
 
 void AProjectileBase::StartReturnToOwner()

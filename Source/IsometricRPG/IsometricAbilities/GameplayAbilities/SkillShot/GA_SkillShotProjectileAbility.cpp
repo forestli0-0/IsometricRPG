@@ -2,16 +2,40 @@
 
 #include "GA_SkillShotProjectileAbility.h"
 #include "AbilitySystemComponent.h"
+#include "Misc/DataValidation.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/Actor.h"
 #include "Engine/World.h"
 #include "IsometricAbilities/Projectiles/AProjectileBase.h"
 #include "NiagaraActor.h"
+#include "UObject/UnrealType.h"
+
+namespace
+{
+const UGA_SkillShotProjectileAbility* GetSuperProjectileDefaults(const UGA_SkillShotProjectileAbility* Ability)
+{
+	if (!Ability)
+	{
+		return nullptr;
+	}
+
+	for (UClass* SuperClass = Ability->GetClass()->GetSuperClass(); SuperClass; SuperClass = SuperClass->GetSuperClass())
+	{
+		if (const UGA_SkillShotProjectileAbility* SuperDefaults = Cast<UGA_SkillShotProjectileAbility>(SuperClass->GetDefaultObject()))
+		{
+			return SuperDefaults;
+		}
+	}
+
+	return nullptr;
+}
+}
 
 UGA_SkillShotProjectileAbility::UGA_SkillShotProjectileAbility()
 {
 	// 设置默认值
-	ProjectileClass = AProjectileBase::StaticClass();
+	SkillShotProjectileClass = AProjectileBase::StaticClass();
+	ProjectileClass = nullptr;
 	MuzzleSocketName = FName("Muzzle");
 }
 
@@ -24,9 +48,24 @@ void UGA_SkillShotProjectileAbility::ExecuteSkillShot(const FVector& Direction, 
 		ActiveAimIndicator = nullptr;
 	}
 
+	const TSubclassOf<AProjectileBase> ConfiguredProjectileClass = GetConfiguredProjectileClass();
+
 	// 生成投射物
-	if (ProjectileClass)
+	if (ConfiguredProjectileClass)
 	{
+		const FGameplayAbilityActorInfo* ActorInfo = GetCurrentActorInfo();
+		if (!ActorInfo)
+		{
+			UE_LOG(LogTemp, Error, TEXT("%s: Missing ActorInfo when executing skill-shot projectile ability."), *GetName());
+			return;
+		}
+
+		if (!ActorInfo->IsNetAuthority())
+		{
+			UE_LOG(LogTemp, Verbose, TEXT("%s: Skipping projectile spawn on non-authority instance; waiting for replicated projectile."), *GetName());
+			return;
+		}
+
 		AActor* SourceActor = GetAvatarActorFromActorInfo();
 		APawn* SourcePawn = Cast<APawn>(SourceActor);
 		UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo();
@@ -49,7 +88,7 @@ void UGA_SkillShotProjectileAbility::ExecuteSkillShot(const FVector& Direction, 
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("%s: No ProjectileClass set for SkillShot projectile ability"), *GetName());
+		UE_LOG(LogTemp, Warning, TEXT("%s: No projectile class configured for skill-shot projectile ability"), *GetName());
 		// 调用父类的默认实现（线性追踪）
 		Super::ExecuteSkillShot(Direction, StartLocation);
 	}
@@ -109,9 +148,10 @@ AProjectileBase* UGA_SkillShotProjectileAbility::SpawnProjectile(
 	APawn* SourcePawn,
 	UAbilitySystemComponent* SourceASC)
 {
-	if (!ProjectileClass)
+	const TSubclassOf<AProjectileBase> ConfiguredProjectileClass = GetConfiguredProjectileClass();
+	if (!ConfiguredProjectileClass)
 	{
-		UE_LOG(LogTemp, Error, TEXT("%s: ProjectileClass is not set in SpawnProjectile."), *GetName());
+		UE_LOG(LogTemp, Error, TEXT("%s: Skill-shot projectile class is not set in SpawnProjectile."), *GetName());
 		return nullptr;
 	}
 
@@ -130,7 +170,7 @@ AProjectileBase* UGA_SkillShotProjectileAbility::SpawnProjectile(
 
 	// 生成投射物
 	AProjectileBase* SpawnedProjectile = World->SpawnActor<AProjectileBase>(
-		ProjectileClass, 
+		ConfiguredProjectileClass, 
 		SpawnLocation, 
 		SpawnRotation, 
 		SpawnParams);
@@ -143,7 +183,7 @@ AProjectileBase* UGA_SkillShotProjectileAbility::SpawnProjectile(
 		
 		UE_LOG(LogTemp, Log, TEXT("%s: Successfully spawned SkillShot projectile of class %s at location %s with rotation %s."), 
 			*GetName(), 
-			*ProjectileClass->GetName(), 
+			*ConfiguredProjectileClass->GetName(), 
 			*SpawnLocation.ToString(), 
 			*SpawnRotation.ToString());
 	}
@@ -151,10 +191,73 @@ AProjectileBase* UGA_SkillShotProjectileAbility::SpawnProjectile(
 	{
 		UE_LOG(LogTemp, Error, TEXT("%s: Failed to spawn SkillShot projectile of class %s at location %s with rotation %s."), 
 			*GetName(), 
-			*ProjectileClass->GetName(), 
+			*ConfiguredProjectileClass->GetName(), 
 			*SpawnLocation.ToString(), 
 			*SpawnRotation.ToString());
 	}
 	
 	return SpawnedProjectile;
+}
+
+void UGA_SkillShotProjectileAbility::PostLoad()
+{
+	Super::PostLoad();
+	SynchronizeProjectileClassFields();
+}
+
+#if WITH_EDITOR
+void UGA_SkillShotProjectileAbility::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+	SynchronizeProjectileClassFields();
+}
+
+EDataValidationResult UGA_SkillShotProjectileAbility::IsDataValid(FDataValidationContext& Context) const
+{
+	EDataValidationResult Result = Super::IsDataValid(Context);
+	const TSubclassOf<AProjectileBase> ConfiguredProjectileClass = GetConfiguredProjectileClass();
+
+	if (!ConfiguredProjectileClass)
+	{
+		Context.AddError(FText::Format(
+			NSLOCTEXT("SkillShotProjectileAbility", "MissingProjectileClass", "{0}: no projectile class is configured."),
+			FText::FromString(GetName())));
+		Result = EDataValidationResult::Invalid;
+	}
+
+	if (ProjectileClass && SkillShotProjectileClass && ProjectileClass != SkillShotProjectileClass)
+	{
+		Context.AddError(FText::Format(
+			NSLOCTEXT("SkillShotProjectileAbility", "ConflictingProjectileClass", "{0}: legacy ProjectileClass and SkillShotProjectileClass point to different projectile classes."),
+			FText::FromString(GetName())));
+		Result = EDataValidationResult::Invalid;
+	}
+
+	return Result;
+}
+#endif
+
+TSubclassOf<AProjectileBase> UGA_SkillShotProjectileAbility::GetConfiguredProjectileClass() const
+{
+	return SkillShotProjectileClass ? SkillShotProjectileClass : ProjectileClass;
+}
+
+void UGA_SkillShotProjectileAbility::SynchronizeProjectileClassFields()
+{
+	const UGA_SkillShotProjectileAbility* SuperDefaults = GetSuperProjectileDefaults(this);
+	const TSubclassOf<AProjectileBase> SuperProjectileClass = SuperDefaults ? SuperDefaults->SkillShotProjectileClass : nullptr;
+	const bool bCanonicalUsesInheritedDefault = !SkillShotProjectileClass || SkillShotProjectileClass == SuperProjectileClass;
+
+	if (ProjectileClass)
+	{
+		if (bCanonicalUsesInheritedDefault)
+		{
+			SkillShotProjectileClass = ProjectileClass;
+		}
+
+		if (SkillShotProjectileClass == ProjectileClass)
+		{
+			ProjectileClass = nullptr;
+		}
+	}
 }
