@@ -153,6 +153,15 @@ protected:
         const FGameplayAbilityActorInfo* ActorInfo,
         const FGameplayAbilityActivationInfo ActivationInfo) const override;
 
+    /** Builds the cost GE spec and injects project-specific SetByCaller values. */
+    FGameplayEffectSpecHandle MakeCostGameplayEffectSpecHandle(
+        const FGameplayAbilitySpecHandle Handle,
+        const FGameplayAbilityActorInfo* ActorInfo,
+        const FGameplayAbilityActivationInfo ActivationInfo) const;
+
+    /** Resolves mana cost from a built GE spec for pre-commit checks. */
+    float ResolveManaCostFromSpec(const FGameplayEffectSpec& CostSpec) const;
+
     //=========================================
     // 辅助方法和任务回调
     //=========================================

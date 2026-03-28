@@ -34,6 +34,12 @@ FString DescribeTagContainer(const FGameplayTagContainer& Tags)
 
     return FString::Join(TagStrings, TEXT(", "));
 }
+
+const FGameplayTag& GetCostMagnitudeTag()
+{
+    static const FGameplayTag CostMagnitudeTag = FGameplayTag::RequestGameplayTag(TEXT("Data.Cost.Magnitude"));
+    return CostMagnitudeTag;
+}
 }
 
 UGA_HeroBaseAbility::UGA_HeroBaseAbility()
@@ -328,17 +334,6 @@ bool UGA_HeroBaseAbility::CheckCost(
     const FGameplayAbilityActorInfo* ActorInfo,
     OUT FGameplayTagContainer* OptionalRelevantTags) const
 {
-    const bool bBaseCostOk = Super::CheckCost(Handle, ActorInfo, OptionalRelevantTags);
-    if (!bBaseCostOk)
-    {
-        return false;
-    }
-
-    if (CostMagnitude <= 0.f)
-    {
-        return true;
-    }
-
     UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
     if (!ASC && ActorInfo)
     {
@@ -351,6 +346,25 @@ bool UGA_HeroBaseAbility::CheckCost(
         return false;
     }
 
+    const FGameplayEffectSpecHandle CostSpecHandle = MakeCostGameplayEffectSpecHandle(Handle, ActorInfo, FGameplayAbilityActivationInfo());
+    if (!CostSpecHandle.Data.IsValid())
+    {
+        if (!CostGameplayEffectClass)
+        {
+            UE_LOG(LogTemp, Error, TEXT("%s: CostGameplayEffectClass is not configured."), *GetName());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("%s: Failed to build cost GE spec from %s."), *GetName(), *GetNameSafe(CostGameplayEffectClass));
+        }
+
+        if (OptionalRelevantTags)
+        {
+            OptionalRelevantTags->AddTag(UAbilitySystemGlobals::Get().ActivateFailCostTag);
+        }
+        return false;
+    }
+
     const UIsometricRPGAttributeSetBase* LocalAttributeSet = ASC->GetSet<UIsometricRPGAttributeSetBase>();
     if (!LocalAttributeSet)
     {
@@ -358,7 +372,8 @@ bool UGA_HeroBaseAbility::CheckCost(
         return false;
     }
 
-    if (LocalAttributeSet->GetMana() < CostMagnitude)
+    const float ResolvedManaCost = ResolveManaCostFromSpec(*CostSpecHandle.Data.Get());
+    if (LocalAttributeSet->GetMana() < ResolvedManaCost)
     {
         if (OptionalRelevantTags)
         {
@@ -376,32 +391,27 @@ void UGA_HeroBaseAbility::ApplyCost(
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo ActivationInfo) const
 {
-    if (CostGameplayEffectClass)
+    UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
+    if (!ASC && ActorInfo)
     {
-        UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
-        if (ASC)
-        {
-            FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CostGameplayEffectClass, GetAbilityLevel());
-            if (SpecHandle.Data.IsValid())
-            {
-                FGameplayEffectSpec& GESpec = *SpecHandle.Data.Get();
-                
-                // 寻找消耗标签
-                FGameplayTag CostTag = FGameplayTag::RequestGameplayTag(TEXT("Data.Cost.Magnitude"));
-                if (CostTag.IsValid())
-                {
-                    // 设置消耗值
-                    GESpec.SetSetByCallerMagnitude(CostTag, -CostMagnitude);
-                }
-                
-                // 应用消耗效果
-                ASC->ApplyGameplayEffectSpecToSelf(GESpec);
-                return;
-			}
-        }
+        ASC = ActorInfo->AbilitySystemComponent.Get();
     }
 
-    Super::ApplyCost(Handle, ActorInfo, ActivationInfo);
+    const FGameplayEffectSpecHandle CostSpecHandle = MakeCostGameplayEffectSpecHandle(Handle, ActorInfo, ActivationInfo);
+    if (ASC && CostSpecHandle.Data.IsValid())
+    {
+        ASC->ApplyGameplayEffectSpecToSelf(*CostSpecHandle.Data.Get(), ActivationInfo.GetActivationPredictionKey());
+        return;
+    }
+
+    if (!CostGameplayEffectClass)
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: CostGameplayEffectClass is not configured."), *GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: Failed to apply cost because cost GE spec could not be built from %s."), *GetName(), *GetNameSafe(CostGameplayEffectClass));
+    }
 }
 
 void UGA_HeroBaseAbility::ApplyCooldown(
@@ -786,6 +796,65 @@ void UGA_HeroBaseAbility::NotifyCooldownTriggered(const FGameplayAbilitySpecHand
     {
         IsoPlayerState->HandleAbilityCooldownTriggered(Handle, CooldownDuration);
     }
+}
+
+FGameplayEffectSpecHandle UGA_HeroBaseAbility::MakeCostGameplayEffectSpecHandle(
+    const FGameplayAbilitySpecHandle Handle,
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo ActivationInfo) const
+{
+    if (!CostGameplayEffectClass)
+    {
+        return FGameplayEffectSpecHandle();
+    }
+
+    FGameplayEffectSpecHandle CostSpecHandle =
+        MakeOutgoingGameplayEffectSpec(Handle, ActorInfo, ActivationInfo, CostGameplayEffectClass, GetAbilityLevel(Handle, ActorInfo));
+    if (!CostSpecHandle.Data.IsValid())
+    {
+        return FGameplayEffectSpecHandle();
+    }
+
+    FGameplayEffectSpec& CostSpec = *CostSpecHandle.Data.Get();
+    CostSpec.SetSetByCallerMagnitude(GetCostMagnitudeTag(), -CostMagnitude);
+    CostSpec.CalculateModifierMagnitudes();
+    return CostSpecHandle;
+}
+
+float UGA_HeroBaseAbility::ResolveManaCostFromSpec(const FGameplayEffectSpec& CostSpec) const
+{
+    const FGameplayAttribute ManaAttribute = UIsometricRPGAttributeSetBase::GetManaAttribute();
+    float ResolvedManaCost = 0.f;
+
+    const UGameplayEffect* CostDefinition = CostSpec.Def;
+    if (!CostDefinition)
+    {
+        return ResolvedManaCost;
+    }
+
+    const TArray<FGameplayModifierInfo>& Modifiers = CostDefinition->Modifiers;
+    for (int32 ModifierIndex = 0; ModifierIndex < Modifiers.Num(); ++ModifierIndex)
+    {
+        const FGameplayModifierInfo& Modifier = Modifiers[ModifierIndex];
+        if (Modifier.Attribute != ManaAttribute)
+        {
+            continue;
+        }
+
+        if (Modifier.ModifierOp != EGameplayModOp::Additive)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("%s: Cost GE %s uses a non-additive mana modifier. Current resolver ignores this path."), *GetName(), *GetNameSafe(CostDefinition));
+            continue;
+        }
+
+        const float ModifierMagnitude = CostSpec.GetModifierMagnitude(ModifierIndex, true);
+        if (ModifierMagnitude < 0.f)
+        {
+            ResolvedManaCost += -ModifierMagnitude;
+        }
+    }
+
+    return ResolvedManaCost;
 }
 
 void UGA_HeroBaseAbility::LogCommitFailureDiagnostics(
