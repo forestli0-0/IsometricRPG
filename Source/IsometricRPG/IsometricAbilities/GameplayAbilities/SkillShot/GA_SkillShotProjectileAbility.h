@@ -5,7 +5,10 @@
 #include "CoreMinimal.h"
 #include "IsometricAbilities/GameplayAbilities/SkillShot/GA_SkillShotAbility.h"
 #include "IsometricAbilities/Projectiles/AProjectileBase.h"
+#include "Misc/DataValidation.h"
 #include "GA_SkillShotProjectileAbility.generated.h"
+
+struct FPropertyChangedEvent;
 
 /**
  * 方向投射物技能类
@@ -21,8 +24,8 @@ public:
 	UGA_SkillShotProjectileAbility();
 
 protected:
-	// 要生成的投射物类
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SkillShot|Projectile")
+	// 历史兼容字段。旧蓝图可能仍然把投射物类配在这里，加载后会迁移到 SkillShotProjectileClass。
+	UPROPERTY(EditDefaultsOnly, Category = "Deprecated", meta = (DeprecatedProperty, DeprecationMessage = "Use SkillShotProjectileClass on the base skill-shot ability instead.", EditCondition = "false", EditConditionHides))
 	TSubclassOf<class AProjectileBase> ProjectileClass;
 
 	// 用于初始化投射物的数据
@@ -46,4 +49,17 @@ protected:
 		AActor* SourceActor, 
 		APawn* SourcePawn,
 		UAbilitySystemComponent* SourceASC);
+
+	virtual void PostLoad() override;
+
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+	virtual EDataValidationResult IsDataValid(FDataValidationContext& Context) const override;
+#endif
+
+	/** 统一读取当前技能实际使用的投射物类。 */
+	TSubclassOf<class AProjectileBase> GetConfiguredProjectileClass() const;
+
+	/** 将旧蓝图里的 ProjectileClass 迁移到 SkillShotProjectileClass。 */
+	void SynchronizeProjectileClassFields();
 };

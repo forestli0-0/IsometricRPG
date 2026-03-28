@@ -40,7 +40,7 @@ struct FHeroAbilitySlotData
     GENERATED_BODY()
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    EHeroAbilitySlot Slot;
+    EHeroAbilitySlot Slot = EHeroAbilitySlot::None;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     TSubclassOf<UGameplayAbility> AbilityClass;

@@ -198,6 +198,9 @@ private:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Effects", meta = (AllowPrivateAccess = "true"))
     class UNiagaraComponent* VisualEffectComp;
 
+    UPROPERTY(Transient)
+    class UNiagaraComponent* SpawnedVisualEffectComp = nullptr;
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Effects", meta = (AllowPrivateAccess = "true"))
     class UAudioComponent* FlyingSoundComp;
 
@@ -233,6 +236,12 @@ protected:
 
     /** 应用 Homing 配置（若开启 bEnableHoming） */
     void ApplyHomingConfig();
+
+    /** 刷新飞行中的 Niagara 视觉组件，确保它跟随投射物生命周期。 */
+    void RefreshVisualEffect();
+
+    /** 停止飞行中的 Niagara 视觉组件。 */
+    void StopVisualEffect(bool bImmediate);
 
     // 生命周期结束处理
     virtual void OnLifespanExpired();
