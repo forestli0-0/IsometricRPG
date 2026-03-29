@@ -13,16 +13,90 @@
 #include "NiagaraComponent.h"
 #include "Engine/OverlapResult.h"
 #include "IsometricRPG\IsometricAbilities\AbilityTasks\AbilityTask_MoveActorTo.h"
+#include "IsometricAbilities/AbilityTasks/AbilityTask_WaitMoveToLocation.h"
 #include "Math/UnrealMathUtility.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "IsometricAbilities/TargetTrace/GATA_CursorTrace.h"
+
+namespace
+{
+bool ResolveSettUltimateTarget(const FGameplayAbilityTargetDataHandle& TargetDataHandle, AActor*& OutTargetActor, FVector& OutTargetLocation)
+{
+	OutTargetActor = nullptr;
+	OutTargetLocation = FVector::ZeroVector;
+
+	if (!TargetDataHandle.IsValid(0))
+	{
+		return false;
+	}
+
+	const FGameplayAbilityTargetData* TargetData = TargetDataHandle.Get(0);
+	if (!TargetData)
+	{
+		return false;
+	}
+
+	if (const FHitResult* HitResult = TargetData->GetHitResult())
+	{
+		OutTargetActor = HitResult->GetActor();
+		if (!HitResult->Location.IsNearlyZero())
+		{
+			OutTargetLocation = HitResult->Location;
+		}
+		else
+		{
+			OutTargetLocation = HitResult->ImpactPoint;
+		}
+	}
+
+	if (!OutTargetActor)
+	{
+		const TArray<TWeakObjectPtr<AActor>> Actors = TargetData->GetActors();
+		if (Actors.Num() > 0)
+		{
+			OutTargetActor = Actors[0].Get();
+		}
+	}
+
+	if (OutTargetActor && OutTargetLocation.IsNearlyZero())
+	{
+		OutTargetLocation = OutTargetActor->GetActorLocation();
+	}
+
+	return OutTargetActor != nullptr;
+}
+
+float CalculateSettEffectiveAcceptanceRadius(const ACharacter* SelfCharacter, const AActor* TargetActor, const float GrabRange)
+{
+	float SelfCapsuleRadius = 0.0f;
+	if (SelfCharacter && SelfCharacter->GetCapsuleComponent())
+	{
+		SelfCapsuleRadius = SelfCharacter->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	}
+
+	float TargetCapsuleRadius = 0.0f;
+	if (const ACharacter* TargetCharacter = Cast<ACharacter>(TargetActor))
+	{
+		if (TargetCharacter->GetCapsuleComponent())
+		{
+			TargetCapsuleRadius = TargetCharacter->GetCapsuleComponent()->GetScaledCapsuleRadius();
+		}
+	}
+
+	return GrabRange + SelfCapsuleRadius + TargetCapsuleRadius + 10.0f;
+}
+}
+
 UGA_SettUltimate::UGA_SettUltimate()
 {
 	AbilityType = EHeroAbilityType::Targeted;
+	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 	CooldownDuration = 80.0f;
 	CostMagnitude = 100.0f;
 	RangeToApply = GrabRange;
+	TargetActorClass = AGATA_CursorTrace::StaticClass();
 
-	bRequiresTargetData = true;
+	SetUsesInteractiveTargeting(true);
 	// --- 【核心修改 1】 ---
 	// 禁用 GameplayAbility 的自动朝向目标功能。
 	// 我们将通过代码在最合适的时机手动控制朝向，以避免与其他旋转逻辑（如控制器输入）冲突。
@@ -42,6 +116,68 @@ UGA_SettUltimate::UGA_SettUltimate()
 	bCancelAbilityWhenBaseMontageInterrupted = false;
 }
 
+bool UGA_SettUltimate::OtherCheckBeforeCommit()
+{
+	AActor* TargetActor = nullptr;
+	FVector TargetLocation = FVector::ZeroVector;
+	if (!ResolveSettUltimateTarget(CurrentTargetDataHandle, TargetActor, TargetLocation))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s: Sett ultimate is missing a valid target actor."), *GetName());
+		return false;
+	}
+
+	AActor* SourceActor = GetAvatarActorFromActorInfo();
+	if (!IsValidHeroTarget(TargetActor, SourceActor))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s: Sett ultimate rejected target %s."), *GetName(), *GetNameSafe(TargetActor));
+		return false;
+	}
+
+	ACharacter* SelfCharacter = Cast<ACharacter>(SourceActor);
+	if (!SelfCharacter)
+	{
+		return false;
+	}
+
+	const float EffectiveAcceptanceRadius = CalculateSettEffectiveAcceptanceRadius(SelfCharacter, TargetActor, GrabRange);
+	const float DistanceToTarget = FVector::Distance(SelfCharacter->GetActorLocation(), TargetActor->GetActorLocation());
+	if (DistanceToTarget <= EffectiveAcceptanceRadius)
+	{
+		return true;
+	}
+
+	const bool bIsServer = SelfCharacter->HasAuthority();
+	const bool bIsLocallyControlled = GetCurrentActorInfo() && GetCurrentActorInfo()->IsLocallyControlled();
+	auto* ThisAbility = const_cast<UGameplayAbility*>(static_cast<const UGameplayAbility*>(this));
+
+	if (bIsServer)
+	{
+		if (UAbilityTask_WaitMoveToLocation* MoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToActor(ThisAbility, TargetActor, EffectiveAcceptanceRadius))
+		{
+			MoveTask->OnMoveFinished.AddDynamic(this, &UGA_TargetedAbility::OnReachedTarget);
+			MoveTask->OnMoveFailed.AddDynamic(this, &UGA_TargetedAbility::OnFailedToTarget);
+			MoveTask->ReadyForActivation();
+		}
+	}
+
+	if (!bIsServer && bIsLocallyControlled)
+	{
+		if (UAbilityTask_WaitMoveToLocation* ClientMoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToActor(ThisAbility, TargetActor, EffectiveAcceptanceRadius))
+		{
+			ClientMoveTask->OnMoveFinished.AddDynamic(this, &UGA_TargetedAbility::OnReachedTarget);
+			ClientMoveTask->OnMoveFailed.AddDynamic(this, &UGA_TargetedAbility::OnFailedToTarget);
+			ClientMoveTask->ReadyForActivation();
+		}
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("%s: Sett ultimate target %s is out of grab range. Distance=%.1f Acceptance=%.1f"),
+		*GetName(),
+		*GetNameSafe(TargetActor),
+		DistanceToTarget,
+		EffectiveAcceptanceRadius);
+	return false;
+}
+
 void UGA_SettUltimate::ExecuteSkill(const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
 	const FGameplayAbilityActivationInfo ActivationInfo)
@@ -49,6 +185,8 @@ void UGA_SettUltimate::ExecuteSkill(const FGameplayAbilitySpecHandle Handle,
 	// 每次激活重置阶段与清理残留状态（防止上一次异常导致卡住/无法移动）
 	CurrentPhase = 0;
 	bCleanupDone = false;
+	bAppliedCasterMovementLock = false;
+	bAppliedTargetMovementLock = false;
 	if (GetWorld())
 	{
 		GetWorld()->GetTimerManager().ClearTimer(GrabTimer);
@@ -119,28 +257,54 @@ void UGA_SettUltimate::ExecuteSkill(const FGameplayAbilitySpecHandle Handle,
 	CasterCharacter = Cast<ACharacter>(Caster);
 	TargetCharacter = Cast<ACharacter>(PrimaryTarget);
 
+	if (CasterCharacter.IsValid())
+	{
+		if (UCharacterMovementComponent* CMC = CasterCharacter->GetCharacterMovement())
+		{
+			CasterOriginalMode = CMC->MovementMode;
+			bOriginalOrientRotationToMovement = CMC->bOrientRotationToMovement;
+			bOriginalUseControllerDesiredRotation = CMC->bUseControllerDesiredRotation;
+		}
+	}
+
+	if (TargetCharacter.IsValid())
+	{
+		if (UCharacterMovementComponent* CMC = TargetCharacter->GetCharacterMovement())
+		{
+			TargetOriginalMode = CMC->MovementMode;
+		}
+	}
+
 	// 仅在服务器端冻结移动与接管旋转，避免客户端本地改变 Transform 造成分叉
 	const bool bIsAuthority = (GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority());
-	if (CasterCharacter.IsValid() && bIsAuthority)
+	if (CasterCharacter.IsValid())
 	{
-		auto* CMC = CasterCharacter->GetCharacterMovement();
-		CasterOriginalMode = CMC->MovementMode;
-		CMC->SetMovementMode(EMovementMode::MOVE_None);
+		if (AController* Controller = CasterCharacter->GetController())
+		{
+			if (Controller->IsLocalController())
+			{
+				Controller->SetIgnoreMoveInput(true);
+			}
+		}
 
-		// --- 【核心修改 3】 ---
-		// 保存原始的旋转设置，然后禁用它们，从而完全接管旋转控制权。
-		// 这是防止角色被控制器（镜头方向）或自身移动逻辑意外扭转的关键。
-		bOriginalOrientRotationToMovement = CMC->bOrientRotationToMovement;
-		bOriginalUseControllerDesiredRotation = CMC->bUseControllerDesiredRotation;
-		CMC->bOrientRotationToMovement = false;
-		CMC->bUseControllerDesiredRotation = false;
+		const bool bShouldLockCasterMovement = bIsAuthority || CasterCharacter->IsLocallyControlled();
+		if (bShouldLockCasterMovement)
+		{
+			if (UCharacterMovementComponent* CMC = CasterCharacter->GetCharacterMovement())
+			{
+				CMC->SetMovementMode(EMovementMode::MOVE_None);
+				CMC->bOrientRotationToMovement = false;
+				CMC->bUseControllerDesiredRotation = false;
+				bAppliedCasterMovementLock = true;
+			}
+		}
 	}
 
 	if (TargetCharacter.IsValid() && bIsAuthority)
 	{
 		auto* CMC = TargetCharacter->GetCharacterMovement();
-		TargetOriginalMode = CMC->MovementMode;
 		CMC->SetMovementMode(EMovementMode::MOVE_None);
+		bAppliedTargetMovementLock = true;
 	}
 
 	StartGrabPhase();
@@ -468,20 +632,6 @@ void UGA_SettUltimate::StartLandingPhase()
 
 void UGA_SettUltimate::FinishUltimate()
 {
-	// 解锁本地移动
-	// 在技能结束时，恢复角色移动组件原始的旋转设置。
-	// 这将旋转控制权安全地交还给常规系统。
-	if (CasterCharacter.IsValid())
-	{
-		if (AController* Ctrl = CasterCharacter->GetController())
-		{
-			if (Ctrl->IsLocalController())
-			{
-                Ctrl->SetIgnoreMoveInput(false);
-			}
-		}
-	}
-
 	CleanupAndRestore(false);
 	// 必须复制 EndAbility，确保客户端能力也进入 End，从而触发各类本地特效清理
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
@@ -547,23 +697,38 @@ void UGA_SettUltimate::CleanupAndRestore(bool bWasCancelled)
 
 	// 恢复移动/旋转（仅服务器曾修改）
 	const bool bIsAuthority = (GetAvatarActorFromActorInfo() && GetAvatarActorFromActorInfo()->HasAuthority());
-	if (CasterCharacter.IsValid() && bIsAuthority)
+	if (CasterCharacter.IsValid())
 	{
-		auto* CMC = CasterCharacter->GetCharacterMovement();
-		if (CMC)
+		if (AController* Controller = CasterCharacter->GetController())
 		{
-			CMC->SetMovementMode(CasterOriginalMode);
-			CMC->bOrientRotationToMovement = bOriginalOrientRotationToMovement;
-			CMC->bUseControllerDesiredRotation = bOriginalUseControllerDesiredRotation;
+			if (Controller->IsLocalController())
+			{
+				Controller->SetIgnoreMoveInput(false);
+			}
+		}
+
+		auto* CMC = CasterCharacter->GetCharacterMovement();
+		if (CMC && bAppliedCasterMovementLock)
+		{
+			const bool bShouldRestoreCasterMovement = bIsAuthority || CasterCharacter->IsLocallyControlled();
+			if (bShouldRestoreCasterMovement)
+			{
+				CMC->SetMovementMode(CasterOriginalMode);
+				CMC->bOrientRotationToMovement = bOriginalOrientRotationToMovement;
+				CMC->bUseControllerDesiredRotation = bOriginalUseControllerDesiredRotation;
+			}
 		}
 	}
-	if (TargetCharacter.IsValid() && bIsAuthority)
+	if (TargetCharacter.IsValid() && bIsAuthority && bAppliedTargetMovementLock)
 	{
 		if (auto* TMC = TargetCharacter->GetCharacterMovement())
 		{
 			TMC->SetMovementMode(TargetOriginalMode);
 		}
 	}
+
+	bAppliedCasterMovementLock = false;
+	bAppliedTargetMovementLock = false;
 
 	// 重置阶段，允许再次释放
 	CurrentPhase = 0;

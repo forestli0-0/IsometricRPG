@@ -8,6 +8,7 @@
 class UAbilitySystemComponent;
 class AIsometricRPGCharacter;
 class APlayerController;
+class UGA_HeroBaseAbility;
 enum class ESkillSlot : uint8;
 
 #include "IsometricInputComponent.generated.h"
@@ -70,7 +71,9 @@ private:
 	void ApplySelectionCommand(const FPlayerInputCommand& Command);
 	void ExecuteAbilityInputCommand(const FPlayerInputCommand& Command);
 	bool ExecuteAbilityCommitCommand(const FPlayerInputCommand& Command, const FAbilityInputPolicy& Policy);
+	const UGA_HeroBaseAbility* ResolveHeroAbility(EAbilityInputID InputID) const;
 	bool ResolveAbilityInputPolicy(EAbilityInputID InputID, FAbilityInputPolicy& OutPolicy) const;
+	void EnrichAbilityCommandTargetData(FPlayerInputCommand& Command) const;
 	ESkillSlot ResolveSkillSlotFromInput(EAbilityInputID InputID) const;
 	FPendingAbilityActivationContext BuildActivationContext(const FPlayerInputCommand& Command) const;
 	void UpdatePendingAbilityContext(const FPlayerInputCommand& Command);

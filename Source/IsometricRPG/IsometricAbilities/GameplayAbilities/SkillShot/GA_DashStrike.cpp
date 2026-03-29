@@ -33,8 +33,8 @@ UGA_DashStrike::UGA_DashStrike()
 	CollisionRadius = 60.0f;
 	SkillShotWidth = CollisionRadius * 2.0f;
 
-	// 需要目标数据（方向选择）
-	bRequiresTargetData = true;
+	// DashStrike 直接消费当前瞄准方向，不进入交互式选目标流程。
+	SetUsesInteractiveTargeting(false);
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 	InputPolicy.InputMode = EAbilityInputMode::Instant;
 	InputPolicy.bUpdateTargetWhileHeld = false;
@@ -54,7 +54,9 @@ void UGA_DashStrike::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const
 {
 	Super::ExecuteSkill(Handle, ActorInfo, ActivationInfo);
 
-	if (!ensureAlwaysMsgf(CurrentTargetDataHandle.IsValid(0), TEXT("%s: DashStrike executed without target data."), *GetName()))
+	if (!ensureAlwaysMsgf(
+		HasRequiredExecutionTargetData(CurrentTargetDataHandle),
+		TEXT("%s: DashStrike executed without aim context."), *GetName()))
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;

@@ -30,8 +30,6 @@ protected:
 
 
 	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) override;
-	// 自我施放技能不需要目标数据
-	virtual bool RequiresTargetData_Implementation() const override;
 	
 	// 应用自我效果的辅助方法
 	virtual void ApplySelfEffect(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo);

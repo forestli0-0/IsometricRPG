@@ -6,7 +6,8 @@
 
 UGA_AreaAbility::UGA_AreaAbility()
 {
-	// Constructor logic if needed
+	AbilityType = EHeroAbilityType::AreaEffect;
+	SetUsesInteractiveTargeting(false);
 	AreaRadius = 300.f;
 }
 

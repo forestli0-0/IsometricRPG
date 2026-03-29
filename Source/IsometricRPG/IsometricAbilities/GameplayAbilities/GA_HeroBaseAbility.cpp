@@ -163,6 +163,11 @@ bool UGA_HeroBaseAbility::ExpectsPreparedTargetData() const
     return ExpectsActorTargetData() || ExpectsLocationTargetData();
 }
 
+bool UGA_HeroBaseAbility::UsesInteractiveTargeting() const
+{
+    return bUseInteractiveTargeting;
+}
+
 FText UGA_HeroBaseAbility::GetAbilityDisplayNameText() const
 {
     if (!AbilityDisplayName.IsEmpty())
@@ -201,6 +206,11 @@ FVector UGA_HeroBaseAbility::GetCurrentAimPoint() const
 FVector UGA_HeroBaseAbility::GetCurrentAimDirection() const
 {
     return CurrentInputContext.AimDirection;
+}
+
+void UGA_HeroBaseAbility::SetUsesInteractiveTargeting(const bool bEnabled)
+{
+    bUseInteractiveTargeting = bEnabled;
 }
 
 // =================================================================================================================
@@ -280,7 +290,7 @@ void UGA_HeroBaseAbility::ContinueAbilityActivation(
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo ActivationInfo)
 {
-    if (RequiresTargetData())
+    if (UsesInteractiveTargeting())
     {
         if (HasRequiredExecutionTargetData(CurrentTargetDataHandle))
         {
@@ -481,19 +491,30 @@ bool UGA_HeroBaseAbility::HasRequiredExecutionTargetData(const FGameplayAbilityT
 
 bool UGA_HeroBaseAbility::ValidateAbilityConfiguration() const
 {
+    if (GetClass()->HasAnyClassFlags(CLASS_Abstract))
+    {
+        return true;
+    }
+
+    const bool bInteractiveTargetingEnabled = UsesInteractiveTargeting();
+
     switch (AbilityType)
     {
     case EHeroAbilityType::Targeted:
         return ensureAlwaysMsgf(
-            bRequiresTargetData,
-            TEXT("%s: Targeted abilities must keep bRequiresTargetData=true. This asset currently skips target validation and only works when some external caller injects target data."),
-            *GetName());
+            bInteractiveTargetingEnabled,
+            TEXT("%s: Targeted abilities must keep interactive targeting enabled so they can reuse an existing target or enter the confirmation flow."),
+            *GetName())
+            && ensureAlwaysMsgf(
+                TargetActorClass != nullptr,
+                TEXT("%s: Targeted abilities must configure TargetActorClass for the interactive targeting flow."),
+                *GetName());
 
     case EHeroAbilityType::SelfCast:
     case EHeroAbilityType::Passive:
         return ensureAlwaysMsgf(
-            !bRequiresTargetData,
-            TEXT("%s: %s abilities must keep bRequiresTargetData=false."),
+            !bInteractiveTargetingEnabled,
+            TEXT("%s: %s abilities must keep interactive targeting disabled."),
             *GetName(),
             DescribeAbilityType(AbilityType));
 
@@ -1134,15 +1155,6 @@ void UGA_HeroBaseAbility::LogCommitFailureDiagnostics(
         *DescribeTagContainer(OwnedTags));
 }
 
-// =================================================================================================================
-// Misc
-// =================================================_================================================================
-
-bool UGA_HeroBaseAbility::RequiresTargetData_Implementation() const
-{
-    return bRequiresTargetData;
-}
-
 bool UGA_HeroBaseAbility::ServerValidateTargetData(
     const FGameplayAbilityTargetDataHandle& TargetData,
     const FGameplayAbilityActorInfo* ActorInfo) const
@@ -1254,5 +1266,3 @@ void UGA_HeroBaseAbility::PostInitProperties()
         }
     }
 }
-
-

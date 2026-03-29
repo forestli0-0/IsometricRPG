@@ -2,6 +2,7 @@
 #include "IsometricAbilities/Projectiles/AProjectileBase.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
 #include "Character/IsometricRPGAttributeSetBase.h"
+#include "GameplayEffect.h"
 #include "GameFramework/Character.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "NiagaraSystem.h"
@@ -10,6 +11,7 @@
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
+#include "UObject/ConstructorHelpers.h"
 
 UGA_Ahri_Q_OrbOfDeception::UGA_Ahri_Q_OrbOfDeception()
 {
@@ -24,19 +26,48 @@ UGA_Ahri_Q_OrbOfDeception::UGA_Ahri_Q_OrbOfDeception()
 
 	// 为这个技能配置投射物数据
 	ProjectileData.InitialSpeed = 1600.f;
+	ProjectileData.MaxSpeed = ProjectileData.InitialSpeed;
 	ProjectileData.MaxFlyDistance = RangeToApply;
 	ProjectileData.SplashRadius = SkillShotWidth;
 
 	// 往返
 	ProjectileData.bReturnToOwner = true;
 	ProjectileData.ReturnSpeedMultiplier = 1.0f;
+
+	static ConstructorHelpers::FClassFinder<UGameplayEffect> DamageEffectFinder(TEXT("/Game/Blueprints/GameEffects/GE_AttackDamage"));
+	if (DamageEffectFinder.Succeeded())
+	{
+		ProjectileData.DamageEffect = DamageEffectFinder.Class;
+	}
+
+	static ConstructorHelpers::FObjectFinder<UNiagaraSystem> OrbVFXFinder(TEXT("/Game/FX/Niagara/NS_MyFireball"));
+	if (OrbVFXFinder.Succeeded())
+	{
+		OrbVFX = OrbVFXFinder.Object;
+		ProjectileData.VisualEffect = OrbVFX;
+	}
+
+	static ConstructorHelpers::FObjectFinder<UNiagaraSystem> HitVFXFinder(TEXT("/Game/FX/Niagara/NS_BurstSmoke"));
+	if (HitVFXFinder.Succeeded())
+	{
+		HitVFX = HitVFXFinder.Object;
+		ProjectileData.ImpactEffect = HitVFX;
+	}
+
+	static ConstructorHelpers::FObjectFinder<USoundBase> HitSoundFinder(TEXT("/Game/StarterContent/Audio/Explosion_Cue"));
+	if (HitSoundFinder.Succeeded())
+	{
+		HitSound = HitSoundFinder.Object;
+		ProjectileData.ImpactSound = HitSound;
+	}
 }
 
 void UGA_Ahri_Q_OrbOfDeception::ExecuteSkillShot(const FVector& Direction, const FVector& StartLocation)
 {
-	// 这个函数体现在应该是空的。
-	// 所有的投射物生成和初始化逻辑都在基类 UGA_SkillShotProjectileAbility::ExecuteSkillShot 中处理。
-	// 我们在这里只需要调用父类的实现即可。
+	ProjectileData.DamageAmount = CalculateDamage();
+	ProjectileData.VisualEffect = OrbVFX;
+	ProjectileData.ImpactEffect = HitVFX;
+	ProjectileData.ImpactSound = HitSound;
 	Super::ExecuteSkillShot(Direction, StartLocation);
 }
 

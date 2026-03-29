@@ -3,6 +3,7 @@
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "Character/IsometricRPGCharacter.h"
+#include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "IsometricAbilities/GameplayAbilities/GA_HeroBaseAbility.h"
 #include "IsometricAbilities/Types/EquippedAbilityInfo.h"
@@ -144,23 +145,25 @@ void UIsometricInputComponent::ExecuteAbilityInputCommand(const FPlayerInputComm
 
 	FAbilityInputPolicy Policy;
 	ResolveAbilityInputPolicy(Command.AbilityInputID, Policy);
+	FPlayerInputCommand ResolvedCommand = Command;
+	EnrichAbilityCommandTargetData(ResolvedCommand);
 
-	switch (Command.Type)
+	switch (ResolvedCommand.Type)
 	{
 	case EPlayerInputCommandType::BeginAbilityInput:
-		InputSessionManager.BeginSession(Command, Policy);
-		UpdatePendingAbilityContext(Command);
+		InputSessionManager.BeginSession(ResolvedCommand, Policy);
+		UpdatePendingAbilityContext(ResolvedCommand);
 		break;
 
 	case EPlayerInputCommandType::UpdateAbilityInput:
 	{
 		FAbilityInputSession Session;
-		if (!InputSessionManager.UpdateSession(Command, Policy, Session))
+		if (!InputSessionManager.UpdateSession(ResolvedCommand, Policy, Session))
 		{
 			return;
 		}
 
-		FPlayerInputCommand UpdatedCommand = Command;
+		FPlayerInputCommand UpdatedCommand = ResolvedCommand;
 		UpdatedCommand.HeldDuration = Session.HeldDuration;
 		UpdatedCommand.TargetActor = Session.LatestTargetActor;
 		UpdatedCommand.HitResult = Session.LatestHitResult;
@@ -169,22 +172,22 @@ void UIsometricInputComponent::ExecuteAbilityInputCommand(const FPlayerInputComm
 	}
 
 	case EPlayerInputCommandType::CommitAbilityInput:
-		if (Command.bAllowBuffering && InputSessionManager.HasBlockingSession(Command.AbilityInputID))
+		if (ResolvedCommand.bAllowBuffering && InputSessionManager.HasBlockingSession(ResolvedCommand.AbilityInputID))
 		{
-			InputSessionManager.BufferCommand(Command, Policy);
+			InputSessionManager.BufferCommand(ResolvedCommand, Policy);
 			SetComponentTickEnabled(true);
 			return;
 		}
 
-		ExecuteAbilityCommitCommand(Command, Policy);
+		ExecuteAbilityCommitCommand(ResolvedCommand, Policy);
 		break;
 
 	case EPlayerInputCommandType::CancelAbilityInput:
 	{
 		FAbilityInputSession Session;
-		if (InputSessionManager.CancelSession(Command.AbilityInputID, Session))
+		if (InputSessionManager.CancelSession(ResolvedCommand.AbilityInputID, Session))
 		{
-			FPlayerInputCommand CancelCommand = Command;
+			FPlayerInputCommand CancelCommand = ResolvedCommand;
 			CancelCommand.HeldDuration = Session.HeldDuration;
 			CancelCommand.TargetActor = Session.LatestTargetActor;
 			CancelCommand.HitResult = Session.LatestHitResult;
@@ -192,7 +195,7 @@ void UIsometricInputComponent::ExecuteAbilityInputCommand(const FPlayerInputComm
 		}
 
 		OwnerCharacter->ClearPendingAbilityActivationContext();
-		OwnerASC->AbilityLocalInputReleased((int32)Command.AbilityInputID);
+		OwnerASC->AbilityLocalInputReleased((int32)ResolvedCommand.AbilityInputID);
 		break;
 	}
 
@@ -233,34 +236,39 @@ bool UIsometricInputComponent::ExecuteAbilityCommitCommand(const FPlayerInputCom
 	return true;
 }
 
-bool UIsometricInputComponent::ResolveAbilityInputPolicy(EAbilityInputID InputID, FAbilityInputPolicy& OutPolicy) const
+const UGA_HeroBaseAbility* UIsometricInputComponent::ResolveHeroAbility(EAbilityInputID InputID) const
 {
-	OutPolicy = FAbilityInputPolicy();
-
 	if (!OwnerCharacter)
 	{
-		return false;
+		return nullptr;
 	}
 
 	const ESkillSlot Slot = ResolveSkillSlotFromInput(InputID);
 	if (Slot == ESkillSlot::Invalid || Slot == ESkillSlot::MAX)
 	{
-		return false;
+		return nullptr;
 	}
 
 	const FEquippedAbilityInfo AbilityInfo = OwnerCharacter->GetEquippedAbilityInfo(Slot);
 	if (AbilityInfo.AbilityClass.ToSoftObjectPath().IsNull())
 	{
-		return false;
+		return nullptr;
 	}
 
-	TSubclassOf<UGameplayAbility> LoadedAbilityClass = AbilityInfo.AbilityClass.LoadSynchronous();
+	const TSubclassOf<UGameplayAbility> LoadedAbilityClass = AbilityInfo.AbilityClass.LoadSynchronous();
 	if (!LoadedAbilityClass)
 	{
-		return false;
+		return nullptr;
 	}
 
-	const UGA_HeroBaseAbility* HeroAbility = Cast<UGA_HeroBaseAbility>(LoadedAbilityClass.GetDefaultObject());
+	return Cast<UGA_HeroBaseAbility>(LoadedAbilityClass.GetDefaultObject());
+}
+
+bool UIsometricInputComponent::ResolveAbilityInputPolicy(EAbilityInputID InputID, FAbilityInputPolicy& OutPolicy) const
+{
+	OutPolicy = FAbilityInputPolicy();
+
+	const UGA_HeroBaseAbility* HeroAbility = ResolveHeroAbility(InputID);
 	if (!HeroAbility)
 	{
 		return false;
@@ -268,6 +276,45 @@ bool UIsometricInputComponent::ResolveAbilityInputPolicy(EAbilityInputID InputID
 
 	OutPolicy = HeroAbility->GetAbilityInputPolicy();
 	return true;
+}
+
+void UIsometricInputComponent::EnrichAbilityCommandTargetData(FPlayerInputCommand& Command) const
+{
+	const UGA_HeroBaseAbility* HeroAbility = ResolveHeroAbility(Command.AbilityInputID);
+	if (!(HeroAbility && HeroAbility->ExpectsActorTargetData() && OwnerCharacter))
+	{
+		return;
+	}
+
+	const bool bHasDirectActorHit = Cast<APawn>(Command.HitResult.GetActor()) != nullptr;
+	const bool bHasDirectActorTarget = Cast<APawn>(Command.TargetActor.Get()) != nullptr;
+	if (bHasDirectActorHit || bHasDirectActorTarget)
+	{
+		return;
+	}
+
+	const APlayerController* PlayerController = Cast<APlayerController>(OwnerCharacter->GetController());
+	if (!(PlayerController && PlayerController->IsLocalController()))
+	{
+		return;
+	}
+
+	FHitResult PawnHitResult;
+	const bool bHitPawn = const_cast<APlayerController*>(PlayerController)->GetHitResultUnderCursorByChannel(
+		UEngineTypes::ConvertToTraceType(ECC_Pawn),
+		false,
+		PawnHitResult);
+	APawn* TargetPawn = bHitPawn ? Cast<APawn>(PawnHitResult.GetActor()) : nullptr;
+	if (!(TargetPawn && TargetPawn != OwnerCharacter))
+	{
+		return;
+	}
+
+	Command.HitResult = PawnHitResult;
+	Command.TargetActor = TargetPawn;
+	Command.TargetLocation = !PawnHitResult.Location.IsNearlyZero()
+		? PawnHitResult.Location
+		: PawnHitResult.ImpactPoint;
 }
 
 ESkillSlot UIsometricInputComponent::ResolveSkillSlotFromInput(EAbilityInputID InputID) const

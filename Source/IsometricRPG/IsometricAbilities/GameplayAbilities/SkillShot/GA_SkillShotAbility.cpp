@@ -9,7 +9,7 @@
 UGA_SkillShotAbility::UGA_SkillShotAbility()
 {
 	AbilityType = EHeroAbilityType::SkillShot;
-	bRequiresTargetData = false;
+	SetUsesInteractiveTargeting(false);
 }
 
 

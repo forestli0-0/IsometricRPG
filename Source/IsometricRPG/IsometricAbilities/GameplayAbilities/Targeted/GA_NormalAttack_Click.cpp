@@ -12,8 +12,8 @@
 
 UGA_NormalAttack_Click::UGA_NormalAttack_Click()
 {
-    // 按标准 Targeted 流程处理：需要目标数据（若已有Actor则直接用，否则进入目标选择）
-    bRequiresTargetData = true;
+    // 按标准 Targeted 流程处理：若已有目标就直接用，否则进入交互式确认。
+    SetUsesInteractiveTargeting(true);
     TargetActorClass = AGATA_CursorTrace::StaticClass();
     NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
     InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;

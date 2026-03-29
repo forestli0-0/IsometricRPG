@@ -23,8 +23,8 @@ UGA_ProjAbility_Fireball::UGA_ProjAbility_Fireball()
 	ProjectileData.SplashRadius = 150.0f; // 爆炸范围
 	ProjectileData.Lifespan = 3.0f;
 	
-	// 需要目标选择（方向选择）
-	bRequiresTargetData = false;
+	// Fireball 直接消费当前瞄准方向，不进入交互式选目标流程。
+	SetUsesInteractiveTargeting(false);
 
 	// Fireball 走按下瞄准、释放提交的试点流程。
 	InputPolicy.InputMode = EAbilityInputMode::PressAndRelease;

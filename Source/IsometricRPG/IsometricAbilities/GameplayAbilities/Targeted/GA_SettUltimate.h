@@ -162,6 +162,7 @@ protected:
 		const FGameplayAbilityActorInfo* ActorInfo, 
 		const FGameplayAbilityActivationInfo ActivationInfo
 	) override;
+	virtual bool OtherCheckBeforeCommit() override;
 
 
 	// ==================== 技能阶段方法 ====================
@@ -279,6 +280,10 @@ private:
 		bool bOriginalUseControllerDesiredRotation;
 
 		bool bOriginalOrientRotationToMovement;
+
+		bool bAppliedCasterMovementLock = false;
+
+		bool bAppliedTargetMovementLock = false;
 
 		// 防重复清理标记
 		bool bCleanupDone = false;

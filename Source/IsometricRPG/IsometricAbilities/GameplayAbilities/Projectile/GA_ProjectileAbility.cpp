@@ -17,8 +17,8 @@ UGA_ProjectileAbility::UGA_ProjectileAbility()
     // 设置技能类型为投射物
     AbilityType = EHeroAbilityType::SkillShot;
     
-    // 默认需要目标选择
-    bRequiresTargetData = false;
+    // 默认直接消费已准备好的瞄准信息，不进入交互式选目标流程
+    SetUsesInteractiveTargeting(false);
     
     // 投射物类默认值
     ProjectileClass = AProjectileBase::StaticClass(); // 默认为基类，具体技能应覆盖此项
@@ -121,11 +121,25 @@ void UGA_ProjectileAbility::GetLaunchTransform(
     FVector TargetLocation = FVector::ZeroVector;
     bool bTargetFound = false;
 
-    if (CurrentTargetDataHandle.Num() > 0)
+    if (CurrentTargetDataHandle.IsValid(0))
     {
-		// TODO: 这里假设目标数据包含一个命中结果，但是由于这个技能类型似乎被遗弃了，暂时不做复杂处理
-        TargetLocation = CurrentTargetDataHandle.Data[0]->GetHitResult()->Location;
-        bTargetFound = true;
+        const FGameplayAbilityTargetData* TargetData = CurrentTargetDataHandle.Get(0);
+        const FHitResult* HitResult = TargetData ? TargetData->GetHitResult() : nullptr;
+        if (HitResult)
+        {
+            TargetLocation = HitResult->Location;
+            bTargetFound = true;
+        }
+    }
+
+    if (!bTargetFound)
+    {
+        const FVector AimDirection = GetCurrentAimDirection();
+        if (!AimDirection.IsNearlyZero())
+        {
+            TargetLocation = OutLocation + AimDirection * 1000.0f;
+            bTargetFound = true;
+        }
     }
 
 

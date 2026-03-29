@@ -20,8 +20,8 @@ UGA_HeroMeleeAttackAbility::UGA_HeroMeleeAttackAbility()
 {
     NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
     InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
-    // 近战 A 键：希望进入目标选择流程（显示范围圈与选取目标）
-    bRequiresTargetData = true;
+    // 近战 A 键：保留交互式选目标流程（显示范围圈与选取目标）。
+    SetUsesInteractiveTargeting(true);
     // 默认目标选择器（若蓝图未配置时的兜底），使用鼠标光标追踪
     TargetActorClass = AGATA_CursorTrace::StaticClass();
     // 初始化攻击蒙太奇路径

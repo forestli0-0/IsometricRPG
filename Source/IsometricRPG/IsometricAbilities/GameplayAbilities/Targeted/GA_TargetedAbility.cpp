@@ -10,10 +10,18 @@
 #include "Character/IsometricRPGCharacter.h"
 #include "Components/CapsuleComponent.h" // 添加此行以解决不完整类型错误
 #include "NiagaraComponent.h" // Add this include to resolve the incomplete type error for UNiagaraComponent
+#include "UObject/ConstructorHelpers.h"
 
 UGA_TargetedAbility::UGA_TargetedAbility()
 {
 	RangeToApply = 100.f;
+	TargetActorClass = AGATA_CursorTrace::StaticClass();
+
+	static ConstructorHelpers::FClassFinder<ANiagaraActor> RangeIndicatorFinder(TEXT("/Game/Blueprints/FX/BP_NA_NiagaraActorBase"));
+	if (RangeIndicatorFinder.Succeeded())
+	{
+		RangeIndicatorNiagaraActorClass = RangeIndicatorFinder.Class;
+	}
 }
 
 bool UGA_TargetedAbility::OtherCheckBeforeCommit()
@@ -179,54 +187,55 @@ void UGA_TargetedAbility::StartTargetSelection(
     }
 
     AActor* Avatar = GetAvatarActorFromActorInfo();
-    if (!Avatar || !RangeIndicatorMaterial)
+    if (!Avatar)
     {
+        UE_LOG(LogTemp, Error, TEXT("'%s': Avatar actor is null. Cancelling."), *GetName());
         CancelAbility(Handle, ActorInfo, ActivationInfo, true);
         return;
     }
 
-    if (!RangeIndicatorNiagaraActorClass) // 检查新的 NiagaraActor 类
-    {
-        UE_LOG(LogTemp, Error, TEXT("'%s': RangeIndicatorNiagaraActorClass is NOT SET! Cancelling."), *GetName());
-        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
-        return;
-    }
-    //FVector SpawnLocation = Avatar->GetActorLocation() - Avatar->GetComponentByClass<UCapsuleComponent>()->GetScaledCapsuleHalfHeight(); // 初始位置与Avatar相同
     auto AvatarCharacter = Cast<ACharacter>(Avatar);
-	FVector SpawnLocation = AvatarCharacter->GetMesh()->GetComponentLocation();
-    FRotator SpawnRotation = FRotator::ZeroRotator;
-
-
-    ANiagaraActor* NiagaraRangeIndicator = GetWorld()->SpawnActor<ANiagaraActor>(
-        RangeIndicatorNiagaraActorClass,
-        SpawnLocation,
-        SpawnRotation
-    );
-
-    if (NiagaraRangeIndicator)
+    if (RangeIndicatorNiagaraActorClass && AvatarCharacter && AvatarCharacter->GetMesh())
     {
-        //NiagaraRangeIndicator->AttachToActor(Avatar, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-            // 附着到角色的Skeletal Mesh Component上的指定Socket
-        NiagaraRangeIndicator->AttachToComponent(
-            AvatarCharacter->GetMesh(), // 父组件是Skeletal Mesh Component
-            FAttachmentTransformRules::SnapToTargetNotIncludingScale, // 依然使用SnapToTarget
-            FName("Root") // 您在编辑器中创建的Socket名称
+	    const FVector SpawnLocation = AvatarCharacter->GetMesh()->GetComponentLocation();
+        const FRotator SpawnRotation = FRotator::ZeroRotator;
+
+        ANiagaraActor* NiagaraRangeIndicator = GetWorld()->SpawnActor<ANiagaraActor>(
+            RangeIndicatorNiagaraActorClass,
+            SpawnLocation,
+            SpawnRotation
         );
-        if (NiagaraRangeIndicator->GetNiagaraComponent())
+
+        if (NiagaraRangeIndicator)
         {
-            NiagaraRangeIndicator->GetNiagaraComponent()->SetFloatParameter(FName("user_Radius"), RangeToApply);
+            NiagaraRangeIndicator->AttachToComponent(
+                AvatarCharacter->GetMesh(),
+                FAttachmentTransformRules::SnapToTargetNotIncludingScale,
+                FName("Root")
+            );
+            if (NiagaraRangeIndicator->GetNiagaraComponent())
+            {
+                NiagaraRangeIndicator->GetNiagaraComponent()->SetFloatParameter(FName("user_Radius"), RangeToApply);
+            }
 
-            // 如果你的Niagara System用Vector来控制大小，例如 (RangeToApply, RangeToApply, 1.0f)
-            // NiagaraRangeIndicator->GetNiagaraComponent()->SetVectorParameter(FName("Scale"), FVector(RangeToApply, RangeToApply, 1.0f));
+            ActiveRangeIndicatorNiagaraActor = NiagaraRangeIndicator;
         }
-
-        ActiveRangeIndicatorNiagaraActor = NiagaraRangeIndicator;
-
-        // NiagaraRangeIndicator->SetLifeSpan(3.0f); // 如果需要自动销毁
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("%s: Failed to spawn NiagaraActor for RangeIndicator. Continuing without indicator."), *GetName());
+        }
+    }
+    else if (RangeIndicatorNiagaraActorClass)
+    {
+        ensureAlwaysMsgf(
+            AvatarCharacter && AvatarCharacter->GetMesh(),
+            TEXT("%s: Cannot attach range indicator because avatar %s is not a character with a valid mesh. Continuing without indicator."),
+            *GetName(),
+            *GetNameSafe(Avatar));
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("Failed to spawn NiagaraActor for RangeIndicator"));
+        UE_LOG(LogTemp, Verbose, TEXT("%s: RangeIndicatorNiagaraActorClass is not configured. Continuing without indicator."), *GetName());
     }
 
     TargetDataTask = UAbilityTask_WaitTargetData::WaitTargetData(
@@ -243,7 +252,7 @@ void UGA_TargetedAbility::StartTargetSelection(
 
         // 如果需要在 GATA 实例上设置属性 (比如 TraceChannel)
         AGameplayAbilityTargetActor* TempSpawnedTargetActorRaw = nullptr;
-        TargetDataTask->BeginSpawningActor(this, AGATA_CursorTrace::StaticClass(), TempSpawnedTargetActorRaw);
+        TargetDataTask->BeginSpawningActor(this, TargetActorClass, TempSpawnedTargetActorRaw);
         AGATA_CursorTrace* SpawnedTargetActor = Cast<AGATA_CursorTrace>(TempSpawnedTargetActorRaw);
         if (SpawnedTargetActor)
         {
@@ -254,8 +263,13 @@ void UGA_TargetedAbility::StartTargetSelection(
             SpawnedTargetActor->TraceChannel = UEngineTypes::ConvertToTraceType(TraceChannel);
             SpawnedTargetActor->bTraceComplex = false; // 根据需要设置
         }
-        TargetDataTask->FinishSpawningActor(this, SpawnedTargetActor);
+        TargetDataTask->FinishSpawningActor(this, TempSpawnedTargetActorRaw);
         TargetDataTask->ReadyForActivation();
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("'%s': FAILED to create TargetDataTask!"), *GetName());
+        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
     }
 }
 void UGA_TargetedAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data)

@@ -12,17 +12,11 @@ UGA_SelfCastAbility::UGA_SelfCastAbility()
     // 设置技能类型为自我施放
     AbilityType = EHeroAbilityType::SelfCast;
     
-    // 自我施放技能默认不需要目标选择
-    bRequiresTargetData = false;
+    // 自我施放技能默认不进入交互式选目标流程
+    SetUsesInteractiveTargeting(false);
     
     // 自我施放技能默认不需要朝向目标
     bFaceTarget = false;
-}
-
-bool UGA_SelfCastAbility::RequiresTargetData_Implementation() const
-{
-    // 自我施放技能不需要目标数据
-    return false;
 }
 
 void UGA_SelfCastAbility::ApplySelfEffect(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo)

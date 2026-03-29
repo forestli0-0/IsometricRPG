@@ -70,6 +70,9 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Ability|Targeting")
     bool ExpectsPreparedTargetData() const;
 
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Ability|Targeting")
+    bool UsesInteractiveTargeting() const;
+
     UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Ability|Input")
     FAbilityInputPolicy GetAbilityInputPolicy() const;
     virtual FAbilityInputPolicy GetAbilityInputPolicy_Implementation() const;
@@ -117,9 +120,9 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ability|Attribute")
     bool bFaceTarget = true;
 
-    // 是否需要进行目标选择 - 子类可重写该属性
+    // 是否走基类的交互式选目标流程：已有合法目标数据就直接复用，否则进入 WaitTargetData 确认。
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Targeting")
-    bool bRequiresTargetData = true;
+    bool bUseInteractiveTargeting = true;
 
     // 技能都应该在激活前获取自身的属性集
     UPROPERTY(Transient, BlueprintReadOnly, Category = "Ability|Attribute") 
@@ -161,11 +164,6 @@ protected:
         const FGameplayAbilitySpecHandle Handle, 
         const FGameplayAbilityActorInfo* ActorInfo,
         const FGameplayAbilityActivationInfo ActivationInfo);
-    
-    // 子类可以覆盖的方法：该技能是否需要目标数据
-    UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Ability")
-    bool RequiresTargetData() const;
-    virtual bool RequiresTargetData_Implementation() const;
     
     // 冷却处理 - 提供统一的冷却管理
     virtual void ApplyCooldown(
@@ -279,6 +277,7 @@ protected:
     bool HasRequiredExecutionTargetData(const FGameplayAbilityTargetDataHandle& TargetData) const;
     bool ValidateAbilityConfiguration() const;
     bool ValidateExecutionTargetData(const FGameplayAbilityTargetDataHandle& TargetData, const TCHAR* Phase) const;
+    void SetUsesInteractiveTargeting(bool bEnabled);
 
     FGameplayAbilityActivationInfo CurrentActivationInfo;
     FPendingAbilityActivationContext CurrentInputContext;

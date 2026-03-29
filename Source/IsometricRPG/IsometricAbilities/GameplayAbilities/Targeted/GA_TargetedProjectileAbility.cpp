@@ -7,6 +7,39 @@
 #include "Engine/World.h"
 #include "IsometricAbilities/Projectiles/AProjectileBase.h"
 
+namespace
+{
+AActor* ResolvePrimaryTargetActorFromTargetData(const FGameplayAbilityTargetDataHandle& TargetDataHandle)
+{
+	if (!TargetDataHandle.IsValid(0))
+	{
+		return nullptr;
+	}
+
+	const FGameplayAbilityTargetData* TargetData = TargetDataHandle.Get(0);
+	if (!TargetData)
+	{
+		return nullptr;
+	}
+
+	if (const FHitResult* HitResult = TargetData->GetHitResult())
+	{
+		if (AActor* HitActor = HitResult->GetActor())
+		{
+			return HitActor;
+		}
+	}
+
+	const TArray<TWeakObjectPtr<AActor>> Actors = TargetData->GetActors();
+	if (Actors.Num() > 0)
+	{
+		return Actors[0].Get();
+	}
+
+	return nullptr;
+}
+}
+
 UGA_TargetedProjectileAbility::UGA_TargetedProjectileAbility()
 {
 	// 设置默认值
@@ -210,8 +243,14 @@ AProjectileBase* UGA_TargetedProjectileAbility::SpawnProjectile(
 	// 配置投射物
 	if (SpawnedProjectile)
 	{
+		FProjectileInitializationData ProjectileInitData = ProjectileData;
+		if (ProjectileInitData.bEnableHoming)
+		{
+			ProjectileInitData.HomingTargetActor = ResolvePrimaryTargetActorFromTargetData(CurrentTargetDataHandle);
+		}
+
 		// 使用ProjectileData初始化投射物
-		SpawnedProjectile->InitializeProjectile(this, ProjectileData, SourceActor, SourcePawn, SourceASC);
+		SpawnedProjectile->InitializeProjectile(this, ProjectileInitData, SourceActor, SourcePawn, SourceASC);
 		
 		UE_LOG(LogTemp, Log, TEXT("%s: Successfully spawned targeted projectile of class %s at location %s with rotation %s."), 
 			*GetName(), 
