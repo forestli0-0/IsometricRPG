@@ -39,9 +39,6 @@ protected:
 
 	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) override;
 
-	/* 关于这个SkillShot类，对应的应该是Targeted,也就是说，要么是指向目标，要么是指向方向。
-		那么这里的目标选择应该是方向，但是，如果是按基类的流程，又要左键确认目标，暂时没想好快捷施法，
-		因此这里这个先留着，设置为不需要目标，这样走的就是直接执行的流程*/
 	virtual void StartTargetSelection(
 		const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,

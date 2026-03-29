@@ -247,10 +247,12 @@ void UGA_TargetedAbility::StartTargetSelection(
         AGATA_CursorTrace* SpawnedTargetActor = Cast<AGATA_CursorTrace>(TempSpawnedTargetActorRaw);
         if (SpawnedTargetActor)
         {
-            // 例如，如果你想追踪 Pawn 而不是 Visibility
-            SpawnedTargetActor->TraceChannel = UEngineTypes::ConvertToTraceType(ECC_Pawn);
+            const ECollisionChannel TraceChannel =
+                (AbilityType == EHeroAbilityType::SkillShot || AbilityType == EHeroAbilityType::AreaEffect)
+                ? ECC_Visibility
+                : ECC_Pawn;
+            SpawnedTargetActor->TraceChannel = UEngineTypes::ConvertToTraceType(TraceChannel);
             SpawnedTargetActor->bTraceComplex = false; // 根据需要设置
-            // 你甚至可以在这里传递过滤参数等
         }
         TargetDataTask->FinishSpawningActor(this, SpawnedTargetActor);
         TargetDataTask->ReadyForActivation();
@@ -266,13 +268,21 @@ void UGA_TargetedAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHand
         {
             if (TargetData.IsValid())
             {
-                    for (TWeakObjectPtr<AActor> WeakActor : TargetData->GetActors())  
-                    {  
-                        if (AActor* Actor = WeakActor.Get())  
-                        {  
-                            MyCharacter->CurrentAbilityTargets.Add(Actor);  
-                        }  
+                if (TargetData->HasHitResult() && TargetData->GetHitResult())
+                {
+                    if (AActor* Actor = TargetData->GetHitResult()->GetActor())
+                    {
+                        MyCharacter->CurrentAbilityTargets.AddUnique(Actor);
                     }
+                }
+
+                for (TWeakObjectPtr<AActor> WeakActor : TargetData->GetActors())
+                {
+                    if (AActor* Actor = WeakActor.Get())
+                    {
+                        MyCharacter->CurrentAbilityTargets.AddUnique(Actor);
+                    }
+                }
             }
         }
     }

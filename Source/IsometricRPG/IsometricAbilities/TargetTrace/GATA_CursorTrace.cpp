@@ -60,10 +60,8 @@ void AGATA_CursorTrace::ConfirmTargetingAndContinue()
 
     FGameplayAbilityTargetDataHandle TargetDataHandle;
 
-    if (bHit && HitResult.GetActor()) // 确保击中了 Actor
+    if (bHit && HitResult.bBlockingHit)
     {
-        // 将 FHitResult 包装成 FGameplayAbilityTargetData_SingleTargetHit
-        // 注意：这里需要 new 一个，因为 FGameplayAbilityTargetDataHandle 会管理它的生命周期
         FGameplayAbilityTargetData_SingleTargetHit* NewTargetData = new FGameplayAbilityTargetData_SingleTargetHit();
         NewTargetData->HitResult = HitResult;
         TargetDataHandle.Add(NewTargetData);

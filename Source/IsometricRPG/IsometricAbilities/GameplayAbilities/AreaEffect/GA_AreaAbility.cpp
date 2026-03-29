@@ -15,15 +15,13 @@ UGA_AreaAbility::UGA_AreaAbility()
 void UGA_AreaAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo)
 {
    AActor* SelfActor = ActorInfo->AvatarActor.Get();
-   //if (!SelfActor || !TriggerEventData || TriggerEventData->TargetData.Num() == 0 || !TriggerEventData->TargetData.Data[0].IsValid())
-    if (!SelfActor || !CurrentTargetDataHandle.IsValid(0))
+   const FVector AoECenterLocation = GetCurrentAimPoint();
+    if (!SelfActor || GetCurrentAimDirection().IsNearlyZero())
     {
-        UE_LOG(LogTemp, Error, TEXT("%s: Cannot execute area skill - invalid prerequisites."), *GetName());
+        UE_LOG(LogTemp, Error, TEXT("%s: Cannot execute area skill - AimPoint is invalid."), *GetName());
         EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
         return;
     }
-   const FGameplayAbilityTargetData* TargetData = CurrentTargetDataHandle.Data[0].Get();
-   FVector AoECenterLocation = TargetData->GetHitResult() ? FVector(TargetData->GetHitResult()->Location) : FVector(TargetData->GetEndPoint());
 
    UE_LOG(LogTemp, Log, TEXT("%s: Executing area skill at location %s with radius %.2f."), *GetName(), *AoECenterLocation.ToString(), AreaRadius);
 

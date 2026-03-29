@@ -4,6 +4,7 @@
 #include "GameFramework/PlayerController.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
+#include "Input/IsometricInputTypes.h"
 #include "IsometricRPG/IsometricAbilities/Types/HeroAbilityTypes.h"
 #include "IsometricRPG/UI/HUD/HUDRootWidget.h"
 #include "IsometricPlayerController.generated.h"
@@ -11,7 +12,7 @@
 
 class UInputMappingContext;
 class UInputAction;
-class IsometricInputComponent;
+class UIsometricInputComponent;
 UCLASS()
 class ISOMETRICRPG_API AIsometricPlayerController : public APlayerController
 {
@@ -62,7 +63,17 @@ protected:
 
 	// 处理技能输入（新：Pressed/Released 语义，用于蓄力/引导/持续施法）
 	void HandleSkillPressed(EAbilityInputID InputID);
+	void HandleSkillHeld(EAbilityInputID InputID);
 	void HandleSkillReleased(EAbilityInputID InputID);
+	void BuildCursorInputSnapshot(
+		EPlayerInputSourceKind SourceKind,
+		EInputEventPhase Phase,
+		FCursorInputSnapshot& OutSnapshot,
+		EAbilityInputID InputID = EAbilityInputID::None,
+		float HeldDuration = 0.0f) const;
+	void DispatchInputSnapshot(const FCursorInputSnapshot& Snapshot);
+	float GetAbilityHeldDuration(EAbilityInputID InputID) const;
+	UIsometricInputComponent* ResolveInputComponent() const;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input|RightClick")
 	float HeldMoveRepathInterval = 0.1f;
@@ -90,6 +101,7 @@ private:
     float NextHeldMoveCommandTime = 0.0f;
     float NextHeldAttackCommandTime = 0.0f;
     bool bHasLastHeldMoveLocation = false;
+	TMap<EAbilityInputID, float> AbilityPressedAtTime;
 
-    bool GetHitResultUnderCursorSafe(ECollisionChannel TraceChannel, bool bTraceComplex, FHitResult& HitResult);
+    bool GetHitResultUnderCursorSafe(ECollisionChannel TraceChannel, bool bTraceComplex, FHitResult& HitResult) const;
 };

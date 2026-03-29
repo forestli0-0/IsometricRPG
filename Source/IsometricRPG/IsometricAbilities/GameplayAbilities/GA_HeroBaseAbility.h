@@ -5,6 +5,7 @@
 #include "Character/IsometricRPGAttributeSetBase.h"
 #include "Abilities/Tasks/AbilityTask_WaitTargetData.h"
 #include "GameplayTagContainer.h"
+#include "Input/IsometricInputTypes.h"
 #include "GA_HeroBaseAbility.generated.h"
 
 // 技能类型枚举，用于区分不同种类的技能
@@ -56,10 +57,41 @@ public:
     /** Returns the configured resource cost for UI or external systems. */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Ability|Cost")
     float GetResourceCost() const;
+
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Ability|Type")
+    EHeroAbilityType GetHeroAbilityType() const { return AbilityType; }
+
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Ability|Targeting")
+    bool ExpectsActorTargetData() const;
+
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Ability|Targeting")
+    bool ExpectsLocationTargetData() const;
+
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Ability|Targeting")
+    bool ExpectsPreparedTargetData() const;
+
+    UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Ability|Input")
+    FAbilityInputPolicy GetAbilityInputPolicy() const;
+    virtual FAbilityInputPolicy GetAbilityInputPolicy_Implementation() const;
+
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Ability|Input")
+    float GetCurrentHeldDuration() const;
+
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Ability|Input")
+    EInputEventPhase GetCurrentInputTriggerPhase() const;
+
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Ability|Input")
+    FVector GetCurrentAimPoint() const;
+
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Ability|Input")
+    FVector GetCurrentAimDirection() const;
 protected:
     // 技能类型
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Type")
     EHeroAbilityType AbilityType;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Input")
+    FAbilityInputPolicy InputPolicy;
 
     // 技能动画
     UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ability|Animation")
@@ -244,8 +276,12 @@ protected:
     void CleanupReplicatedTargetDataDelegates();
     void HandleReplicatedTargetDataReceived(const FGameplayAbilityTargetDataHandle& Data, FGameplayTag ActivationTag);
     void HandleReplicatedTargetDataCancelled();
+    bool HasRequiredExecutionTargetData(const FGameplayAbilityTargetDataHandle& TargetData) const;
+    bool ValidateAbilityConfiguration() const;
+    bool ValidateExecutionTargetData(const FGameplayAbilityTargetDataHandle& TargetData, const TCHAR* Phase) const;
 
     FGameplayAbilityActivationInfo CurrentActivationInfo;
+    FPendingAbilityActivationContext CurrentInputContext;
 
     FGameplayAbilityTargetDataHandle CurrentTargetDataHandle;
     FDelegateHandle ReplicatedTargetDataDelegateHandle;

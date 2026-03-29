@@ -104,12 +104,32 @@ public:
     void SetAbilityTargetDataByHit(const FHitResult& HitResult);
     UFUNCTION(BlueprintCallable, meta = (DisplayName = "SetAbilityTargetDataByActor"))
     void SetAbilityTargetDataByActor(AActor* TargetActor);
+    UFUNCTION(BlueprintCallable, Category = "Ability Context")
+    bool PrepareAbilityActivationContextForAbility(TSubclassOf<UGameplayAbility> AbilityClass, AActor* TargetActor);
 
     /** 同步到服务器：在客户端激活前调用，确保服务器也拿到相同的目标数据 */
     UFUNCTION(Server, Reliable)
     void Server_SetAbilityTargetDataByHit(const FHitResult& HitResult);
     UFUNCTION(Server, Reliable)
     void Server_SetAbilityTargetDataByActor(AActor* TargetActor);
+    UFUNCTION(Server, Reliable)
+    void Server_SetPendingAbilityActivationContext(
+        EAbilityInputID InputID,
+        EInputEventPhase TriggerPhase,
+        bool bUseActorTarget,
+        bool bIsHeldInput,
+        float HeldDuration,
+        const FHitResult& HitResult,
+        AActor* TargetActor);
+    UFUNCTION(Server, Unreliable)
+    void Server_UpdatePendingAbilityActivationContext(
+        EAbilityInputID InputID,
+        EInputEventPhase TriggerPhase,
+        bool bUseActorTarget,
+        bool bIsHeldInput,
+        float HeldDuration,
+        const FHitResult& HitResult,
+        AActor* TargetActor);
 
     /** 供GameplayAbility在激活时调用，用于获取目标数据 */
     FGameplayAbilityTargetDataHandle GetAbilityTargetData() const;

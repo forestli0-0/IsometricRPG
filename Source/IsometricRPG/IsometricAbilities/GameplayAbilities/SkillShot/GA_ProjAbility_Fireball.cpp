@@ -25,6 +25,12 @@ UGA_ProjAbility_Fireball::UGA_ProjAbility_Fireball()
 	
 	// 需要目标选择（方向选择）
 	bRequiresTargetData = false;
+
+	// Fireball 走按下瞄准、释放提交的试点流程。
+	InputPolicy.InputMode = EAbilityInputMode::PressAndRelease;
+	InputPolicy.bUpdateTargetWhileHeld = true;
+	InputPolicy.bAllowInputBuffer = true;
+	InputPolicy.MaxBufferWindow = 0.3f;
 }
 
 

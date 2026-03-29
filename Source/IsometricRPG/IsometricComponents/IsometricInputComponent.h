@@ -2,43 +2,15 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "GameplayTagContainer.h"
-#include "Engine/HitResult.h"
-#include "Abilities/GameplayAbilityTypes.h"
-#include "IsometricRPG/IsometricAbilities/Types/HeroAbilityTypes.h"
-// 前向声明
+#include "Input/IsometricInputRouter.h"
+#include "Input/IsometricInputSessionManager.h"
+
 class UAbilitySystemComponent;
 class AIsometricRPGCharacter;
 class APlayerController;
+enum class ESkillSlot : uint8;
 
 #include "IsometricInputComponent.generated.h"
-
-enum class EAbilityActivationIntent : uint8
-{
-	Cast,
-	BasicAttack
-};
-
-struct FAbilityActivationRequest
-{
-	EAbilityActivationIntent Intent = EAbilityActivationIntent::Cast;
-	EAbilityInputID InputID = EAbilityInputID::None;
-	bool bIsHeldInput = false;
-	bool bUseActorTarget = false;
-	FHitResult HitResult;
-	TWeakObjectPtr<AActor> TargetActor;
-};
-
-struct FPendingAbilityActivationContext
-{
-	EAbilityActivationIntent Intent = EAbilityActivationIntent::Cast;
-	EAbilityInputID InputID = EAbilityInputID::None;
-	bool bIsHeldInput = false;
-	bool bUseActorTarget = false;
-	FHitResult HitResult;
-	TWeakObjectPtr<AActor> TargetActor;
-	FGameplayAbilityTargetDataHandle TargetData;
-};
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class ISOMETRICRPG_API UIsometricInputComponent : public UActorComponent
@@ -50,33 +22,26 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 public:
-	// 这些方法由 AIsometricPlayerController（或 AI 控制器）调用
-	void HandleLeftClick(const FHitResult& HitResult);
-
-	void HandleRightClickTriggered(const FHitResult& HitResult, bool bIsHeldInput = false);
-
-	void HandleSkillPressed(EAbilityInputID InputID, const FHitResult& TargetData);
-	void HandleSkillReleased(EAbilityInputID InputID);
-	void RequestAbilityActivation(const FAbilityActivationRequest& Request);
+	void ProcessInputSnapshot(const FCursorInputSnapshot& Snapshot);
 
 
 	// 游戏行为请求，可由该组件内部或 AI 调用
 	void RequestMoveToLocation(const FVector& TargetLocation, bool bIsHeldInput = false);
-	void RequestBasicAttack(AActor* TargetActor, bool bUseUnreliableRemoteUpdate = false);
+	void RequestBasicAttack(const FHitResult& HitResult, AActor* TargetActor, bool bUseUnreliableRemoteUpdate = false);
 
 private:
 	UPROPERTY()
 	AIsometricRPGCharacter* OwnerCharacter;
 
 	UPROPERTY()
-	APlayerController* CachedPlayerController;
-
-	UPROPERTY()
 	UAbilitySystemComponent* OwnerASC;
 
 	TWeakObjectPtr<AActor> CurrentSelectedTargetForUI;
+	FIsometricInputRouter InputRouter;
+	FIsometricInputSessionManager InputSessionManager;
 
 public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "UI")
@@ -95,14 +60,22 @@ public:
 	void Server_RequestMoveToLocation(const FVector& TargetLocation);
 
 	UFUNCTION(Server, Reliable)
-	void Server_RequestBasicAttack(AActor* TargetActor);
+	void Server_RequestBasicAttack(const FHitResult& HitResult, AActor* TargetActor);
 
 	UFUNCTION(Server, Unreliable)
-	void Server_UpdateBasicAttack(AActor* TargetActor);
+	void Server_UpdateBasicAttack(const FHitResult& HitResult, AActor* TargetActor);
 
 private:
+	void ExecuteCommand(const FPlayerInputCommand& Command);
+	void ApplySelectionCommand(const FPlayerInputCommand& Command);
+	void ExecuteAbilityInputCommand(const FPlayerInputCommand& Command);
+	bool ExecuteAbilityCommitCommand(const FPlayerInputCommand& Command, const FAbilityInputPolicy& Policy);
+	bool ResolveAbilityInputPolicy(EAbilityInputID InputID, FAbilityInputPolicy& OutPolicy) const;
+	ESkillSlot ResolveSkillSlotFromInput(EAbilityInputID InputID) const;
+	FPendingAbilityActivationContext BuildActivationContext(const FPlayerInputCommand& Command) const;
+	void UpdatePendingAbilityContext(const FPlayerInputCommand& Command);
 	void HandleMoveIntentOnAuthority();
 	void StopPredictedClickMove();
-	FPendingAbilityActivationContext BuildActivationContext(const FAbilityActivationRequest& Request) const;
 	void SyncActivationContextToServer(const FPendingAbilityActivationContext& Context) const;
+	void PumpBufferedAbilityCommand();
 };

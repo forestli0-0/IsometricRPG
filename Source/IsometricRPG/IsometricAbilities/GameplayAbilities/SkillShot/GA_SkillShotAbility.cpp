@@ -22,6 +22,14 @@ void UGA_SkillShotAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle,
 	// Get the direction from the trigger event data (should contain target location)
 	FVector Direction = GetSkillShotDirection();
 	FVector StartLocation = GetAvatarActorFromActorInfo()->GetActorLocation();
+	if (!ensureAlwaysMsgf(
+		!Direction.IsNearlyZero(),
+		TEXT("%s: SkillShot executed without a valid AimDirection in the pending activation context."),
+		*GetName()))
+	{
+		CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+		return;
+	}
 
 	// Execute the skill shot
 	ExecuteSkillShot(Direction, StartLocation);
@@ -69,22 +77,13 @@ void UGA_SkillShotAbility::StartTargetSelection(
 
 FVector UGA_SkillShotAbility::GetSkillShotDirection() const
 {
-	if (CurrentTargetDataHandle.Num() > 0)
+	const FVector AimDirection = GetCurrentAimDirection();
+	if (!ensureAlwaysMsgf(!AimDirection.IsNearlyZero(), TEXT("%s: SkillShot is missing AimDirection at execution time."), *GetName()))
 	{
-		// Get direction from current location to target location
-		const FHitResult* HitResult = CurrentTargetDataHandle.Get(0)->GetHitResult();
-		if (HitResult)
-		{
-			FVector StartLocation = GetAvatarActorFromActorInfo()->GetActorLocation();
-			FVector TargetLocation = HitResult->Location;
-			auto Direction = (TargetLocation - StartLocation).GetSafeNormal();
-			Direction.Z = 0;
-			return Direction;
-		}
+		return FVector::ZeroVector;
 	}
 
-	// Default to forward direction if no target data
-	return GetAvatarActorFromActorInfo()->GetActorForwardVector();
+	return AimDirection;
 }
 
 void UGA_SkillShotAbility::ExecuteSkillShot(const FVector& Direction, const FVector& StartLocation)

@@ -126,6 +126,15 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Foxfire|Movement")
 	float MoveSpeedDecayStepInterval = 0.1f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Foxfire|Charge", meta = (ClampMin = "0"))
+	int32 MaxAdditionalFoxfiresOnFullCharge = 2;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Foxfire|Charge", meta = (ClampMin = "1.0"))
+	float FullChargeDamageMultiplier = 1.6f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Foxfire|Charge", meta = (ClampMin = "0.0"))
+	float FullChargeMoveSpeedBonusPercent = 0.7f;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Cooldown")
 	TArray<float> CooldownByLevel;
 
@@ -228,6 +237,8 @@ private:
 	float GetMaxHealthForActor(AActor* TargetActor) const;
 	bool IsBelowMinionExecuteThreshold(AActor* TargetActor) const;
 	float CalculateAssignedDamageForTarget(AActor* TargetActor) const;
+	void ResolveChargedParameters();
+	void ResetChargedParameters();
 
 	void ApplyMoveSpeedDecay();
 	void ApplyMoveSpeedDecayStep();
@@ -257,6 +268,11 @@ private:
 	float FoxfireStartTime = 0.0f;
 	float LastOrbitUpdateTime = 0.0f;
 	float MoveSpeedBuffStartTime = 0.0f;
+	float RuntimeHeldDuration = 0.0f;
+	float RuntimeChargeAlpha = 0.0f;
+	float RuntimeDamageMultiplier = 1.0f;
+	float RuntimeMoveSpeedBonusPercent = 0.0f;
+	int32 RuntimeFoxfireCount = 0;
 	bool bFoxfireLifecycleComplete = false;
 	bool bMoveSpeedDecayComplete = true;
 	bool bAbilityCleanupPerformed = false;

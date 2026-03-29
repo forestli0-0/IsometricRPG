@@ -40,6 +40,103 @@ const FGameplayTag& GetCostMagnitudeTag()
     static const FGameplayTag CostMagnitudeTag = FGameplayTag::RequestGameplayTag(TEXT("Data.Cost.Magnitude"));
     return CostMagnitudeTag;
 }
+
+bool HasActorTargetData(const FGameplayAbilityTargetData* Data)
+{
+    if (!Data)
+    {
+        return false;
+    }
+
+    if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_ActorArray::StaticStruct()))
+    {
+        const auto* ActorArrayData = static_cast<const FGameplayAbilityTargetData_ActorArray*>(Data);
+        return ActorArrayData && ActorArrayData->TargetActorArray.Num() > 0 && ActorArrayData->TargetActorArray[0].IsValid();
+    }
+
+    return false;
+}
+
+bool HasPawnHitTargetData(const FGameplayAbilityTargetData* Data)
+{
+    if (!Data || !Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
+    {
+        return false;
+    }
+
+    const auto* HitResultData = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(Data);
+    return HitResultData && HitResultData->GetHitResult() && Cast<APawn>(HitResultData->GetHitResult()->GetActor()) != nullptr;
+}
+
+bool HasLocationTargetData(const FGameplayAbilityTargetData* Data)
+{
+    if (!Data)
+    {
+        return false;
+    }
+
+    if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
+    {
+        const auto* HitResultData = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(Data);
+        return HitResultData && HitResultData->GetHitResult() != nullptr;
+    }
+
+    return HasActorTargetData(Data);
+}
+
+const TCHAR* DescribeAbilityType(const EHeroAbilityType AbilityType)
+{
+    switch (AbilityType)
+    {
+    case EHeroAbilityType::SelfCast:
+        return TEXT("SelfCast");
+    case EHeroAbilityType::Targeted:
+        return TEXT("Targeted");
+    case EHeroAbilityType::SkillShot:
+        return TEXT("SkillShot");
+    case EHeroAbilityType::AreaEffect:
+        return TEXT("AreaEffect");
+    case EHeroAbilityType::Passive:
+        return TEXT("Passive");
+    default:
+        return TEXT("Unknown");
+    }
+}
+
+FString DescribeTargetDataShape(const FGameplayAbilityTargetDataHandle& TargetDataHandle)
+{
+    if (!TargetDataHandle.IsValid(0))
+    {
+        return TEXT("None");
+    }
+
+    const FGameplayAbilityTargetData* Data = TargetDataHandle.Get(0);
+    if (!Data)
+    {
+        return TEXT("NullPayload");
+    }
+
+    if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_ActorArray::StaticStruct()))
+    {
+        const auto* ActorArrayData = static_cast<const FGameplayAbilityTargetData_ActorArray*>(Data);
+        const int32 NumActors = ActorArrayData ? ActorArrayData->TargetActorArray.Num() : 0;
+        const AActor* FirstActor = (ActorArrayData && NumActors > 0) ? ActorArrayData->TargetActorArray[0].Get() : nullptr;
+        return FString::Printf(TEXT("ActorArray(Num=%d First=%s)"), NumActors, *GetNameSafe(FirstActor));
+    }
+
+    if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
+    {
+        const auto* HitResultData = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(Data);
+        const FHitResult* HitResult = HitResultData ? HitResultData->GetHitResult() : nullptr;
+        return FString::Printf(
+            TEXT("SingleHit(Actor=%s Blocking=%s Location=%s)"),
+            *GetNameSafe(HitResult ? HitResult->GetActor() : nullptr),
+            (HitResult && HitResult->bBlockingHit) ? TEXT("true") : TEXT("false"),
+            HitResult ? *HitResult->Location.ToCompactString() : TEXT("None"));
+    }
+
+    return Data->GetScriptStruct() ? Data->GetScriptStruct()->GetName() : TEXT("UnknownStruct");
+}
 }
 
 UGA_HeroBaseAbility::UGA_HeroBaseAbility()
@@ -49,6 +146,21 @@ UGA_HeroBaseAbility::UGA_HeroBaseAbility()
     TargetActorClass = nullptr;
     // 默认为目标指向型技能
     AbilityType = EHeroAbilityType::Targeted;
+}
+
+bool UGA_HeroBaseAbility::ExpectsActorTargetData() const
+{
+    return AbilityType == EHeroAbilityType::Targeted;
+}
+
+bool UGA_HeroBaseAbility::ExpectsLocationTargetData() const
+{
+    return AbilityType == EHeroAbilityType::SkillShot || AbilityType == EHeroAbilityType::AreaEffect;
+}
+
+bool UGA_HeroBaseAbility::ExpectsPreparedTargetData() const
+{
+    return ExpectsActorTargetData() || ExpectsLocationTargetData();
 }
 
 FText UGA_HeroBaseAbility::GetAbilityDisplayNameText() const
@@ -64,6 +176,31 @@ FText UGA_HeroBaseAbility::GetAbilityDisplayNameText() const
 float UGA_HeroBaseAbility::GetResourceCost() const
 {
     return CostMagnitude;
+}
+
+FAbilityInputPolicy UGA_HeroBaseAbility::GetAbilityInputPolicy_Implementation() const
+{
+    return InputPolicy;
+}
+
+float UGA_HeroBaseAbility::GetCurrentHeldDuration() const
+{
+    return CurrentInputContext.HeldDuration;
+}
+
+EInputEventPhase UGA_HeroBaseAbility::GetCurrentInputTriggerPhase() const
+{
+    return CurrentInputContext.TriggerPhase;
+}
+
+FVector UGA_HeroBaseAbility::GetCurrentAimPoint() const
+{
+    return CurrentInputContext.AimPoint;
+}
+
+FVector UGA_HeroBaseAbility::GetCurrentAimDirection() const
+{
+    return CurrentInputContext.AimDirection;
 }
 
 // =================================================================================================================
@@ -117,6 +254,7 @@ void UGA_HeroBaseAbility::ActivateAbility(
         return;
     }
 
+    CurrentInputContext = RPGCharacter->GetPendingAbilityActivationContext();
     CurrentTargetDataHandle = RPGCharacter->GetAbilityTargetData();
 
     if (ShouldWaitForReplicatedTargetData(ActorInfo, ActivationInfo))
@@ -144,32 +282,7 @@ void UGA_HeroBaseAbility::ContinueAbilityActivation(
 {
     if (RequiresTargetData())
     {
-        const FGameplayAbilityTargetData* Data = CurrentTargetDataHandle.Get(0);
-        bool bSuccessfullyFoundTarget = false;
-        if (Data && Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_ActorArray::StaticStruct()))
-        {
-            const auto* ActorArrayData = static_cast<const FGameplayAbilityTargetData_ActorArray*>(Data);
-            if (ActorArrayData && ActorArrayData->TargetActorArray.Num() > 0)
-            {
-                if (ActorArrayData->TargetActorArray[0].IsValid())
-                {
-                    bSuccessfullyFoundTarget = true;
-                }
-            }
-        }
-        else if (Data && Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
-        {
-            const auto* HitResultData = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(Data);
-            if (HitResultData && HitResultData->GetHitResult())
-            {
-                if (Cast<APawn>(HitResultData->GetHitResult()->GetActor()))
-                {
-                    bSuccessfullyFoundTarget = true;
-                }
-            }
-        }
-
-        if (bSuccessfullyFoundTarget)
+        if (HasRequiredExecutionTargetData(CurrentTargetDataHandle))
         {
             OnTargetDataReady(CurrentTargetDataHandle);
         }
@@ -180,6 +293,11 @@ void UGA_HeroBaseAbility::ContinueAbilityActivation(
     }
     else
     {
+        if (!ValidateExecutionTargetData(CurrentTargetDataHandle, TEXT("DirectExecute")))
+        {
+            CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+            return;
+        }
         DirectExecuteAbility(Handle, ActorInfo, ActivationInfo);
     }
 }
@@ -188,12 +306,17 @@ bool UGA_HeroBaseAbility::ShouldWaitForReplicatedTargetData(
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo& ActivationInfo) const
 {
-    if (!RequiresTargetData() || !ActorInfo)
+    if (!ExpectsPreparedTargetData() || !ActorInfo)
     {
         return false;
     }
 
     if (!ActorInfo->IsNetAuthority() || ActorInfo->IsLocallyControlled())
+    {
+        return false;
+    }
+
+    if (ExpectsLocationTargetData() && !GetCurrentAimDirection().IsNearlyZero())
     {
         return false;
     }
@@ -211,7 +334,7 @@ void UGA_HeroBaseAbility::SendInitialTargetDataToServer(
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo& ActivationInfo)
 {
-    if (!RequiresTargetData() || !ActorInfo || ActorInfo->IsNetAuthority() || !ActorInfo->IsLocallyControlled())
+    if (!ExpectsPreparedTargetData() || !ActorInfo || ActorInfo->IsNetAuthority() || !ActorInfo->IsLocallyControlled())
     {
         return;
     }
@@ -303,6 +426,7 @@ void UGA_HeroBaseAbility::HandleReplicatedTargetDataReceived(const FGameplayAbil
         FPendingAbilityActivationContext Context = RPGCharacter->GetPendingAbilityActivationContext();
         Context.TargetData = Data;
         RPGCharacter->SetPendingAbilityActivationContext(Context);
+        CurrentInputContext = RPGCharacter->GetPendingAbilityActivationContext();
     }
 
     const FGameplayAbilityActorInfo* ActorInfo = GetCurrentActorInfo();
@@ -327,6 +451,79 @@ void UGA_HeroBaseAbility::HandleReplicatedTargetDataCancelled()
     CleanupReplicatedTargetDataDelegates();
     UE_LOG(LogTemp, Warning, TEXT("%s: Replicated target data cancelled."), *GetName());
     CancelAbility(CurrentSpecHandle, GetCurrentActorInfo(), CurrentActivationInfo, true);
+}
+
+bool UGA_HeroBaseAbility::HasRequiredExecutionTargetData(const FGameplayAbilityTargetDataHandle& TargetData) const
+{
+    if (!ExpectsPreparedTargetData())
+    {
+        return true;
+    }
+
+    const FGameplayAbilityTargetData* Data = TargetData.Get(0);
+    if (!Data)
+    {
+        return false;
+    }
+
+    if (ExpectsLocationTargetData())
+    {
+        return HasLocationTargetData(Data) || !GetCurrentAimDirection().IsNearlyZero();
+    }
+
+    if (ExpectsActorTargetData())
+    {
+        return HasActorTargetData(Data) || HasPawnHitTargetData(Data);
+    }
+
+    return true;
+}
+
+bool UGA_HeroBaseAbility::ValidateAbilityConfiguration() const
+{
+    switch (AbilityType)
+    {
+    case EHeroAbilityType::Targeted:
+        return ensureAlwaysMsgf(
+            bRequiresTargetData,
+            TEXT("%s: Targeted abilities must keep bRequiresTargetData=true. This asset currently skips target validation and only works when some external caller injects target data."),
+            *GetName());
+
+    case EHeroAbilityType::SelfCast:
+    case EHeroAbilityType::Passive:
+        return ensureAlwaysMsgf(
+            !bRequiresTargetData,
+            TEXT("%s: %s abilities must keep bRequiresTargetData=false."),
+            *GetName(),
+            DescribeAbilityType(AbilityType));
+
+    default:
+        return true;
+    }
+}
+
+bool UGA_HeroBaseAbility::ValidateExecutionTargetData(const FGameplayAbilityTargetDataHandle& TargetData, const TCHAR* Phase) const
+{
+    if (!ExpectsPreparedTargetData())
+    {
+        return true;
+    }
+
+    if (HasRequiredExecutionTargetData(TargetData))
+    {
+        return true;
+    }
+
+    const TCHAR* ExpectedTargetShape = ExpectsLocationTargetData() ? TEXT("AimDirection-or-hit-result") : TEXT("actor-or-pawn-hit");
+    ensureAlwaysMsgf(
+        false,
+        TEXT("%s: %s attempted to execute a %s ability without the required %s target data. Received=%s"),
+        *GetName(),
+        Phase,
+        DescribeAbilityType(AbilityType),
+        ExpectedTargetShape,
+        *DescribeTargetDataShape(TargetData));
+    return false;
 }
 
 bool UGA_HeroBaseAbility::CheckCost(
@@ -478,6 +675,7 @@ void UGA_HeroBaseAbility::EndAbility(
         }
     }
     TargetDataTask = nullptr;
+    CurrentInputContext = FPendingAbilityActivationContext();
 
     Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
@@ -604,38 +802,35 @@ void UGA_HeroBaseAbility::PlayAbilityMontage(
         // TODO:将Pawn按照目标方向旋转，且旋转时间和动画播放时间保持线性关系
         if (bFaceTarget && Character)
         {
-            // 改为从 CurrentTargetDataHandle 获取目标信息（该数据来源于角色在按键时暂存的 TargetData）
-            FVector TargetLocation = FVector::ZeroVector;
-            bool bHasTarget = false;
+            FVector DirectionToTargetHorizontal = GetCurrentAimDirection();
+            bool bHasTarget = !DirectionToTargetHorizontal.IsNearlyZero();
 
-            if (CurrentTargetDataHandle.Num() > 0 && CurrentTargetDataHandle.Data[0].IsValid())
-                        {
+            if (!bHasTarget && CurrentTargetDataHandle.Num() > 0 && CurrentTargetDataHandle.Data[0].IsValid())
+            {
                 const TSharedPtr<FGameplayAbilityTargetData> DataPtr = CurrentTargetDataHandle.Data[0];
                 if (DataPtr->HasHitResult() && DataPtr->GetHitResult())
-                            {
-                    TargetLocation = DataPtr->GetHitResult()->Location;
+                {
+                    DirectionToTargetHorizontal = DataPtr->GetHitResult()->Location - Character->GetActorLocation();
                     bHasTarget = true;
-                            }
+                }
                 else if (DataPtr->GetActors().Num() > 0 && DataPtr->GetActors()[0].IsValid())
                 {
-                    TargetLocation = DataPtr->GetActors()[0]->GetActorLocation();
+                    DirectionToTargetHorizontal = DataPtr->GetActors()[0]->GetActorLocation() - Character->GetActorLocation();
                     bHasTarget = true;
-                            }
-                        }
+                }
+            }
 
             if (bHasTarget)
-                    {
-                const FVector CharacterLocation = Character->GetActorLocation();
-                                    FVector DirectionToTargetHorizontal = TargetLocation - CharacterLocation;
-                DirectionToTargetHorizontal.Z = 0.0f; // Ignore vertical
-                                    if (!DirectionToTargetHorizontal.IsNearlyZero())
-                                    {
+            {
+                DirectionToTargetHorizontal.Z = 0.0f;
+                if (!DirectionToTargetHorizontal.IsNearlyZero())
+                {
                     const FRotator LookAtRotation = DirectionToTargetHorizontal.Rotation();
-                                        Character->SetActorRotation(LookAtRotation, ETeleportType::None);
-                                    }
-                                }
-                        else
-                        {
+                    Character->SetActorRotation(LookAtRotation, ETeleportType::None);
+                }
+            }
+            else
+            {
                 UE_LOG(LogTemp, Verbose, TEXT("%s: No target data to face when playing montage."), *GetName());
             }
         }
@@ -766,6 +961,7 @@ void UGA_HeroBaseAbility::CancelAbility(
         TargetDataTask->EndTask();
     }
     TargetDataTask = nullptr;
+    CurrentInputContext = FPendingAbilityActivationContext();
 
     Super::CancelAbility(Handle, ActorInfo, ActivationInfo, bReplicateCancelAbility);
 }
@@ -957,8 +1153,8 @@ bool UGA_HeroBaseAbility::ServerValidateTargetData(
         return true;
     }
 
-    // 不需要目标数据的技能（SelfCast / SkillShot 等）直接通过
-    if (!RequiresTargetData())
+    // 不依赖预制目标数据的技能（SelfCast / Passive）直接通过
+    if (!ExpectsPreparedTargetData())
     {
         return true;
     }
@@ -1034,6 +1230,8 @@ void UGA_HeroBaseAbility::PostInitProperties()
     // 仅在CDO上做一次触发器注入，避免实例期重复添加
     if (HasAnyFlags(RF_ClassDefaultObject))
     {
+        ValidateAbilityConfiguration();
+
         if (TriggerTag.IsValid())
         {
             bool bAlreadyAdded = false;

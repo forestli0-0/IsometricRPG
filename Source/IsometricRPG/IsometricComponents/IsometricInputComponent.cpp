@@ -1,20 +1,19 @@
-// IsometricInputComponent.cpp
 #include "IsometricInputComponent.h"
-#include "EnhancedInputComponent.h"
-#include "EnhancedInputSubsystems.h" 
-#include "GameFramework/Character.h"
-#include "GameFramework/PlayerController.h"
+
+#include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "Character/IsometricRPGCharacter.h"
+#include "GameFramework/PlayerController.h"
+#include "IsometricAbilities/GameplayAbilities/GA_HeroBaseAbility.h"
+#include "IsometricAbilities/Types/EquippedAbilityInfo.h"
 #include "IsometricComponents/IsometricPathFollowingComponent.h"
-#include "AbilitySystemBlueprintLibrary.h"
 
 UIsometricInputComponent::UIsometricInputComponent()
 {
-	PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bStartWithTickEnabled = false;
 	SetIsReplicatedByDefault(true);
 }
-
 
 void UIsometricInputComponent::BeginPlay()
 {
@@ -22,8 +21,13 @@ void UIsometricInputComponent::BeginPlay()
 	OwnerCharacter = Cast<AIsometricRPGCharacter>(GetOwner());
 }
 
+void UIsometricInputComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	PumpBufferedAbilityCommand();
+}
 
-void UIsometricInputComponent::HandleLeftClick(const FHitResult& HitResult)
+void UIsometricInputComponent::ProcessInputSnapshot(const FCursorInputSnapshot& Snapshot)
 {
 	if (!OwnerCharacter)
 	{
@@ -35,86 +39,93 @@ void UIsometricInputComponent::HandleLeftClick(const FHitResult& HitResult)
 		OwnerASC = OwnerCharacter->GetAbilitySystemComponent();
 	}
 
-	// 仅当 ASC 存在时才发送确认输入，避免卡死输入链路
-	if (OwnerASC)
+	if (Snapshot.SourceKind == EPlayerInputSourceKind::LeftMouse
+		&& Snapshot.Phase == EInputEventPhase::Pressed
+		&& OwnerASC)
 	{
 		SendConfirmTargetInput();
 	}
-
-	AActor* HitActor = HitResult.GetActor();
-
-	if (HitActor && HitActor != OwnerCharacter)
-	{
-		CurrentSelectedTargetForUI = HitActor;
-		OnTargetSelectedForUI(HitActor);
-	}
-	else
-	{
-		CurrentSelectedTargetForUI = nullptr;
-		OnTargetClearedForUI();
-	}
-}
-
-
-void UIsometricInputComponent::HandleRightClickTriggered(const FHitResult& HitResult, bool bIsHeldInput)
-{
-	if (!OwnerCharacter)
-	{
-		return;
-	}
-
-	if (!OwnerASC)
-	{
-		OwnerASC = OwnerCharacter->GetAbilitySystemComponent();
-	}
-
-	// 总是取消上一次的目标选择状态（仅当 ASC 存在时发送）
-	if (OwnerASC)
+	else if (Snapshot.SourceKind == EPlayerInputSourceKind::RightMouse
+		&& (Snapshot.Phase == EInputEventPhase::Pressed || Snapshot.Phase == EInputEventPhase::Held)
+		&& OwnerASC)
 	{
 		SendCancelTargetInput();
 	}
 
-	AActor* CurrentHitActor = HitResult.GetActor();
+	FPlayerInputCommand Command;
+	if (Snapshot.SourceKind == EPlayerInputSourceKind::AbilitySlot)
+	{
+		FAbilityInputPolicy Policy;
+		ResolveAbilityInputPolicy(Snapshot.AbilityInputID, Policy);
 
-	// 优先攻击敌人；若 ASC 尚未就绪，则先向目标位置移动作为降级方案
-	if (CurrentHitActor && CurrentHitActor != OwnerCharacter && CurrentHitActor->ActorHasTag(FName("Enemy")))
-	{
-		if (OwnerASC)
+		if (Snapshot.Phase == EInputEventPhase::Released && Policy.InputMode == EAbilityInputMode::Instant)
 		{
-			FAbilityActivationRequest Request;
-			Request.Intent = EAbilityActivationIntent::BasicAttack;
-			Request.bIsHeldInput = bIsHeldInput;
-			Request.bUseActorTarget = true;
-			Request.HitResult = HitResult;
-			Request.TargetActor = CurrentHitActor;
-			RequestAbilityActivation(Request);
+			if (OwnerASC)
+			{
+				OwnerASC->AbilityLocalInputReleased((int32)Snapshot.AbilityInputID);
+			}
+			return;
 		}
-		else
-		{
-			// ASC 未就绪，先靠近目标
-			const FVector FallbackLocation = CurrentHitActor->GetActorLocation();
-			RequestMoveToLocation(FallbackLocation, bIsHeldInput);
-		}
+
+		Command = InputRouter.RouteAbilityInput(Snapshot, Policy);
 	}
-	else if (HitResult.bBlockingHit)
+	else
 	{
-		// 地面点：始终允许移动
-		RequestMoveToLocation(HitResult.ImpactPoint, bIsHeldInput);
+		Command = InputRouter.RoutePointerInput(Snapshot);
 	}
+
+	if (Command.Type == EPlayerInputCommandType::None)
+	{
+		return;
+	}
+
+	ExecuteCommand(Command);
 }
 
-
-void UIsometricInputComponent::HandleSkillPressed(EAbilityInputID InputID, const FHitResult& TargetData)
+void UIsometricInputComponent::ExecuteCommand(const FPlayerInputCommand& Command)
 {
-	FAbilityActivationRequest Request;
-	Request.Intent = EAbilityActivationIntent::Cast;
-	Request.InputID = InputID;
-	Request.bUseActorTarget = false;
-	Request.HitResult = TargetData;
-	RequestAbilityActivation(Request);
+	switch (Command.Type)
+	{
+	case EPlayerInputCommandType::SelectTarget:
+	case EPlayerInputCommandType::ClearSelection:
+		ApplySelectionCommand(Command);
+		break;
+
+	case EPlayerInputCommandType::MoveToLocation:
+		RequestMoveToLocation(Command.TargetLocation, Command.TriggerPhase == EInputEventPhase::Held);
+		break;
+
+	case EPlayerInputCommandType::BasicAttackTarget:
+		UpdatePendingAbilityContext(Command);
+		RequestBasicAttack(Command.HitResult, Command.TargetActor.Get(), Command.TriggerPhase == EInputEventPhase::Held);
+		break;
+
+	case EPlayerInputCommandType::BeginAbilityInput:
+	case EPlayerInputCommandType::UpdateAbilityInput:
+	case EPlayerInputCommandType::CommitAbilityInput:
+	case EPlayerInputCommandType::CancelAbilityInput:
+		ExecuteAbilityInputCommand(Command);
+		break;
+
+	default:
+		break;
+	}
 }
 
-void UIsometricInputComponent::HandleSkillReleased(EAbilityInputID InputID)
+void UIsometricInputComponent::ApplySelectionCommand(const FPlayerInputCommand& Command)
+{
+	if (Command.Type == EPlayerInputCommandType::SelectTarget && Command.TargetActor && Command.TargetActor != OwnerCharacter)
+	{
+		CurrentSelectedTargetForUI = Command.TargetActor;
+		OnTargetSelectedForUI(Command.TargetActor.Get());
+		return;
+	}
+
+	CurrentSelectedTargetForUI = nullptr;
+	OnTargetClearedForUI();
+}
+
+void UIsometricInputComponent::ExecuteAbilityInputCommand(const FPlayerInputCommand& Command)
 {
 	if (!OwnerCharacter)
 	{
@@ -131,15 +142,164 @@ void UIsometricInputComponent::HandleSkillReleased(EAbilityInputID InputID)
 		return;
 	}
 
-	OwnerASC->AbilityLocalInputReleased((int32)InputID);
+	FAbilityInputPolicy Policy;
+	ResolveAbilityInputPolicy(Command.AbilityInputID, Policy);
+
+	switch (Command.Type)
+	{
+	case EPlayerInputCommandType::BeginAbilityInput:
+		InputSessionManager.BeginSession(Command, Policy);
+		UpdatePendingAbilityContext(Command);
+		break;
+
+	case EPlayerInputCommandType::UpdateAbilityInput:
+	{
+		FAbilityInputSession Session;
+		if (!InputSessionManager.UpdateSession(Command, Policy, Session))
+		{
+			return;
+		}
+
+		FPlayerInputCommand UpdatedCommand = Command;
+		UpdatedCommand.HeldDuration = Session.HeldDuration;
+		UpdatedCommand.TargetActor = Session.LatestTargetActor;
+		UpdatedCommand.HitResult = Session.LatestHitResult;
+		UpdatePendingAbilityContext(UpdatedCommand);
+		break;
+	}
+
+	case EPlayerInputCommandType::CommitAbilityInput:
+		if (Command.bAllowBuffering && InputSessionManager.HasBlockingSession(Command.AbilityInputID))
+		{
+			InputSessionManager.BufferCommand(Command, Policy);
+			SetComponentTickEnabled(true);
+			return;
+		}
+
+		ExecuteAbilityCommitCommand(Command, Policy);
+		break;
+
+	case EPlayerInputCommandType::CancelAbilityInput:
+	{
+		FAbilityInputSession Session;
+		if (InputSessionManager.CancelSession(Command.AbilityInputID, Session))
+		{
+			FPlayerInputCommand CancelCommand = Command;
+			CancelCommand.HeldDuration = Session.HeldDuration;
+			CancelCommand.TargetActor = Session.LatestTargetActor;
+			CancelCommand.HitResult = Session.LatestHitResult;
+			UpdatePendingAbilityContext(CancelCommand);
+		}
+
+		OwnerCharacter->ClearPendingAbilityActivationContext();
+		OwnerASC->AbilityLocalInputReleased((int32)Command.AbilityInputID);
+		break;
+	}
+
+	default:
+		break;
+	}
 }
 
+bool UIsometricInputComponent::ExecuteAbilityCommitCommand(const FPlayerInputCommand& Command, const FAbilityInputPolicy& Policy)
+{
+	if (!OwnerASC || Command.AbilityInputID == EAbilityInputID::None)
+	{
+		return false;
+	}
+
+	FPlayerInputCommand FinalCommand = Command;
+	FAbilityInputSession Session;
+	if (InputSessionManager.CommitSession(Command, Policy, Session))
+	{
+		FinalCommand.HeldDuration = Session.HeldDuration;
+		FinalCommand.TargetActor = Session.LatestTargetActor;
+		FinalCommand.HitResult = Session.LatestHitResult;
+	}
+
+	if (Policy.MaxChargeSeconds > 0.0f)
+	{
+		FinalCommand.HeldDuration = FMath::Min(FinalCommand.HeldDuration, Policy.MaxChargeSeconds);
+	}
+
+	UpdatePendingAbilityContext(FinalCommand);
+	OwnerASC->AbilityLocalInputPressed((int32)FinalCommand.AbilityInputID);
+
+	if (Policy.InputMode != EAbilityInputMode::Instant)
+	{
+		OwnerASC->AbilityLocalInputReleased((int32)FinalCommand.AbilityInputID);
+	}
+
+	return true;
+}
+
+bool UIsometricInputComponent::ResolveAbilityInputPolicy(EAbilityInputID InputID, FAbilityInputPolicy& OutPolicy) const
+{
+	OutPolicy = FAbilityInputPolicy();
+
+	if (!OwnerCharacter)
+	{
+		return false;
+	}
+
+	const ESkillSlot Slot = ResolveSkillSlotFromInput(InputID);
+	if (Slot == ESkillSlot::Invalid || Slot == ESkillSlot::MAX)
+	{
+		return false;
+	}
+
+	const FEquippedAbilityInfo AbilityInfo = OwnerCharacter->GetEquippedAbilityInfo(Slot);
+	if (AbilityInfo.AbilityClass.ToSoftObjectPath().IsNull())
+	{
+		return false;
+	}
+
+	TSubclassOf<UGameplayAbility> LoadedAbilityClass = AbilityInfo.AbilityClass.LoadSynchronous();
+	if (!LoadedAbilityClass)
+	{
+		return false;
+	}
+
+	const UGA_HeroBaseAbility* HeroAbility = Cast<UGA_HeroBaseAbility>(LoadedAbilityClass.GetDefaultObject());
+	if (!HeroAbility)
+	{
+		return false;
+	}
+
+	OutPolicy = HeroAbility->GetAbilityInputPolicy();
+	return true;
+}
+
+ESkillSlot UIsometricInputComponent::ResolveSkillSlotFromInput(EAbilityInputID InputID) const
+{
+	switch (InputID)
+	{
+	case EAbilityInputID::Ability_Q: return ESkillSlot::Skill_Q;
+	case EAbilityInputID::Ability_W: return ESkillSlot::Skill_W;
+	case EAbilityInputID::Ability_E: return ESkillSlot::Skill_E;
+	case EAbilityInputID::Ability_R: return ESkillSlot::Skill_R;
+	case EAbilityInputID::Ability_Summoner1: return ESkillSlot::Skill_D;
+	case EAbilityInputID::Ability_Summoner2: return ESkillSlot::Skill_F;
+	default: return ESkillSlot::Invalid;
+	}
+}
+
+void UIsometricInputComponent::UpdatePendingAbilityContext(const FPlayerInputCommand& Command)
+{
+	if (!OwnerCharacter)
+	{
+		return;
+	}
+
+	const FPendingAbilityActivationContext Context = BuildActivationContext(Command);
+	OwnerCharacter->SetPendingAbilityActivationContext(Context);
+	SyncActivationContextToServer(Context);
+}
 
 void UIsometricInputComponent::RequestMoveToLocation(const FVector& TargetLocation, bool bIsHeldInput)
 {
 	UIsometricPathFollowingComponent* PathFollower = OwnerCharacter ? OwnerCharacter->PathFollowingComponent : nullptr;
 
-	// owning client 立即启动本地路径跟随，真正的移动仍然交给 CharacterMovement。
 	if (!OwnerCharacter)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("RequestMoveToLocation failed: OwnerCharacter is null."));
@@ -163,8 +323,7 @@ void UIsometricInputComponent::RequestMoveToLocation(const FVector& TargetLocati
 	HandleMoveIntentOnAuthority();
 }
 
-
-void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor, bool bUseUnreliableRemoteUpdate)
+void UIsometricInputComponent::RequestBasicAttack(const FHitResult& HitResult, AActor* TargetActor, bool bUseUnreliableRemoteUpdate)
 {
 	AController* OwnerController = OwnerCharacter ? OwnerCharacter->GetController() : nullptr;
 	UAbilitySystemComponent* CurrentASC = OwnerCharacter ? OwnerCharacter->GetAbilitySystemComponent() : nullptr;
@@ -175,24 +334,29 @@ void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor, bool bUse
 		return;
 	}
 
-	// 攻击接管移动前，先停掉本地的点击移动预测，避免两套输入同时推角色。
 	StopPredictedClickMove();
 
-	// 客户端转到服务器
 	if (OwnerCharacter->GetLocalRole() < ROLE_Authority)
 	{
 		if (bUseUnreliableRemoteUpdate)
 		{
-			Server_UpdateBasicAttack(TargetActor);
+			Server_UpdateBasicAttack(HitResult, TargetActor);
 		}
 		else
 		{
-			Server_RequestBasicAttack(TargetActor);
+			Server_RequestBasicAttack(HitResult, TargetActor);
 		}
 		return;
 	}
 
-	if (!OwnerCharacter->HasStoredTargetActor(TargetActor))
+	const bool bHasValidHitTarget = (HitResult.bBlockingHit || HitResult.GetActor() != nullptr)
+		&& (!TargetActor || HitResult.GetActor() == TargetActor);
+
+	if (bHasValidHitTarget)
+	{
+		OwnerCharacter->SetAbilityTargetDataByHit(HitResult);
+	}
+	else if (!OwnerCharacter->HasStoredTargetActor(TargetActor))
 	{
 		OwnerCharacter->SetAbilityTargetDataByActor(TargetActor);
 	}
@@ -200,7 +364,6 @@ void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor, bool bUse
 	FGameplayTag BasicAttackAbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Player.DirBasicAttack"));
 	if (BasicAttackAbilityTag.IsValid())
 	{
-		// 直接通过Tag激活技能，这种方式更通用，无需知道具体技能类
 		if (CurrentASC->TryActivateAbilitiesByTag(FGameplayTagContainer(BasicAttackAbilityTag), true))
 		{
 			UE_LOG(LogTemp, Display, TEXT("RequestBasicAttack: Successfully activated Basic Attack ability with tag %s."), *BasicAttackAbilityTag.ToString());
@@ -216,43 +379,6 @@ void UIsometricInputComponent::RequestBasicAttack(AActor* TargetActor, bool bUse
 	}
 }
 
-void UIsometricInputComponent::RequestAbilityActivation(const FAbilityActivationRequest& Request)
-{
-	if (!OwnerCharacter)
-	{
-		return;
-	}
-
-	if (!OwnerASC)
-	{
-		OwnerASC = OwnerCharacter->GetAbilitySystemComponent();
-	}
-
-	if (!OwnerASC)
-	{
-		return;
-	}
-
-	const FPendingAbilityActivationContext Context = BuildActivationContext(Request);
-	OwnerCharacter->SetPendingAbilityActivationContext(Context);
-	SyncActivationContextToServer(Context);
-
-	if (Request.Intent == EAbilityActivationIntent::BasicAttack)
-	{
-		if (Context.TargetActor.IsValid())
-		{
-			RequestBasicAttack(Context.TargetActor.Get(), Request.bIsHeldInput);
-		}
-		return;
-	}
-
-	if (Request.InputID != EAbilityInputID::None)
-	{
-		OwnerASC->AbilityLocalInputPressed((int32)Request.InputID);
-	}
-}
-
-
 void UIsometricInputComponent::SendConfirmTargetInput()
 {
 	if (OwnerASC)
@@ -260,7 +386,6 @@ void UIsometricInputComponent::SendConfirmTargetInput()
 		OwnerASC->AbilityLocalInputPressed((int32)EAbilityInputID::Confirm);
 	}
 }
-
 
 void UIsometricInputComponent::SendCancelTargetInput()
 {
@@ -295,7 +420,6 @@ void UIsometricInputComponent::HandleMoveIntentOnAuthority()
 		OwnerCharacter->GetMesh()->GetAnimInstance()->Montage_Stop(0.1f);
 		UE_LOG(LogTemp, Log, TEXT("Server: Stopped any active montage."));
 	}
-
 }
 
 void UIsometricInputComponent::StopPredictedClickMove()
@@ -311,41 +435,66 @@ void UIsometricInputComponent::StopPredictedClickMove()
 	}
 }
 
-
-// --- Server RPC implementations ---
 void UIsometricInputComponent::Server_RequestMoveToLocation_Implementation(const FVector& TargetLocation)
 {
 	HandleMoveIntentOnAuthority();
 }
 
-
-void UIsometricInputComponent::Server_RequestBasicAttack_Implementation(AActor* TargetActor)
+void UIsometricInputComponent::Server_RequestBasicAttack_Implementation(const FHitResult& HitResult, AActor* TargetActor)
 {
-	RequestBasicAttack(TargetActor);
+	RequestBasicAttack(HitResult, TargetActor);
 }
 
-void UIsometricInputComponent::Server_UpdateBasicAttack_Implementation(AActor* TargetActor)
+void UIsometricInputComponent::Server_UpdateBasicAttack_Implementation(const FHitResult& HitResult, AActor* TargetActor)
 {
-	RequestBasicAttack(TargetActor);
+	RequestBasicAttack(HitResult, TargetActor);
 }
 
-FPendingAbilityActivationContext UIsometricInputComponent::BuildActivationContext(const FAbilityActivationRequest& Request) const
+FPendingAbilityActivationContext UIsometricInputComponent::BuildActivationContext(const FPlayerInputCommand& Command) const
 {
 	FPendingAbilityActivationContext Context;
-	Context.Intent = Request.Intent;
-	Context.InputID = Request.InputID;
-	Context.bIsHeldInput = Request.bIsHeldInput;
-	Context.bUseActorTarget = Request.bUseActorTarget;
-	Context.HitResult = Request.HitResult;
-	Context.TargetActor = Request.TargetActor;
+	Context.InputID = Command.AbilityInputID;
+	Context.TriggerPhase = Command.TriggerPhase;
+	Context.bIsHeldInput = Command.TriggerPhase == EInputEventPhase::Held;
+	Context.HeldDuration = Command.HeldDuration;
+	Context.HitResult = Command.HitResult;
+	Context.TargetActor = Command.TargetActor;
+	Context.bUseActorTarget = false;
 
-	if (Context.bUseActorTarget && Context.TargetActor.IsValid())
+	if (Context.HitResult.bBlockingHit || Context.HitResult.GetActor() != nullptr)
 	{
+		Context.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(Context.HitResult);
+	}
+	else if (Context.TargetActor)
+	{
+		Context.bUseActorTarget = true;
 		Context.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromActor(Context.TargetActor.Get());
 	}
 	else
 	{
-		Context.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(Context.HitResult);
+		Context.TargetData.Clear();
+	}
+
+	if (Context.HitResult.bBlockingHit || Context.HitResult.GetActor() != nullptr)
+	{
+		Context.AimPoint = !Context.HitResult.Location.IsNearlyZero()
+			? Context.HitResult.Location
+			: Context.HitResult.ImpactPoint;
+	}
+	else if (Context.TargetActor)
+	{
+		Context.AimPoint = Context.TargetActor->GetActorLocation();
+	}
+	else
+	{
+		Context.AimPoint = Command.TargetLocation;
+	}
+
+	if (OwnerCharacter)
+	{
+		Context.AimDirection = Context.AimPoint - OwnerCharacter->GetActorLocation();
+		Context.AimDirection.Z = 0.0f;
+		Context.AimDirection = Context.AimDirection.GetSafeNormal();
 	}
 
 	return Context;
@@ -358,14 +507,52 @@ void UIsometricInputComponent::SyncActivationContextToServer(const FPendingAbili
 		return;
 	}
 
-	if (Context.bUseActorTarget)
+	if (Context.TriggerPhase == EInputEventPhase::Held)
 	{
-		OwnerCharacter->Server_SetAbilityTargetDataByActor(Context.TargetActor.Get());
+		OwnerCharacter->Server_UpdatePendingAbilityActivationContext(
+			Context.InputID,
+			Context.TriggerPhase,
+			Context.bUseActorTarget,
+			Context.bIsHeldInput,
+			Context.HeldDuration,
+			Context.HitResult,
+			Context.TargetActor.Get());
+		return;
 	}
-	else
+
+	OwnerCharacter->Server_SetPendingAbilityActivationContext(
+		Context.InputID,
+		Context.TriggerPhase,
+		Context.bUseActorTarget,
+		Context.bIsHeldInput,
+		Context.HeldDuration,
+		Context.HitResult,
+		Context.TargetActor.Get());
+}
+
+void UIsometricInputComponent::PumpBufferedAbilityCommand()
+{
+	if (!InputSessionManager.HasBufferedCommand())
 	{
-		OwnerCharacter->Server_SetAbilityTargetDataByHit(Context.HitResult);
+		SetComponentTickEnabled(false);
+		return;
 	}
+
+	if (InputSessionManager.HasAnyActiveSession())
+	{
+		return;
+	}
+
+	FPlayerInputCommand BufferedCommand;
+	const float WorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+	if (!InputSessionManager.ConsumeBufferedCommand(WorldTime, BufferedCommand))
+	{
+		SetComponentTickEnabled(false);
+		return;
+	}
+
+	BufferedCommand.WorldTime = WorldTime;
+	ExecuteCommand(BufferedCommand);
 }
 
 

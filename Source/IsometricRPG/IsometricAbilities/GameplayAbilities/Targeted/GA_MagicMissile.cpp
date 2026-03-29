@@ -2,11 +2,14 @@
 
 #include "GA_MagicMissile.h"
 #include "IsometricAbilities/Projectiles/AProjectileBase.h"
+#include "IsometricAbilities/TargetTrace/GATA_CursorTrace.h"
 
 UGA_MagicMissile::UGA_MagicMissile()
 {
 	// 设置技能类型为Targeted
 	AbilityType = EHeroAbilityType::Targeted;
+	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
+	TargetActorClass = AGATA_CursorTrace::StaticClass();
 	
 	// 设置通用投射物类（你可以创建专门的魔法飞弹类）
 	ProjectileClass = AProjectileBase::StaticClass();
@@ -24,4 +27,10 @@ UGA_MagicMissile::UGA_MagicMissile()
 	
 	// 需要目标选择
 	bRequiresTargetData = true;
+
+	// MagicMissile 走目标指向型的智能施法：有目标直接发，没有目标就进入确认流程。
+	InputPolicy.InputMode = EAbilityInputMode::Instant;
+	InputPolicy.bUpdateTargetWhileHeld = false;
+	InputPolicy.bAllowInputBuffer = true;
+	InputPolicy.MaxBufferWindow = 0.25f;
 }

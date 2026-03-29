@@ -37,16 +37,25 @@ function BTT_GenericAttack:ReceiveExecuteAI(OwnerController, ControlledPawn)
         TargetActor = Blackboard:GetValueAsObject("TargetActor")
     end
 
-    if TargetActor then
-        -- 调用 C++ 设置目标数据的函数
-        if ControlledPawn.SetAbilityTargetDataByActor then
-            ControlledPawn:SetAbilityTargetDataByActor(TargetActor)
-            -- print("Lua: 目标数据已设置为 " .. TargetActor:GetName())
-        else
-            print(string.format("[BTT_GenericAttack] Pawn %s 不支持 SetAbilityTargetDataByActor!", ControlledPawn:GetName()))
-        end
-    else
+    if not TargetActor then
         print("[BTT_GenericAttack] 黑板里没有 TargetActor!")
+        self:FinishExecute(false)
+        return
+    end
+
+    if not ControlledPawn.PrepareAbilityActivationContextForAbility then
+        print(string.format("[BTT_GenericAttack] Pawn %s 不支持 PrepareAbilityActivationContextForAbility!", ControlledPawn:GetName()))
+        self:FinishExecute(false)
+        return
+    end
+
+    local bPrepared = ControlledPawn:PrepareAbilityActivationContextForAbility(AbilityClass, TargetActor)
+    if not bPrepared then
+        print(string.format("[BTT_GenericAttack] 为技能 %s 构造目标上下文失败，目标=%s。",
+            tostring(AbilityClass),
+            TargetActor:GetName()))
+        self:FinishExecute(false)
+        return
     end
 
     -- ---------------------------------------------------------

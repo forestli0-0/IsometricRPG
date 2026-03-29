@@ -53,8 +53,15 @@ UGA_Ahri_W_Foxfire::UGA_Ahri_W_Foxfire()
 		SkillShotProjectileClass = ProjectileFinder.Class;
 	}
 
+	InputPolicy.InputMode = EAbilityInputMode::ChargeOnHold;
+	InputPolicy.bUpdateTargetWhileHeld = false;
+	InputPolicy.bAllowInputBuffer = true;
+	InputPolicy.MaxBufferWindow = 0.25f;
+	InputPolicy.MaxChargeSeconds = 1.0f;
+
 	bEndAbilityWhenBaseMontageEnds = false;
 	bUseBaseMontageFlow = false;
+	ResetChargedParameters();
 }
 
 void UGA_Ahri_W_Foxfire::ExecuteSkill(const FGameplayAbilitySpecHandle Handle,
@@ -107,6 +114,7 @@ void UGA_Ahri_W_Foxfire::ExecuteSelfCast()
 	RuntimeFoxfires.Reset();
 	AssignedFoxfireCounts.Reset();
 	HitActors.Reset();
+	ResolveChargedParameters();
 
 	FoxfireStartTime = World->GetTimeSeconds();
 	LastOrbitUpdateTime = FoxfireStartTime;
@@ -133,7 +141,7 @@ float UGA_Ahri_W_Foxfire::CalculateDamage() const
 	const float AbilityPower = AttributeSet->GetAbilityPower();
 	float TotalDamage = BaseMagicDamage + (DamagePerLevel * (AbilityLevel - 1));
 	TotalDamage += AbilityPower * APRatio;
-	return TotalDamage;
+	return TotalDamage * RuntimeDamageMultiplier;
 }
 
 void UGA_Ahri_W_Foxfire::CreateFoxfires()
@@ -147,14 +155,14 @@ void UGA_Ahri_W_Foxfire::CreateFoxfires()
 	}
 
 	RuntimeFoxfires.Reset();
-	RuntimeFoxfires.Reserve(FoxfireCount);
+	RuntimeFoxfires.Reserve(RuntimeFoxfireCount);
 
 	UNiagaraSystem* PresentationSystem = OrbitVFX ? OrbitVFX : FoxfireVFX;
-	for (int32 Index = 0; Index < FoxfireCount; ++Index)
+	for (int32 Index = 0; Index < RuntimeFoxfireCount; ++Index)
 	{
 		FFoxfireRuntimeState FoxfireState;
 		FoxfireState.SlotIndex = Index;
-		FoxfireState.CurrentAngle = (2.0f * PI * static_cast<float>(Index)) / FMath::Max(1, FoxfireCount);
+		FoxfireState.CurrentAngle = (2.0f * PI * static_cast<float>(Index)) / FMath::Max(1, RuntimeFoxfireCount);
 		FoxfireState.SpawnTime = FoxfireStartTime;
 		FoxfireState.AcquireEligibleTime = FoxfireStartTime + InitialAcquireDelay + (AcquireDelayPerFoxfire * Index);
 		FoxfireState.FallbackClosestTime = FoxfireState.AcquireEligibleTime + FallbackClosestDelay;
@@ -841,6 +849,38 @@ float UGA_Ahri_W_Foxfire::CalculateAssignedDamageForTarget(AActor* TargetActor) 
 	return DamageAmount;
 }
 
+void UGA_Ahri_W_Foxfire::ResolveChargedParameters()
+{
+	ResetChargedParameters();
+
+	RuntimeHeldDuration = FMath::Max(GetCurrentHeldDuration(), 0.0f);
+	const float MaxChargeSeconds = FMath::Max(InputPolicy.MaxChargeSeconds, KINDA_SMALL_NUMBER);
+	RuntimeChargeAlpha = FMath::Clamp(RuntimeHeldDuration / MaxChargeSeconds, 0.0f, 1.0f);
+	RuntimeFoxfireCount = FMath::Max(1, FoxfireCount + FMath::RoundToInt(RuntimeChargeAlpha * MaxAdditionalFoxfiresOnFullCharge));
+	RuntimeDamageMultiplier = FMath::Lerp(1.0f, FullChargeDamageMultiplier, RuntimeChargeAlpha);
+	RuntimeMoveSpeedBonusPercent = FMath::Lerp(MoveSpeedBonusPercent, FullChargeMoveSpeedBonusPercent, RuntimeChargeAlpha);
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("%s: Charge resolved. HeldDuration=%.2f Alpha=%.2f Foxfires=%d DamageMultiplier=%.2f MoveSpeedBonus=%.2f"),
+		*GetName(),
+		RuntimeHeldDuration,
+		RuntimeChargeAlpha,
+		RuntimeFoxfireCount,
+		RuntimeDamageMultiplier,
+		RuntimeMoveSpeedBonusPercent);
+}
+
+void UGA_Ahri_W_Foxfire::ResetChargedParameters()
+{
+	RuntimeHeldDuration = 0.0f;
+	RuntimeChargeAlpha = 0.0f;
+	RuntimeDamageMultiplier = 1.0f;
+	RuntimeMoveSpeedBonusPercent = MoveSpeedBonusPercent;
+	RuntimeFoxfireCount = FoxfireCount;
+}
+
 void UGA_Ahri_W_Foxfire::ApplyMoveSpeedDecay()
 {
 	StopMoveSpeedDecay(true);
@@ -884,7 +924,7 @@ void UGA_Ahri_W_Foxfire::ApplyMoveSpeedDecayStep()
 	const float Elapsed = World->GetTimeSeconds() - MoveSpeedBuffStartTime;
 	const float Remaining = MoveSpeedDecayDuration - Elapsed;
 	const float Alpha = FMath::Clamp(Elapsed / FMath::Max(MoveSpeedDecayDuration, KINDA_SMALL_NUMBER), 0.0f, 1.0f);
-	const float CurrentBonusPercent = MoveSpeedBonusPercent * (1.0f - Alpha);
+	const float CurrentBonusPercent = RuntimeMoveSpeedBonusPercent * (1.0f - Alpha);
 	const float CurrentSpeedMultiplier = 1.0f + CurrentBonusPercent;
 
 	if (ActiveMoveSpeedHandle.IsValid())
@@ -982,6 +1022,7 @@ void UGA_Ahri_W_Foxfire::CleanupAbilityState(bool bWasCancelled)
 	RuntimeFoxfires.Reset();
 	AssignedFoxfireCounts.Reset();
 	HitActors.Reset();
+	ResetChargedParameters();
 }
 
 void UGA_Ahri_W_Foxfire::TryCompleteAbility()

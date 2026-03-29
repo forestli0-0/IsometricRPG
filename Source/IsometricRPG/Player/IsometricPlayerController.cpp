@@ -87,26 +87,23 @@ void AIsometricPlayerController::PlayerTick(float DeltaTime)
         return;
     }
 
-    FHitResult HitResult;
-    if (!GetHitResultUnderCursorSafe(ECC_Visibility, true, HitResult))
-    {
-        return;
-    }
-
     AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn());
     if (!MyChar)
     {
         return;
     }
 
-    UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>();
+    UIsometricInputComponent* InputComp = ResolveInputComponent();
     if (!InputComp)
     {
         return;
     }
 
+    FCursorInputSnapshot Snapshot;
+    BuildCursorInputSnapshot(EPlayerInputSourceKind::RightMouse, EInputEventPhase::Held, Snapshot);
+
     const float WorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
-    AActor* CurrentHitActor = HitResult.GetActor();
+    AActor* CurrentHitActor = Snapshot.HitActor;
     if (IsEnemyUnderCursor(CurrentHitActor, MyChar))
     {
         // 敌人目标：只在目标变化，或者到了重试时间时重新发一次攻击请求。
@@ -114,7 +111,7 @@ void AIsometricPlayerController::PlayerTick(float DeltaTime)
         const bool bRetryAttack = !bTargetChanged && WorldTime >= NextHeldAttackCommandTime;
         if (bTargetChanged || bRetryAttack)
         {
-            InputComp->HandleRightClickTriggered(HitResult, true);
+            DispatchInputSnapshot(Snapshot);
             LastHitActor = CurrentHitActor;
             NextHeldAttackCommandTime = WorldTime + HeldAttackRetryInterval;
             bHasLastHeldMoveLocation = false;
@@ -122,13 +119,13 @@ void AIsometricPlayerController::PlayerTick(float DeltaTime)
         return;
     }
 
-    if (!HitResult.bBlockingHit)
+    if (!Snapshot.bBlockingHit)
     {
         return;
     }
 
     const bool bSwitchedFromActorTarget = LastHitActor.IsValid();
-    const FVector2D CurrentMovePoint(HitResult.ImpactPoint.X, HitResult.ImpactPoint.Y);
+    const FVector2D CurrentMovePoint(Snapshot.HitResult.ImpactPoint.X, Snapshot.HitResult.ImpactPoint.Y);
     const FVector2D PreviousMovePoint(LastHeldMoveLocation.X, LastHeldMoveLocation.Y);
     const bool bMovePointChanged = !bHasLastHeldMoveLocation
         || (CurrentMovePoint - PreviousMovePoint).SizeSquared() >= FMath::Square(HeldMoveRepathDistance);
@@ -137,9 +134,9 @@ void AIsometricPlayerController::PlayerTick(float DeltaTime)
     // 地面移动：只有目标点变化足够大并且节流时间到了，才重新发起一次 move intent。
     if (bSwitchedFromActorTarget || (bMovePointChanged && bRepathIntervalElapsed))
     {
-        InputComp->HandleRightClickTriggered(HitResult, true);
+        DispatchInputSnapshot(Snapshot);
         LastHitActor = nullptr;
-        LastHeldMoveLocation = HitResult.ImpactPoint;
+        LastHeldMoveLocation = Snapshot.HitResult.ImpactPoint;
         NextHeldMoveCommandTime = WorldTime + HeldMoveRepathInterval;
         bHasLastHeldMoveLocation = true;
     }
@@ -162,6 +159,14 @@ void AIsometricPlayerController::SetupInputComponent()
 		EIC->BindAction(Action_R, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillPressed, EAbilityInputID::Ability_R);
 		EIC->BindAction(Action_Summoner1, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillPressed, EAbilityInputID::Ability_Summoner1);
 		EIC->BindAction(Action_Summoner2, ETriggerEvent::Started, this, &AIsometricPlayerController::HandleSkillPressed, EAbilityInputID::Ability_Summoner2);
+
+		EIC->BindAction(Action_A, ETriggerEvent::Ongoing, this, &AIsometricPlayerController::HandleSkillHeld, EAbilityInputID::Ability_A);
+		EIC->BindAction(Action_Q, ETriggerEvent::Ongoing, this, &AIsometricPlayerController::HandleSkillHeld, EAbilityInputID::Ability_Q);
+		EIC->BindAction(Action_W, ETriggerEvent::Ongoing, this, &AIsometricPlayerController::HandleSkillHeld, EAbilityInputID::Ability_W);
+		EIC->BindAction(Action_E, ETriggerEvent::Ongoing, this, &AIsometricPlayerController::HandleSkillHeld, EAbilityInputID::Ability_E);
+		EIC->BindAction(Action_R, ETriggerEvent::Ongoing, this, &AIsometricPlayerController::HandleSkillHeld, EAbilityInputID::Ability_R);
+		EIC->BindAction(Action_Summoner1, ETriggerEvent::Ongoing, this, &AIsometricPlayerController::HandleSkillHeld, EAbilityInputID::Ability_Summoner1);
+		EIC->BindAction(Action_Summoner2, ETriggerEvent::Ongoing, this, &AIsometricPlayerController::HandleSkillHeld, EAbilityInputID::Ability_Summoner2);
 
 		EIC->BindAction(Action_A, ETriggerEvent::Completed, this, &AIsometricPlayerController::HandleSkillReleased, EAbilityInputID::Ability_A);
 		EIC->BindAction(Action_Q, ETriggerEvent::Completed, this, &AIsometricPlayerController::HandleSkillReleased, EAbilityInputID::Ability_Q);
@@ -186,32 +191,27 @@ void AIsometricPlayerController::HandleRightClickStarted(const FInputActionValue
     NextHeldAttackCommandTime = 0.0f;
 	UE_LOG(LogTemp, Log, TEXT("[PC] RightClick Started on %s (Auth=%d)"), *GetName(), HasAuthority()?1:0);
 
-	FHitResult HitResult;
-	GetHitResultUnderCursorSafe(ECC_Visibility, true, HitResult);
-	UE_LOG(LogTemp, Log, TEXT("[PC] RightClick Hit: Block=%d Loc=%s Actor=%s"), HitResult.bBlockingHit?1:0, *HitResult.ImpactPoint.ToString(), HitResult.GetActor()?*HitResult.GetActor()->GetName():TEXT("None"));
-	
-	if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
-	{
-		if (UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>())
-		{
-            // 第一次点击时，就直接触发一次逻辑
-			InputComp->HandleRightClickTriggered(HitResult);
+	FCursorInputSnapshot Snapshot;
+	BuildCursorInputSnapshot(EPlayerInputSourceKind::RightMouse, EInputEventPhase::Pressed, Snapshot);
+	UE_LOG(LogTemp, Log, TEXT("[PC] RightClick Hit: Block=%d Loc=%s Actor=%s"), Snapshot.bBlockingHit?1:0, *Snapshot.HitResult.ImpactPoint.ToString(), Snapshot.HitActor?*Snapshot.HitActor->GetName():TEXT("None"));
 
-            const float WorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
-            if (IsEnemyUnderCursor(HitResult.GetActor(), MyChar))
-            {
-                LastHitActor = HitResult.GetActor();
-                NextHeldAttackCommandTime = WorldTime + HeldAttackRetryInterval;
-            }
-            else if (HitResult.bBlockingHit)
-            {
-                LastHeldMoveLocation = HitResult.ImpactPoint;
-                NextHeldMoveCommandTime = WorldTime + HeldMoveRepathInterval;
-                bHasLastHeldMoveLocation = true;
-            }
-		}
+	DispatchInputSnapshot(Snapshot);
 
-	}
+    const float WorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+    if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
+    {
+        if (IsEnemyUnderCursor(Snapshot.HitActor, MyChar))
+        {
+            LastHitActor = Snapshot.HitActor;
+            NextHeldAttackCommandTime = WorldTime + HeldAttackRetryInterval;
+        }
+        else if (Snapshot.bBlockingHit)
+        {
+            LastHeldMoveLocation = Snapshot.HitResult.ImpactPoint;
+            NextHeldMoveCommandTime = WorldTime + HeldMoveRepathInterval;
+            bHasLastHeldMoveLocation = true;
+        }
+    }
 }
 
 void AIsometricPlayerController::HandleRightClickCompleted(const FInputActionValue& Value)
@@ -226,17 +226,10 @@ void AIsometricPlayerController::HandleRightClickCompleted(const FInputActionVal
 void AIsometricPlayerController::HandleLeftClickInput(const FInputActionValue& Value)
 {
 	UE_LOG(LogTemp, Log, TEXT("[PC] LeftClick Started on %s (Auth=%d)"), *GetName(), HasAuthority()?1:0);
-	FHitResult HitResult;
-	GetHitResultUnderCursorSafe(ECC_Visibility, true, HitResult);
-	UE_LOG(LogTemp, Log, TEXT("[PC] LeftClick Hit: Block=%d Loc=%s Actor=%s"), HitResult.bBlockingHit?1:0, *HitResult.ImpactPoint.ToString(), HitResult.GetActor()?*HitResult.GetActor()->GetName():TEXT("None"));
-
-	if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
-	{
-		if (UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>())
-		{
-			InputComp->HandleLeftClick(HitResult); // Pass HitResult
-		}
-	}
+	FCursorInputSnapshot Snapshot;
+	BuildCursorInputSnapshot(EPlayerInputSourceKind::LeftMouse, EInputEventPhase::Pressed, Snapshot);
+	UE_LOG(LogTemp, Log, TEXT("[PC] LeftClick Hit: Block=%d Loc=%s Actor=%s"), Snapshot.bBlockingHit?1:0, *Snapshot.HitResult.ImpactPoint.ToString(), Snapshot.HitActor?*Snapshot.HitActor->GetName():TEXT("None"));
+	DispatchInputSnapshot(Snapshot);
 }
 
 
@@ -247,30 +240,93 @@ void AIsometricPlayerController::HandleSkillInput(EAbilityInputID InputID)
 
 void AIsometricPlayerController::HandleSkillPressed(EAbilityInputID InputID)
 {
-	FHitResult HitResult;
-	GetHitResultUnderCursorSafe(ECC_Visibility, true, HitResult);
+	const float WorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+	AbilityPressedAtTime.Add(InputID, WorldTime);
 
-	if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
-	{
-		if (UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>())
-		{
-			InputComp->HandleSkillPressed(InputID, HitResult);
-		}
-	}
+	FCursorInputSnapshot Snapshot;
+	BuildCursorInputSnapshot(EPlayerInputSourceKind::AbilitySlot, EInputEventPhase::Pressed, Snapshot, InputID, 0.0f);
+	DispatchInputSnapshot(Snapshot);
+}
+
+void AIsometricPlayerController::HandleSkillHeld(EAbilityInputID InputID)
+{
+	FCursorInputSnapshot Snapshot;
+	BuildCursorInputSnapshot(
+		EPlayerInputSourceKind::AbilitySlot,
+		EInputEventPhase::Held,
+		Snapshot,
+		InputID,
+		GetAbilityHeldDuration(InputID));
+	DispatchInputSnapshot(Snapshot);
 }
 
 void AIsometricPlayerController::HandleSkillReleased(EAbilityInputID InputID)
 {
-	if (AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
+	FCursorInputSnapshot Snapshot;
+	BuildCursorInputSnapshot(
+		EPlayerInputSourceKind::AbilitySlot,
+		EInputEventPhase::Released,
+		Snapshot,
+		InputID,
+		GetAbilityHeldDuration(InputID));
+	AbilityPressedAtTime.Remove(InputID);
+	DispatchInputSnapshot(Snapshot);
+}
+
+void AIsometricPlayerController::BuildCursorInputSnapshot(
+	EPlayerInputSourceKind SourceKind,
+	EInputEventPhase Phase,
+	FCursorInputSnapshot& OutSnapshot,
+	EAbilityInputID InputID,
+	float HeldDuration) const
+{
+	OutSnapshot = FCursorInputSnapshot();
+	OutSnapshot.SourceKind = SourceKind;
+	OutSnapshot.Phase = Phase;
+	OutSnapshot.AbilityInputID = InputID;
+	OutSnapshot.WorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+	OutSnapshot.HeldDuration = HeldDuration;
+
+	FHitResult HitResult;
+	if (GetHitResultUnderCursorSafe(ECC_Visibility, true, HitResult))
 	{
-		if (UIsometricInputComponent* InputComp = MyChar->FindComponentByClass<UIsometricInputComponent>())
-		{
-			InputComp->HandleSkillReleased(InputID);
-		}
+		OutSnapshot.HitResult = HitResult;
+		OutSnapshot.HitActor = HitResult.GetActor();
+		OutSnapshot.bBlockingHit = HitResult.bBlockingHit;
+		OutSnapshot.bHitEnemy = IsEnemyUnderCursor(HitResult.GetActor(), GetPawn());
 	}
 }
 
-bool AIsometricPlayerController::GetHitResultUnderCursorSafe(ECollisionChannel TraceChannel, bool bTraceComplex, FHitResult& HitResult)
+void AIsometricPlayerController::DispatchInputSnapshot(const FCursorInputSnapshot& Snapshot)
+{
+	if (UIsometricInputComponent* InputComp = ResolveInputComponent())
+	{
+		InputComp->ProcessInputSnapshot(Snapshot);
+	}
+}
+
+float AIsometricPlayerController::GetAbilityHeldDuration(EAbilityInputID InputID) const
+{
+	const float* PressedTime = AbilityPressedAtTime.Find(InputID);
+	if (!PressedTime || !GetWorld())
+	{
+		return 0.0f;
+	}
+
+	return FMath::Max(GetWorld()->GetTimeSeconds() - *PressedTime, 0.0f);
+}
+
+UIsometricInputComponent* AIsometricPlayerController::ResolveInputComponent() const
+{
+	if (const AIsometricRPGCharacter* MyChar = Cast<AIsometricRPGCharacter>(GetPawn()))
+	{
+		return MyChar->FindComponentByClass<UIsometricInputComponent>();
+	}
+
+	return nullptr;
+}
+
+bool AIsometricPlayerController::GetHitResultUnderCursorSafe(ECollisionChannel TraceChannel, bool bTraceComplex, FHitResult& HitResult) const
 {
     ULocalPlayer* LocalPlayer = Cast<ULocalPlayer>(Player);
     if (LocalPlayer && LocalPlayer->ViewportClient)

@@ -36,6 +36,9 @@ UGA_DashStrike::UGA_DashStrike()
 	// 需要目标数据（方向选择）
 	bRequiresTargetData = true;
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
+	InputPolicy.InputMode = EAbilityInputMode::Instant;
+	InputPolicy.bUpdateTargetWhileHeld = false;
+	InputPolicy.bAllowInputBuffer = true;
 
 	// 设置标签
 	FGameplayTagContainer AssetTagContainer = GetAssetTags();
@@ -51,7 +54,7 @@ void UGA_DashStrike::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const
 {
 	Super::ExecuteSkill(Handle, ActorInfo, ActivationInfo);
 
-	if (!CurrentTargetDataHandle.IsValid(0))
+	if (!ensureAlwaysMsgf(CurrentTargetDataHandle.IsValid(0), TEXT("%s: DashStrike executed without target data."), *GetName()))
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
@@ -60,7 +63,7 @@ void UGA_DashStrike::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const
 	// 获取突进方向
 	FVector DashDirection = GetSkillShotDirection();
 	FVector StartLocation = GetAvatarActorFromActorInfo()->GetActorLocation();
-	if (DashDirection.IsNearlyZero())
+	if (!ensureAlwaysMsgf(!DashDirection.IsNearlyZero(), TEXT("%s: DashStrike received an invalid dash direction."), *GetName()))
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
@@ -559,27 +562,23 @@ void UGA_DashStrike::CleanupDashState()
 
 FVector UGA_DashStrike::GetSkillShotDirection() const
 {
-	if (CurrentTargetDataHandle.Num() > 0)
+	const FVector AimDirection = GetCurrentAimDirection();
+	if (!ensureAlwaysMsgf(!AimDirection.IsNearlyZero(), TEXT("%s: DashStrike is missing AimDirection at execution time."), *GetName()))
 	{
-		// Get direction from current location to target location
-		const FHitResult* HitResult = CurrentTargetDataHandle.Get(0)->GetHitResult();
-		if (HitResult)
-		{
-			FVector StartLocation = GetAvatarActorFromActorInfo()->GetActorLocation();
-			FVector TargetLocation = HitResult->Location;
-			
-			// 计算方向但忽略距离 - 这样我们总是按照DashDistance进行突进
-			FVector Direction = (TargetLocation - StartLocation).GetSafeNormal();
-			Direction.Z = 0; // 保持在水平面
-			
-			// 记录调试信息
-			float ClickDistance = FVector::Dist(StartLocation, TargetLocation);
-			UE_LOG(LogTemp, Log, TEXT("DashStrike: Click distance: %f, Will dash: %f"), ClickDistance, DashDistance);
-			
-			return Direction;
-		}
+		return FVector::ZeroVector;
 	}
 
-	// Default to forward direction if no target data
-	return GetAvatarActorFromActorInfo()->GetActorForwardVector();
+	AActor* AvatarActor = GetAvatarActorFromActorInfo();
+	if (!ensureAlwaysMsgf(AvatarActor != nullptr, TEXT("%s: DashStrike avatar actor is null during direction calculation."), *GetName()))
+	{
+		return FVector::ZeroVector;
+	}
+
+	const FVector StartLocation = AvatarActor->GetActorLocation();
+	const FVector TargetLocation = GetCurrentAimPoint();
+
+	const float ClickDistance = FVector::Dist(StartLocation, TargetLocation);
+	UE_LOG(LogTemp, Log, TEXT("DashStrike: Click distance: %f, Will dash: %f"), ClickDistance, DashDistance);
+
+	return AimDirection;
 }
