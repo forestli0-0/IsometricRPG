@@ -11,14 +11,11 @@
 #include "GameplayEffect.h"
 #include "GameplayEffectTypes.h"
 #include "Abilities/GameplayAbility.h"
-#include "TimerManager.h"
 #include "Engine/AssetManager.h"
 #include "Engine/Texture2D.h"
-#include "IsometricAbilities/GameplayAbilities/GA_HeroBaseAbility.h"
 #include "IsometricRPGCharacter.h"
+#include "UI/HUD/HUDPresentationBuilder.h"
 #include "UI/HUD/HUDRootWidget.h"
-#include "UI/HUD/HUDViewModelTypes.h"
-#include "UI/SkillLoadout/HUDSkillSlotWidget.h"
 #include "GameFramework/PlayerController.h"
 
 AIsoPlayerState::AIsoPlayerState()
@@ -406,7 +403,11 @@ void AIsoPlayerState::OnAssetsLoadedForUI()
 
     if (UHUDRootWidget* HUD = PC->PlayerHUDInstance)
     {
-        RefreshEntireHUD(*HUD);
+        const FHUDPresentationContext Context = BuildHUDPresentationContext();
+        FHUDPresentationBuilder::RefreshEntireHUD(*HUD, Context, [this](const UGameplayAbility* AbilityCDO, float& OutDuration, float& OutRemaining)
+        {
+            return QueryCooldownState(AbilityCDO, OutDuration, OutRemaining);
+        });
         bPendingUIUpdate = false;
     }
     else
@@ -425,84 +426,6 @@ void AIsoPlayerState::OnUIInitialized()
     UpdateUIWhenReady();
 }
 
-TArray<FHUDBuffIconViewModel> AIsoPlayerState::BuildBuffViewModels(const FGameplayTagContainer& OwnedTags) const
-{
-    TArray<FHUDBuffIconViewModel> Result;
-    if (BuffIconMap.Num() == 0)
-    {
-        return Result;
-    }
-
-    const UAbilitySystemComponent* ASC = AbilitySystemComponent;
-    const float WorldTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
-
-    for (const TPair<FGameplayTag, TSoftObjectPtr<UTexture2D>>& Pair : BuffIconMap)
-    {
-        const FGameplayTag& DisplayTag = Pair.Key;
-        if (!DisplayTag.IsValid())
-        {
-            continue;
-        }
-        // Show if any owned tag matches or is child of the display tag
-        if (!OwnedTags.HasTag(DisplayTag))
-        {
-            continue;
-        }
-
-        // Ensure texture loaded (soft reference may not yet be resolved client-side)
-        UTexture2D* IconTex = Pair.Value.Get();
-        if (!IconTex)
-        {
-            IconTex = Pair.Value.LoadSynchronous();
-            if (!IconTex)
-            {
-                UE_LOG(LogTemp, Verbose, TEXT("[BuffIcons] Texture still null for tag %s"), *DisplayTag.ToString());
-                continue; // Skip null to avoid white box
-            }
-        }
-
-        int32 MaxStackCount = 0;
-        float BestTimeRemaining = -1.f;
-        float BestTotalDuration = -1.f;
-
-        if (ASC)
-        {
-            FGameplayTagContainer QueryTags;
-            QueryTags.AddTag(DisplayTag);
-            const FGameplayEffectQuery Query = FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(QueryTags);
-
-            const TArray<FActiveGameplayEffectHandle> MatchingEffects = ASC->GetActiveEffects(Query);
-
-            for (const FActiveGameplayEffectHandle& Handle : MatchingEffects)
-            {
-                if (const FActiveGameplayEffect* ActiveEffect = ASC->GetActiveGameplayEffect(Handle))
-                {
-                    MaxStackCount = FMath::Max(MaxStackCount, ActiveEffect->Spec.GetStackCount());
-
-                    const float Duration = ActiveEffect->GetDuration();
-                    const float Remaining = ActiveEffect->GetTimeRemaining(WorldTime);
-                    if (Duration > KINDA_SMALL_NUMBER && Remaining >= 0.f && Remaining > BestTimeRemaining)
-                    {
-                        BestTimeRemaining = Remaining;
-                        BestTotalDuration = Duration;
-                    }
-                }
-            }
-        }
-
-        FHUDBuffIconViewModel VM;
-        VM.TagName = DisplayTag.GetTagName();
-        VM.Icon = IconTex;
-        VM.StackCount = MaxStackCount;
-        VM.bIsDebuff = false;
-        VM.TimeRemaining = BestTimeRemaining;
-        VM.TotalDuration = BestTotalDuration;
-        Result.Add(VM);
-    }
-
-    return Result;
-}
-
 void AIsoPlayerState::UpdateUIWhenReady()
 {
     EnsureAttributeDelegatesBound();
@@ -514,7 +437,11 @@ void AIsoPlayerState::UpdateUIWhenReady()
 
     if (UHUDRootWidget* HUD = PC->PlayerHUDInstance)
     {
-        RefreshEntireHUD(*HUD);
+        const FHUDPresentationContext Context = BuildHUDPresentationContext();
+        FHUDPresentationBuilder::RefreshEntireHUD(*HUD, Context, [this](const UGameplayAbility* AbilityCDO, float& OutDuration, float& OutRemaining)
+        {
+            return QueryCooldownState(AbilityCDO, OutDuration, OutRemaining);
+        });
         bPendingUIUpdate = false;
     }
     else
@@ -522,133 +449,6 @@ void AIsoPlayerState::UpdateUIWhenReady()
         UE_LOG(LogTemp, Verbose, TEXT("UI still not ready in UpdateUIWhenReady"));
         bPendingUIUpdate = true;
     }
-}
-
-void AIsoPlayerState::RefreshActionBar(UHUDRootWidget& HUD)
-{
-    static const ESkillSlot DisplayableSlots[] = {
-        ESkillSlot::Skill_Passive,
-        ESkillSlot::Skill_Q,
-        ESkillSlot::Skill_W,
-        ESkillSlot::Skill_E,
-        ESkillSlot::Skill_R,
-        ESkillSlot::Skill_D,
-        ESkillSlot::Skill_F
-    };
-
-    HUD.ClearAllAbilitySlots();
-
-    // 建立映射减少循环开销
-    TMap<ESkillSlot, const FEquippedAbilityInfo*> SlotMap;
-    for (const FEquippedAbilityInfo& Info : EquippedAbilities)
-    {
-        SlotMap.Add(Info.Slot, &Info);
-    }
-
-    for (ESkillSlot Slot : DisplayableSlots)
-    {
-        const FEquippedAbilityInfo** FoundInfoPtr = SlotMap.Find(Slot);
-        const FHUDSkillSlotViewModel ViewModel = FoundInfoPtr ? BuildSlotViewModel(**FoundInfoPtr)
-                                                           : BuildEmptySlotViewModel(Slot);
-        HUD.SetAbilitySlot(ViewModel);
-    }
-}
-
-void AIsoPlayerState::RefreshEntireHUD(UHUDRootWidget& HUD)
-{
-    RefreshActionBar(HUD);
-    PushHUDSnapshot(HUD);
-}
-
-void AIsoPlayerState::PushHUDSnapshot(UHUDRootWidget& HUD)
-{
-    RefreshVitals(HUD);
-    RefreshChampionStats(HUD);
-    RefreshGameplayTagPresentation(HUD);
-    RefreshExperience(HUD);
-    RefreshUtilityButtons(HUD);
-}
-
-void AIsoPlayerState::RefreshVitals(UHUDRootWidget& HUD) const
-{
-    if (!AttributeSet)
-    {
-        return;
-    }
-
-    HUD.UpdateHealth(AttributeSet->GetHealth(), AttributeSet->GetMaxHealth(), 0.f);
-    HUD.UpdateResources(AttributeSet->GetMana(), AttributeSet->GetMaxMana(), 0.f, 0.f);
-}
-
-void AIsoPlayerState::RefreshChampionStats(UHUDRootWidget& HUD) const
-{
-    if (!AttributeSet)
-    {
-        return;
-    }
-
-    FHUDChampionStatsViewModel ChampionStats;
-    ChampionStats.AttackDamage = AttributeSet->GetAttackDamage();
-    ChampionStats.AbilityPower = AttributeSet->GetAbilityPower();
-    ChampionStats.Armor = AttributeSet->GetPhysicalDefense();
-    ChampionStats.MagicResist = AttributeSet->GetMagicDefense();
-    ChampionStats.AttackSpeed = AttributeSet->GetAttackSpeed();
-    ChampionStats.CritChance = AttributeSet->GetCriticalChance();
-    ChampionStats.MoveSpeed = AttributeSet->GetMoveSpeed();
-    HUD.UpdateChampionStats(ChampionStats);
-}
-
-void AIsoPlayerState::RefreshGameplayTagPresentation(UHUDRootWidget& HUD) const
-{
-    FGameplayTagContainer OwnedTags;
-    if (AbilitySystemComponent)
-    {
-        AbilitySystemComponent->GetOwnedGameplayTags(OwnedTags);
-    }
-
-    HUD.UpdateStatusBuffs(BuildBuffViewModels(OwnedTags));
-
-    TArray<FName> TagNameArray;
-    if (bShowOwnedTagsOnHUD)
-    {
-        TArray<FGameplayTag> OwnedTagArray;
-        OwnedTags.GetGameplayTagArray(OwnedTagArray);
-        TagNameArray.Reserve(OwnedTagArray.Num());
-        for (const FGameplayTag& Tag : OwnedTagArray)
-        {
-            TagNameArray.Add(Tag.GetTagName());
-        }
-    }
-    HUD.UpdateStatusEffects(TagNameArray);
-
-    bool bIsInCombat = false;
-    if (AbilitySystemComponent)
-    {
-        static const FGameplayTag CombatTag = FGameplayTag::RequestGameplayTag(FName("State.Combat"), false);
-        if (CombatTag.IsValid())
-        {
-            bIsInCombat = OwnedTags.HasTagExact(CombatTag);
-        }
-    }
-
-    const bool bHasPendingLevelUp = AttributeSet && AttributeSet->GetUnUsedSkillPoint() > 0.f;
-    HUD.UpdatePortrait(nullptr, bIsInCombat, bHasPendingLevelUp);
-}
-
-void AIsoPlayerState::RefreshExperience(UHUDRootWidget& HUD) const
-{
-    if (!AttributeSet)
-    {
-        return;
-    }
-
-    const int32 CurrentLevel = FMath::FloorToInt(AttributeSet->GetLevel());
-    HUD.UpdateExperience(CurrentLevel, AttributeSet->GetExperience(), AttributeSet->GetExperienceToNextLevel());
-}
-
-void AIsoPlayerState::RefreshUtilityButtons(UHUDRootWidget& HUD) const
-{
-    HUD.UpdateUtilityButtons(BuildUtilityButtonViewModels());
 }
 
 void AIsoPlayerState::EnsureAttributeDelegatesBound()
@@ -761,7 +561,7 @@ void AIsoPlayerState::HandleHealthChanged(UIsometricRPGAttributeSetBase* Attribu
 
     if (UHUDRootWidget* HUD = ResolveHUDWidget())
     {
-        HUD->UpdateHealth(NewHealth, AttributeSet->GetMaxHealth(), 0.f);
+        FHUDPresentationBuilder::RefreshVitals(*HUD, AttributeSet);
     }
     else
     {
@@ -778,7 +578,7 @@ void AIsoPlayerState::HandleManaChanged(UIsometricRPGAttributeSetBase* Attribute
 
     if (UHUDRootWidget* HUD = ResolveHUDWidget())
     {
-        HUD->UpdateResources(NewMana, AttributeSet->GetMaxMana(), 0.f, 0.f);
+        FHUDPresentationBuilder::RefreshVitals(*HUD, AttributeSet);
     }
     else
     {
@@ -795,7 +595,7 @@ void AIsoPlayerState::HandleExperienceChanged(UIsometricRPGAttributeSetBase* Att
 
     if (UHUDRootWidget* HUD = ResolveHUDWidget())
     {
-        HUD->UpdateExperience(FMath::FloorToInt(AttributeSet->GetLevel()), NewExperience, NewMaxExperience);
+        FHUDPresentationBuilder::RefreshExperience(*HUD, AttributeSet);
     }
     else
     {
@@ -812,10 +612,11 @@ void AIsoPlayerState::HandleLevelChanged(UIsometricRPGAttributeSetBase* Attribut
 
     if (UHUDRootWidget* HUD = ResolveHUDWidget())
     {
-        RefreshVitals(*HUD);
-        RefreshChampionStats(*HUD);
-        RefreshExperience(*HUD);
-        RefreshGameplayTagPresentation(*HUD);
+        const FHUDPresentationContext Context = BuildHUDPresentationContext();
+        FHUDPresentationBuilder::RefreshVitals(*HUD, AttributeSet);
+        FHUDPresentationBuilder::RefreshChampionStats(*HUD, AttributeSet);
+        FHUDPresentationBuilder::RefreshExperience(*HUD, AttributeSet);
+        FHUDPresentationBuilder::RefreshGameplayTagPresentation(*HUD, Context);
     }
     else
     {
@@ -827,7 +628,8 @@ void AIsoPlayerState::HandleObservedGameplayTagChanged(const FGameplayTag Change
 {
     if (UHUDRootWidget* HUD = ResolveHUDWidget())
     {
-        RefreshGameplayTagPresentation(*HUD);
+        const FHUDPresentationContext Context = BuildHUDPresentationContext();
+        FHUDPresentationBuilder::RefreshGameplayTagPresentation(*HUD, Context);
         return;
     }
 
@@ -843,12 +645,24 @@ void AIsoPlayerState::HandleVitalAttributeValueChanged(const FOnAttributeChangeD
 
     if (UHUDRootWidget* HUD = ResolveHUDWidget())
     {
-        RefreshVitals(*HUD);
+        FHUDPresentationBuilder::RefreshVitals(*HUD, AttributeSet);
     }
     else
     {
         bPendingUIUpdate = true;
     }
+}
+
+FHUDPresentationContext AIsoPlayerState::BuildHUDPresentationContext() const
+{
+    FHUDPresentationContext Context;
+    Context.AttributeSet = GetAttributeSet();
+    Context.AbilitySystemComponent = GetAbilitySystemComponent();
+    Context.EquippedAbilities = &EquippedAbilities;
+    Context.BuffIconMap = &BuffIconMap;
+    Context.World = GetWorld();
+    Context.bShowOwnedTagsOnHUD = bShowOwnedTagsOnHUD;
+    return Context;
 }
 
 void AIsoPlayerState::HandleChampionStatAttributeValueChanged(const FOnAttributeChangeData& ChangeData)
@@ -860,7 +674,7 @@ void AIsoPlayerState::HandleChampionStatAttributeValueChanged(const FOnAttribute
 
     if (UHUDRootWidget* HUD = ResolveHUDWidget())
     {
-        RefreshChampionStats(*HUD);
+        FHUDPresentationBuilder::RefreshChampionStats(*HUD, AttributeSet);
     }
     else
     {
@@ -877,7 +691,8 @@ void AIsoPlayerState::HandleSkillPointAttributeValueChanged(const FOnAttributeCh
 
     if (UHUDRootWidget* HUD = ResolveHUDWidget())
     {
-        RefreshGameplayTagPresentation(*HUD);
+        const FHUDPresentationContext Context = BuildHUDPresentationContext();
+        FHUDPresentationBuilder::RefreshGameplayTagPresentation(*HUD, Context);
     }
     else
     {
@@ -931,7 +746,8 @@ void AIsoPlayerState::RefreshBuffPresentationIfReady()
 {
     if (UHUDRootWidget* HUD = ResolveHUDWidget())
     {
-        RefreshGameplayTagPresentation(*HUD);
+        const FHUDPresentationContext Context = BuildHUDPresentationContext();
+        FHUDPresentationBuilder::RefreshGameplayTagPresentation(*HUD, Context);
     }
     else
     {
@@ -1086,127 +902,6 @@ bool AIsoPlayerState::QueryCooldownState(const UGameplayAbility* AbilityCDO, flo
     OutDuration = BestDuration > 0.f ? BestDuration : BestRemaining;
     OutRemaining = BestRemaining;
     return true;
-}
-
-FHUDSkillSlotViewModel AIsoPlayerState::BuildSlotViewModel(const FEquippedAbilityInfo& Info) const
-{
-    FHUDSkillSlotViewModel ViewModel = BuildEmptySlotViewModel(Info.Slot);
-
-    if (!ShouldDisplaySlot(Info.Slot))
-    {
-        return ViewModel;
-    }
-
-    ViewModel.bIsUnlocked = true;
-
-    // Treat slot as 'equipped' if the soft class pointer has a valid path (even if not yet loaded).
-    const bool bHasAbilitySoftRef = !Info.AbilityClass.ToSoftObjectPath().IsNull();
-    UClass* AbilityClass = Info.AbilityClass.Get();
-    ViewModel.AbilityClass = AbilityClass;
-    ViewModel.bIsEquipped = bHasAbilitySoftRef; // allow UI to show placeholder before class loads
-
-    // Icon: attempt to resolve; if not yet loaded, keep nullptr (will refresh after async load)
-    ViewModel.Icon = Info.Icon.Get();
-
-    if (AbilityClass)
-    {
-        if (const UGameplayAbility* AbilityCDO = AbilityClass->GetDefaultObject<UGameplayAbility>())
-        {
-            if (const UGA_HeroBaseAbility* HeroCDO = Cast<UGA_HeroBaseAbility>(AbilityCDO))
-            {
-                ViewModel.DisplayName = HeroCDO->GetAbilityDisplayNameText();
-                ViewModel.ResourceCost = HeroCDO->GetResourceCost();
-                ViewModel.CooldownDuration = HeroCDO->CooldownDuration;
-            }
-            else
-            {
-                ViewModel.DisplayName = FText::FromName(AbilityClass->GetFName());
-            }
-
-            if (ViewModel.DisplayName.IsEmpty())
-            {
-                ViewModel.DisplayName = FText::FromName(AbilityClass->GetFName());
-            }
-
-            QueryCooldownState(AbilityCDO, ViewModel.CooldownDuration, ViewModel.CooldownRemaining);
-
-            FGameplayTagContainer AssetTags;
-            AssetTags = AbilityCDO->GetAssetTags();
-            if (!AssetTags.IsEmpty())
-            {
-                TArray<FGameplayTag> LocalTags;
-                AssetTags.GetGameplayTagArray(LocalTags);
-                if (LocalTags.Num() > 0)
-                {
-                    ViewModel.AbilityPrimaryTag = LocalTags[0];
-                }
-            }
-        }
-    }
-
-    return ViewModel;
-}
-
-FHUDSkillSlotViewModel AIsoPlayerState::BuildEmptySlotViewModel(ESkillSlot Slot) const
-{
-    FHUDSkillSlotViewModel ViewModel;
-    ViewModel.Slot = Slot;
-    ViewModel.bIsUnlocked = ShouldDisplaySlot(Slot);
-    ViewModel.bIsEquipped = false;
-    ViewModel.DisplayName = FText::GetEmpty();
-    ViewModel.HotkeyLabel = BuildHotkeyLabel(Slot);
-    ViewModel.Icon = nullptr;
-    ViewModel.ResourceCost = 0.f;
-    ViewModel.CooldownDuration = 0.f;
-    ViewModel.CooldownRemaining = 0.f;
-    return ViewModel;
-}
-
-bool AIsoPlayerState::ShouldDisplaySlot(ESkillSlot Slot) const
-{
-    switch (Slot)
-    {
-    case ESkillSlot::Skill_Passive:
-    case ESkillSlot::Skill_Q:
-    case ESkillSlot::Skill_W:
-    case ESkillSlot::Skill_E:
-    case ESkillSlot::Skill_R:
-    case ESkillSlot::Skill_D:
-    case ESkillSlot::Skill_F:
-        return true;
-    default:
-        return false;
-    }
-}
-
-FText AIsoPlayerState::BuildHotkeyLabel(ESkillSlot Slot) const
-{
-    switch (Slot)
-    {
-    case ESkillSlot::Skill_Passive: return FText::FromString(TEXT("Passive"));
-    case ESkillSlot::Skill_Q: return FText::FromString(TEXT("Q"));
-    case ESkillSlot::Skill_W: return FText::FromString(TEXT("W"));
-    case ESkillSlot::Skill_E: return FText::FromString(TEXT("E"));
-    case ESkillSlot::Skill_R: return FText::FromString(TEXT("R"));
-    case ESkillSlot::Skill_D: return FText::FromString(TEXT("D"));
-    case ESkillSlot::Skill_F: return FText::FromString(TEXT("F"));
-    default: return FText::GetEmpty();
-    }
-}
-
-TArray<FHUDItemSlotViewModel> AIsoPlayerState::BuildUtilityButtonViewModels() const
-{
-    static const TCHAR* DefaultHotkeys[] = { TEXT("4"), TEXT("5"), TEXT("6") };
-
-    TArray<FHUDItemSlotViewModel> Buttons;
-    Buttons.SetNum(UE_ARRAY_COUNT(DefaultHotkeys));
-
-    for (int32 Index = 0; Index < Buttons.Num(); ++Index)
-    {
-        Buttons[Index].HotkeyLabel = FText::FromString(DefaultHotkeys[Index]);
-    }
-
-    return Buttons;
 }
 
 void AIsoPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

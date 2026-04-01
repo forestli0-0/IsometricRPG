@@ -7,15 +7,14 @@
 #include "AbilitySystemInterface.h"
 #include "GameplayEffectTypes.h"
 #include "IsometricAbilities/Types/EquippedAbilityInfo.h"
-#include "UI/HUD/HUDViewModelTypes.h"
 #include "GameplayTagContainer.h"
+#include "UI/HUD/HUDPresentationBuilder.h"
 #include "IsoPlayerState.generated.h"
 
 class UAbilitySystemComponent;
 class UIsometricRPGAttributeSetBase;
 class UGameplayAbility;
 class UHUDRootWidget;
-struct FHUDSkillSlotViewModel;
 struct FOnAttributeChangeData;
 struct FGameplayEffectSpec;
 /**
@@ -97,15 +96,8 @@ public:
     TMap<FGameplayTag, TSoftObjectPtr<class UTexture2D>> BuffIconMap;
 private:
 	int SlotIndex = 0; // 用于跟踪当前技能槽的索引
+    FHUDPresentationContext BuildHUDPresentationContext() const;
     void OnAssetsLoadedForUI();
-
-    void RefreshEntireHUD(UHUDRootWidget& HUD);
-    void PushHUDSnapshot(UHUDRootWidget& HUD);
-    void RefreshVitals(UHUDRootWidget& HUD) const;
-    void RefreshChampionStats(UHUDRootWidget& HUD) const;
-    void RefreshGameplayTagPresentation(UHUDRootWidget& HUD) const;
-    void RefreshExperience(UHUDRootWidget& HUD) const;
-    void RefreshUtilityButtons(UHUDRootWidget& HUD) const;
     void EnsureAttributeDelegatesBound();
     void EnsureGameplayTagDelegatesBound();
     void EnsureGameplayEffectDelegatesBound();
@@ -148,16 +140,6 @@ private:
     int32 GetSkillBarSlotCount() const;                    // 技能栏槽位数量（不包含 Invalid / MAX）
     int32 IndexFromSlot(ESkillSlot Slot) const;            // 将枚举槽转换为0基索引；非栏位返回 INDEX_NONE
 
-    void RefreshActionBar(UHUDRootWidget& HUD);
-    FHUDSkillSlotViewModel BuildSlotViewModel(const FEquippedAbilityInfo& Info) const;
-    FHUDSkillSlotViewModel BuildEmptySlotViewModel(ESkillSlot Slot) const;
-    bool ShouldDisplaySlot(ESkillSlot Slot) const;
-    FText BuildHotkeyLabel(ESkillSlot Slot) const;
-    TArray<FHUDItemSlotViewModel> BuildUtilityButtonViewModels() const;
-
     const FEquippedAbilityInfo* FindEquippedInfoByHandle(const FGameplayAbilitySpecHandle& Handle) const;
     bool QueryCooldownState(const UGameplayAbility* AbilityCDO, float& OutDuration, float& OutRemaining) const;
-
-    /** Build curated buff icon view models from owned tags */
-    TArray<struct FHUDBuffIconViewModel> BuildBuffViewModels(const FGameplayTagContainer& OwnedTags) const;
 };
