@@ -110,6 +110,7 @@ void AProjectileBase::InitializeProjectile(const UGameplayAbility* InSourceAbili
     bIsReturning = false;
     HitActorsForward.Reset();
     HitActorsReturn.Reset();
+    HitActorsSingleFlight.Reset();
 
     ApplyHomingConfig();
 
@@ -193,16 +194,36 @@ void AProjectileBase::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UP
 void AProjectileBase::OnBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-    HandleImpactActor(OtherActor, SweepResult);
+    const bool bProcessedImpact = HandleImpactActor(OtherActor, SweepResult);
 
-    // overlap 默认认为是“穿透”，不在这里销毁；若需要非穿透投射物，可通过 bReturnToOwner/bShouldBounce 控制 OnHit 的销毁
+    if (bProcessedImpact && !InitData.bReturnToOwner && !InitData.bShouldBounce)
+    {
+        if (ProjectileMovement)
+        {
+            ProjectileMovement->StopMovementImmediately();
+        }
+
+        if (CollisionComp)
+        {
+            CollisionComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        }
+
+        Destroy();
+    }
 }
 
-void AProjectileBase::HandleImpactActor(AActor* OtherActor, const FHitResult& Hit)
+bool AProjectileBase::HandleImpactActor(AActor* OtherActor, const FHitResult& Hit)
 {
     if (!OtherActor || OtherActor == ProjectileOwner || OtherActor == this)
     {
-        return;
+        return false;
+    }
+
+    const bool bIsPawnTarget = Cast<APawn>(OtherActor) != nullptr;
+    const bool bHasAbilitySystem = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(OtherActor) != nullptr;
+    if (!bIsPawnTarget && !bHasAbilitySystem)
+    {
+        return false;
     }
 
     // 往返投射物：允许同一目标去程/回程各命中一次，但同一阶段只命中一次
@@ -211,9 +232,18 @@ void AProjectileBase::HandleImpactActor(AActor* OtherActor, const FHitResult& Hi
         TSet<TWeakObjectPtr<AActor>>& HitSet = bIsReturning ? HitActorsReturn : HitActorsForward;
         if (HitSet.Contains(OtherActor))
         {
-            return;
+            return false;
         }
         HitSet.Add(OtherActor);
+    }
+    else
+    {
+        if (HitActorsSingleFlight.Contains(OtherActor))
+        {
+            return false;
+        }
+
+        HitActorsSingleFlight.Add(OtherActor);
     }
 
     OnProjectileHitActor.Broadcast(OtherActor, Hit);
@@ -225,6 +255,8 @@ void AProjectileBase::HandleImpactActor(AActor* OtherActor, const FHitResult& Hi
     {
         HandleSplashDamage(Hit.ImpactPoint, OtherActor);
     }
+
+    return true;
 }
 
 void AProjectileBase::ApplyDamageEffects(AActor* TargetActor, const FHitResult& HitResult)

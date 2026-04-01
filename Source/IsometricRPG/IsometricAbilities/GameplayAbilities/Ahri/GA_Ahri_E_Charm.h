@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "IsometricAbilities/GameplayAbilities/Targeted/GA_TargetedProjectileAbility.h"
+#include "IsometricAbilities/GameplayAbilities/SkillShot/GA_SkillShotProjectileAbility.h"
 #include "GA_Ahri_E_Charm.generated.h"
 
 /**
@@ -12,12 +12,12 @@
  * 命中的第一个敌人会被魅惑，被迫朝阿狸移动一段时间，并受到魔法伤害。
  * 被魅惑的敌人移动速度会逐渐减慢，直到停止。
  * 
- * 技能类型：目标指向投射物 (Targeted Projectile)
+ * 技能类型：方向飞行投射物 (SkillShot Projectile)
  * 冷却时间：12秒
  * 魔法消耗：85点魔法值
  */
 UCLASS(BlueprintType)
-class ISOMETRICRPG_API UGA_Ahri_E_Charm : public UGA_TargetedProjectileAbility
+class ISOMETRICRPG_API UGA_Ahri_E_Charm : public UGA_SkillShotProjectileAbility
 {
 	GENERATED_BODY()
 
@@ -86,7 +86,14 @@ protected:
 
 public:
 	// 重写投射物执行逻辑
-	virtual void ExecuteTargetedProjectile(AActor* Target, const FVector& TargetLocation);
+	virtual void ExecuteSkillShot(const FVector& Direction, const FVector& StartLocation) override;
+
+	virtual class AProjectileBase* SpawnProjectile(
+		const FVector& SpawnLocation,
+		const FRotator& SpawnRotation,
+		AActor* SourceActor,
+		APawn* SourcePawn,
+		UAbilitySystemComponent* SourceASC) override;
 
 	// 计算技能伤害
 	UFUNCTION(BlueprintCallable, Category = "Charm")
@@ -94,7 +101,7 @@ public:
 
 	// 投射物命中目标时的处理
 	UFUNCTION(BlueprintCallable, Category = "Charm")
-	void OnCharmProjectileHit(AActor* HitActor);
+	void OnCharmProjectileHit(AActor* HitActor, const FHitResult& Hit);
 
 	// 应用魅惑效果
 	UFUNCTION(BlueprintCallable, Category = "Charm")
@@ -105,6 +112,8 @@ public:
 	void OnCharmEffectEnd(AActor* Target);
 
 private:
+	void RestoreCharmedTargetMovement();
+
 	// 当前投射物的引用
 	UPROPERTY()
 	TObjectPtr<class AProjectileBase> CurrentProjectile;
@@ -112,6 +121,12 @@ private:
 	// 被魅惑的目标
 	UPROPERTY()
 	TObjectPtr<AActor> CharmedTarget;
+
+	UPROPERTY()
+	TObjectPtr<class AIsometricRPGCharacter> CharmedTargetCharacter;
+
+	float CharmedTargetOriginalMaxWalkSpeed = 0.0f;
+	bool bCharmForcedMoveActive = false;
 
 	// 魅惑效果的句柄
 	FActiveGameplayEffectHandle CharmEffectHandle;

@@ -1,21 +1,24 @@
 #include "GA_Ahri_E_Charm.h"
-#include "IsometricAbilities/Projectiles/AProjectileBase.h"
+#include "AbilitySystemBlueprintLibrary.h"
+#include "AbilitySystemComponent.h"
+#include "Animation/AnimMontage.h"
 #include "Character/IsometricRPGAttributeSetBase.h"
 #include "Character/IsometricRPGCharacter.h"
-#include "GameFramework/Character.h"
-#include "Engine/World.h"
-#include "NiagaraSystem.h"
-#include "NiagaraFunctionLibrary.h"
-#include "NiagaraComponent.h"
-#include "Sound/SoundBase.h"
-#include "Kismet/GameplayStatics.h"
-#include "AbilitySystemComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameplayEffect.h"
+#include "IsometricAbilities/Projectiles/AProjectileBase.h"
+#include "Kismet/GameplayStatics.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraSystem.h"
+#include "Sound/SoundBase.h"
+#include "UObject/ConstructorHelpers.h"
+#include "Engine/World.h"
 
 UGA_Ahri_E_Charm::UGA_Ahri_E_Charm()
 {
 	// 设置技能基础属性
-	AbilityType = EHeroAbilityType::Targeted;
+	AbilityType = EHeroAbilityType::SkillShot;
+	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 	CooldownDuration = 12.0f;
 	CostMagnitude = 85.0f;
 	RangeToApply = 975.0f;
@@ -24,6 +27,7 @@ UGA_Ahri_E_Charm::UGA_Ahri_E_Charm()
 	CharmDuration = 1.75f;
 	ProjectileSpeed = 1550.0f;
 	ProjectileWidth = 60.0f;
+	SkillShotWidth = ProjectileWidth;
 	
 	// 初始化伤害参数
 	BaseMagicDamage = 60.0f;
@@ -33,137 +37,143 @@ UGA_Ahri_E_Charm::UGA_Ahri_E_Charm()
 	// 设置效果参数
 	MovementSpeedReduction = 65.0f;
 	DamageAmplification = 20.0f;
+
+	static ConstructorHelpers::FClassFinder<AProjectileBase> ProjectileFinder(TEXT("/Game/Blueprints/Projectiles/BP_Projectile_Fireball"));
+	if (ProjectileFinder.Succeeded())
+	{
+		SkillShotProjectileClass = ProjectileFinder.Class;
+	}
+
+	static ConstructorHelpers::FClassFinder<UGameplayEffect> CostEffectFinder(TEXT("/Game/Blueprints/GameEffects/GE_ManaCost"));
+	if (CostEffectFinder.Succeeded())
+	{
+		CostGameplayEffectClass = CostEffectFinder.Class;
+	}
+
+	static ConstructorHelpers::FClassFinder<UGameplayEffect> DamageEffectFinder(TEXT("/Game/Blueprints/GameEffects/GE_AttackDamage"));
+	if (DamageEffectFinder.Succeeded())
+	{
+		ProjectileData.DamageEffect = DamageEffectFinder.Class;
+	}
+
+	static ConstructorHelpers::FObjectFinder<UAnimMontage> CastMontageFinder(TEXT("/Game/Characters/Animations/AM_CastFireball"));
+	if (CastMontageFinder.Succeeded())
+	{
+		MontageToPlay = CastMontageFinder.Object;
+	}
+
+	static ConstructorHelpers::FObjectFinder<UNiagaraSystem> ProjectileVFXFinder(TEXT("/Game/FX/Niagara/NS_MyFireball"));
+	if (ProjectileVFXFinder.Succeeded())
+	{
+		ProjectileVFX = ProjectileVFXFinder.Object;
+	}
+
+	static ConstructorHelpers::FObjectFinder<UNiagaraSystem> ImpactVFXFinder(TEXT("/Game/FX/Niagara/NS_BurstSmoke"));
+	if (ImpactVFXFinder.Succeeded())
+	{
+		CharmHitVFX = ImpactVFXFinder.Object;
+	}
+
+	static ConstructorHelpers::FObjectFinder<USoundBase> ImpactSoundFinder(TEXT("/Game/StarterContent/Audio/Explosion_Cue"));
+	if (ImpactSoundFinder.Succeeded())
+	{
+		HitSound = ImpactSoundFinder.Object;
+	}
 	
 	// 重置状态
 	CurrentProjectile = nullptr;
 	CharmedTarget = nullptr;
+	CharmedTargetCharacter = nullptr;
 }
 
-void UGA_Ahri_E_Charm::ExecuteTargetedProjectile(AActor* Target, const FVector& TargetLocation)
+void UGA_Ahri_E_Charm::ExecuteSkillShot(const FVector& Direction, const FVector& StartLocation)
 {
-	AActor* AhriActor = GetAvatarActorFromActorInfo();
-	if (!AhriActor)
-	{
-		return;
-	}
+	ProjectileData.InitialSpeed = ProjectileSpeed;
+	ProjectileData.MaxSpeed = ProjectileSpeed;
+	ProjectileData.MaxFlyDistance = RangeToApply;
+	ProjectileData.Lifespan = FMath::Max(RangeToApply / FMath::Max(ProjectileSpeed, 1.0f), 1.0f);
+	ProjectileData.DamageAmount = CalculateDamage();
+	ProjectileData.VisualEffect = ProjectileVFX;
+	ProjectileData.ImpactEffect = CharmHitVFX;
+	ProjectileData.ImpactSound = HitSound;
+	ProjectileData.bEnableHoming = false;
+	ProjectileData.HomingTargetActor = nullptr;
 
-	// 播放施法音效
 	if (CastSound)
 	{
-		UGameplayStatics::PlaySoundAtLocation(GetWorld(), CastSound, AhriActor->GetActorLocation());
-	}
-
-	// 计算发射位置和方向
-	FVector StartLocation = AhriActor->GetActorLocation() + FVector(0, 0, 50); // 稍微抬高一点
-	FVector Direction = (TargetLocation - StartLocation).GetSafeNormal();
-
-	// 创建魅惑投射物
-	if (ProjectileClass)  // 使用基类的投射物类
-	{
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.Owner = AhriActor;
-		SpawnParams.Instigator = Cast<APawn>(AhriActor);
-		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-		CurrentProjectile = GetWorld()->SpawnActor<AProjectileBase>(
-			ProjectileClass,
-			StartLocation,
-			Direction.Rotation(),
-			SpawnParams
-		);
-
-		if (CurrentProjectile)
+		if (const FGameplayAbilityActorInfo* ActorInfo = GetCurrentActorInfo(); ActorInfo && ActorInfo->IsLocallyControlled())
 		{
-			// 设置投射物的属性
-			// CurrentProjectile->SetProjectileSpeed(ProjectileSpeed);
-			// CurrentProjectile->SetProjectileWidth(ProjectileWidth);
-			// CurrentProjectile->SetMaxRange(RangeToApply);
-
-			// 绑定投射物的事件回调
-			// CurrentProjectile->OnProjectileHit.AddDynamic(this, &UGA_Ahri_E_Charm::OnCharmProjectileHit);
-
-			// 播放投射物特效
-			if (ProjectileVFX)
+			if (const AActor* AvatarActor = GetAvatarActorFromActorInfo())
 			{
-				UNiagaraFunctionLibrary::SpawnSystemAttached(
-					ProjectileVFX,
-					CurrentProjectile->GetRootComponent(),
-					NAME_None,
-					FVector::ZeroVector,
-					FRotator::ZeroRotator,
-					EAttachLocation::KeepRelativeOffset,
-					true
-				);
+				UGameplayStatics::PlaySoundAtLocation(GetWorld(), CastSound, AvatarActor->GetActorLocation());
 			}
-
-			UE_LOG(LogTemp, Log, TEXT("阿狸魅惑技能发射成功，目标位置: %s"), *TargetLocation.ToString());
 		}
 	}
+
+	Super::ExecuteSkillShot(Direction, StartLocation);
+}
+
+AProjectileBase* UGA_Ahri_E_Charm::SpawnProjectile(
+	const FVector& SpawnLocation,
+	const FRotator& SpawnRotation,
+	AActor* SourceActor,
+	APawn* SourcePawn,
+	UAbilitySystemComponent* SourceASC)
+{
+	AProjectileBase* SpawnedProjectile = Super::SpawnProjectile(SpawnLocation, SpawnRotation, SourceActor, SourcePawn, SourceASC);
+	if (SpawnedProjectile)
+	{
+		SpawnedProjectile->OnProjectileHitActor.AddDynamic(this, &UGA_Ahri_E_Charm::OnCharmProjectileHit);
+		CurrentProjectile = SpawnedProjectile;
+	}
+
+	return SpawnedProjectile;
 }
 
 float UGA_Ahri_E_Charm::CalculateDamage() const
 {
-	if (!AttributeSet)
+	const UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
+	const UIsometricRPGAttributeSetBase* LocalAttributeSet = AttributeSet;
+	if (!LocalAttributeSet && ASC)
+	{
+		LocalAttributeSet = ASC->GetSet<UIsometricRPGAttributeSetBase>();
+	}
+
+	if (!LocalAttributeSet)
 	{
 		return 0.0f;
 	}
 
-	// 获取技能等级（假设从技能等级系统获取，这里暂时使用固定值）
-	int32 AbilityLevel = 1; // TODO: 从技能系统获取实际等级
-	
-	// 获取法术强度
-	float AbilityPower = 0.0f; // TODO: 从属性集获取法术强度
-	// float AbilityPower = AttributeSet->GetAbilityPower();
+	const int32 AbilityLevel = GetAbilityLevel();
+	const float AbilityPower = LocalAttributeSet->GetAbilityPower();
 
-	// 计算基础伤害
 	float TotalDamage = BaseMagicDamage + (DamagePerLevel * (AbilityLevel - 1));
-	
-	// 添加法术强度加成
 	TotalDamage += AbilityPower * APRatio;
 
 	return TotalDamage;
 }
 
-void UGA_Ahri_E_Charm::OnCharmProjectileHit(AActor* HitActor)
+void UGA_Ahri_E_Charm::OnCharmProjectileHit(AActor* HitActor, const FHitResult& Hit)
 {
 	if (!HitActor)
 	{
 		return;
 	}
 
-	// 播放命中音效
-	if (HitSound)
-	{
-		UGameplayStatics::PlaySoundAtLocation(GetWorld(), HitSound, HitActor->GetActorLocation());
-	}
-
-	// 播放命中特效
-	if (CharmHitVFX)
-	{
-		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-			GetWorld(),
-			CharmHitVFX,
-			HitActor->GetActorLocation(),
-			FRotator::ZeroRotator
-		);
-	}
-
-	// 计算伤害
 	float Damage = CalculateDamage();
-
-	// 应用伤害（这里需要使用GAS的伤害系统）
-	// TODO: 创建并应用伤害的GameplayEffect
+	const FVector ImpactLocation = Hit.bBlockingHit ? FVector(Hit.ImpactPoint) : HitActor->GetActorLocation();
 
 	// 应用魅惑效果
 	ApplyCharmEffect(HitActor);
 
-	UE_LOG(LogTemp, Log, TEXT("阿狸魅惑命中目标: %s, 伤害: %.2f"), *HitActor->GetName(), Damage);
+	UE_LOG(LogTemp, Log, TEXT("阿狸魅惑命中目标: %s, 位置: %s, 伤害: %.2f"), *HitActor->GetName(), *ImpactLocation.ToString(), Damage);
 
-	// 清理投射物
-	CurrentProjectile = nullptr;
-
-	// 结束技能（魅惑效果会在指定时间后自动结束）
-	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
+	if (CurrentProjectile)
+	{
+		CurrentProjectile->OnProjectileHitActor.RemoveDynamic(this, &UGA_Ahri_E_Charm::OnCharmProjectileHit);
+		CurrentProjectile->Destroy();
+		CurrentProjectile = nullptr;
+	}
 }
 
 void UGA_Ahri_E_Charm::ApplyCharmEffect(AActor* Target)
@@ -171,6 +181,11 @@ void UGA_Ahri_E_Charm::ApplyCharmEffect(AActor* Target)
 	if (!Target)
 	{
 		return;
+	}
+
+	if (CharmedTarget && CharmedTarget != Target)
+	{
+		OnCharmEffectEnd(CharmedTarget);
 	}
 
 	CharmedTarget = Target;
@@ -181,9 +196,24 @@ void UGA_Ahri_E_Charm::ApplyCharmEffect(AActor* Target)
 		SourceCharacter->RecordRecentCharmTarget(Target, ExpireTime);
 	}
 
-	// 获取目标的ASC
-	UAbilitySystemComponent* TargetASC = nullptr;
-	// TargetASC = Target->GetAbilitySystemComponent();  // TODO: 获取目标的ASC
+	CharmedTargetCharacter = Cast<AIsometricRPGCharacter>(Target);
+	if (CharmedTargetCharacter && CharmedTargetCharacter->HasAuthority())
+	{
+		if (UCharacterMovementComponent* MovementComponent = CharmedTargetCharacter->GetCharacterMovement())
+		{
+			CharmedTargetOriginalMaxWalkSpeed = MovementComponent->MaxWalkSpeed;
+			const float MoveSpeedScale = FMath::Clamp(1.0f - (MovementSpeedReduction / 100.0f), 0.1f, 1.0f);
+			MovementComponent->MaxWalkSpeed = FMath::Max(120.0f, CharmedTargetOriginalMaxWalkSpeed * MoveSpeedScale);
+		}
+
+		if (AActor* SourceActor = GetAvatarActorFromActorInfo())
+		{
+			bCharmForcedMoveActive = CharmedTargetCharacter->PathFollowingComponent
+				&& CharmedTargetCharacter->PathFollowingComponent->RequestMoveToActor(SourceActor, 90.0f);
+		}
+	}
+
+	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target);
 
 	if (TargetASC)
 	{
@@ -268,9 +298,7 @@ void UGA_Ahri_E_Charm::OnCharmEffectEnd(AActor* Target)
 
 	UE_LOG(LogTemp, Log, TEXT("阿狸对 %s 的魅惑效果结束"), *Target->GetName());
 
-	// 获取目标的ASC
-	UAbilitySystemComponent* TargetASC = nullptr;
-	// TargetASC = Target->GetAbilitySystemComponent();  // TODO: 获取目标的ASC
+	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target);
 
 	if (TargetASC)
 	{
@@ -289,6 +317,8 @@ void UGA_Ahri_E_Charm::OnCharmEffectEnd(AActor* Target)
 		}
 	}
 
+	RestoreCharmedTargetMovement();
+
 	// 清理状态
 	CharmedTarget = nullptr;
 
@@ -299,4 +329,30 @@ void UGA_Ahri_E_Charm::OnCharmEffectEnd(AActor* Target)
 			SourceCharacter->RecordRecentCharmTarget(nullptr, 0.0f);
 		}
 	}
-} 
+}
+
+void UGA_Ahri_E_Charm::RestoreCharmedTargetMovement()
+{
+	if (!CharmedTargetCharacter || !CharmedTargetCharacter->HasAuthority())
+	{
+		CharmedTargetCharacter = nullptr;
+		CharmedTargetOriginalMaxWalkSpeed = 0.0f;
+		bCharmForcedMoveActive = false;
+		return;
+	}
+
+	if (UCharacterMovementComponent* MovementComponent = CharmedTargetCharacter->GetCharacterMovement();
+		MovementComponent && CharmedTargetOriginalMaxWalkSpeed > 0.0f)
+	{
+		MovementComponent->MaxWalkSpeed = CharmedTargetOriginalMaxWalkSpeed;
+	}
+
+	if (bCharmForcedMoveActive && CharmedTargetCharacter->PathFollowingComponent)
+	{
+		CharmedTargetCharacter->PathFollowingComponent->StopMove(EIsometricPathFollowResult::Aborted);
+	}
+
+	CharmedTargetCharacter = nullptr;
+	CharmedTargetOriginalMaxWalkSpeed = 0.0f;
+	bCharmForcedMoveActive = false;
+}

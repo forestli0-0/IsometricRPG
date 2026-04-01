@@ -4,6 +4,8 @@
 #include "IsometricAbilities/GameplayAbilities/SelfCast/GA_SelfCastAbility.h"
 #include "GA_Ahri_R_SpiritRush.generated.h"
 
+class UAbilityTask_ApplyRootMotionMoveToForce;
+
 /**
  * 阿狸R技能 - 狐狸大招 (Spirit Rush)
  * 
@@ -26,6 +28,10 @@ public:
 	UGA_Ahri_R_SpiritRush();
 
 protected:
+	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo) override;
+
 	// 最大使用次数
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Spirit Rush")
 	int32 MaxCharges = 3;
@@ -70,8 +76,17 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Spirit Rush")
 	float DamageReductionPerHit = 10.0f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Spirit Rush")
+	float RecentBasicAttackMaxAge = 3.0f;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile")
 	TSubclassOf<class AProjectileBase> SkillShotProjectileClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Spirit Rush|GameplayEffect")
+	TSubclassOf<class UGameplayEffect> SpiritOrbDamageEffectClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Spirit Rush|Projectile")
+	float SpiritOrbHomingAcceleration = 12000.0f;
 
 	// 瞬移特效
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Spirit Rush|VFX")
@@ -111,6 +126,17 @@ public:
 		const FGameplayAbilityActivationInfo ActivationInfo,
 		const FGameplayEventData* TriggerEventData) override;
 
+	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo,
+		bool bReplicateEndAbility,
+		bool bWasCancelled) override;
+
+	virtual void CancelAbility(const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo,
+		bool bReplicateCancelAbility) override;
+
 	// 计算技能伤害
 	UFUNCTION(BlueprintCallable, Category = "Spirit Rush")
 	float CalculateDamage(int32 HitCount = 0) const;
@@ -134,6 +160,12 @@ public:
 	// 狐灵火球命中敌人时的处理
 	UFUNCTION(BlueprintCallable, Category = "Spirit Rush")
 	void OnSpiritOrbHitTarget(AActor* HitActor, int32 OrbIndex);
+
+	UFUNCTION()
+	void OnSpiritOrbProjectileHit(AActor* HitActor, const FHitResult& Hit);
+
+	UFUNCTION()
+	void HandleDashMovementFinished();
 
 	// 检查是否可以再次使用
 	UFUNCTION(BlueprintCallable, Category = "Spirit Rush")
@@ -165,7 +197,9 @@ private:
 	// 是否在充能窗口期内
 	bool bInChargeWindow = false;
 
+	bool bDashCompletionHandled = false;
+
 	// 瞬移任务
 	UPROPERTY()
-	TObjectPtr<class UAbilityTask> DashTask;
-}; 
+	TObjectPtr<class UAbilityTask_ApplyRootMotionMoveToForce> DashTask;
+};

@@ -208,6 +208,7 @@ private:
     bool bIsReturning = false;
     TSet<TWeakObjectPtr<AActor>> HitActorsForward;
     TSet<TWeakObjectPtr<AActor>> HitActorsReturn;
+    TSet<TWeakObjectPtr<AActor>> HitActorsSingleFlight;
 
     float TravelDistance;
     FTimerHandle TimerHandle_Lifespan;
@@ -229,7 +230,7 @@ protected:
     void OnBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
-    void HandleImpactActor(AActor* OtherActor, const FHitResult& Hit);
+    bool HandleImpactActor(AActor* OtherActor, const FHitResult& Hit);
 
     /** 进入返航（若开启 bReturnToOwner） */
     void StartReturnToOwner();
