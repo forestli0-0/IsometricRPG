@@ -9,6 +9,10 @@
 UGA_SkillShotAbility::UGA_SkillShotAbility()
 {
 	AbilityType = EHeroAbilityType::SkillShot;
+	InputPolicy.InputMode = EAbilityInputMode::Instant;
+	InputPolicy.bUpdateTargetWhileHeld = false;
+	InputPolicy.bAllowInputBuffer = true;
+	InputPolicy.MaxBufferWindow = 0.25f;
 	SetUsesInteractiveTargeting(false);
 }
 

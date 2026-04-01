@@ -461,12 +461,6 @@ void UIsometricInputComponent::HandleMoveIntentOnAuthority()
 			UE_LOG(LogTemp, Log, TEXT("Server: Canceled attack abilities."));
 		}
 	}
-
-	if (OwnerCharacter->GetMesh() && OwnerCharacter->GetMesh()->GetAnimInstance())
-	{
-		OwnerCharacter->GetMesh()->GetAnimInstance()->Montage_Stop(0.1f);
-		UE_LOG(LogTemp, Log, TEXT("Server: Stopped any active montage."));
-	}
 }
 
 void UIsometricInputComponent::StopPredictedClickMove()

@@ -16,6 +16,10 @@ UGA_TargetedAbility::UGA_TargetedAbility()
 {
 	RangeToApply = 100.f;
 	TargetActorClass = AGATA_CursorTrace::StaticClass();
+	InputPolicy.InputMode = EAbilityInputMode::Instant;
+	InputPolicy.bUpdateTargetWhileHeld = false;
+	InputPolicy.bAllowInputBuffer = true;
+	InputPolicy.MaxBufferWindow = 0.25f;
 
 	static ConstructorHelpers::FClassFinder<ANiagaraActor> RangeIndicatorFinder(TEXT("/Game/Blueprints/FX/BP_NA_NiagaraActorBase"));
 	if (RangeIndicatorFinder.Succeeded())

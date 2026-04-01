@@ -7,6 +7,10 @@
 UGA_AreaAbility::UGA_AreaAbility()
 {
 	AbilityType = EHeroAbilityType::AreaEffect;
+	InputPolicy.InputMode = EAbilityInputMode::Instant;
+	InputPolicy.bUpdateTargetWhileHeld = false;
+	InputPolicy.bAllowInputBuffer = true;
+	InputPolicy.MaxBufferWindow = 0.25f;
 	SetUsesInteractiveTargeting(false);
 	AreaRadius = 300.f;
 }

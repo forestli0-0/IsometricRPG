@@ -192,6 +192,9 @@ protected:
     /** Resolves mana cost from a built GE spec for pre-commit checks. */
     float ResolveManaCostFromSpec(const FGameplayEffectSpec& CostSpec) const;
 
+    /** Zero-cost abilities should not depend on a Cost GameplayEffect asset. */
+    bool HasMeaningfulCost() const;
+
     //=========================================
     // 辅助方法和任务回调
     //=========================================
@@ -221,6 +224,13 @@ protected:
     /** 服务端校验使用的最大容忍距离（超出此距离的目标视为非法）。0 表示不做距离限制。 */
     UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ability|Validation")
     float ServerMaxTargetDistance = 0.f;
+
+    /**
+     * 调试用：对 LocalPredicted 技能强制制造一次“客户端先播，本地预测成功，服务端随后拒绝”的场景。
+     * 适合练习预测失败时的日志、表现收口和状态回退。
+     */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ability|Validation|Debug")
+    bool bForcePredictionFailureForTests = false;
 
     // 播放技能动画
     virtual void PlayAbilityMontage(

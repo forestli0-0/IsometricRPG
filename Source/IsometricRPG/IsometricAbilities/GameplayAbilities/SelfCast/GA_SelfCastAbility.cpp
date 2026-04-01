@@ -11,6 +11,12 @@ UGA_SelfCastAbility::UGA_SelfCastAbility()
 {
     // 设置技能类型为自我施放
     AbilityType = EHeroAbilityType::SelfCast;
+
+    // 自我施放默认在按下时直接提交，并允许短窗口预输入。
+    InputPolicy.InputMode = EAbilityInputMode::Instant;
+    InputPolicy.bUpdateTargetWhileHeld = false;
+    InputPolicy.bAllowInputBuffer = true;
+    InputPolicy.MaxBufferWindow = 0.25f;
     
     // 自我施放技能默认不进入交互式选目标流程
     SetUsesInteractiveTargeting(false);

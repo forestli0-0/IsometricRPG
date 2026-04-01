@@ -552,6 +552,11 @@ bool UGA_HeroBaseAbility::CheckCost(
     const FGameplayAbilityActorInfo* ActorInfo,
     OUT FGameplayTagContainer* OptionalRelevantTags) const
 {
+    if (!HasMeaningfulCost())
+    {
+        return true;
+    }
+
     UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
     if (!ASC && ActorInfo)
     {
@@ -609,6 +614,11 @@ void UGA_HeroBaseAbility::ApplyCost(
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo ActivationInfo) const
 {
+    if (!HasMeaningfulCost())
+    {
+        return;
+    }
+
     UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
     if (!ASC && ActorInfo)
     {
@@ -1020,6 +1030,11 @@ FGameplayEffectSpecHandle UGA_HeroBaseAbility::MakeCostGameplayEffectSpecHandle(
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo ActivationInfo) const
 {
+    if (!HasMeaningfulCost())
+    {
+        return FGameplayEffectSpecHandle();
+    }
+
     if (!CostGameplayEffectClass)
     {
         return FGameplayEffectSpecHandle();
@@ -1072,6 +1087,11 @@ float UGA_HeroBaseAbility::ResolveManaCostFromSpec(const FGameplayEffectSpec& Co
     }
 
     return ResolvedManaCost;
+}
+
+bool UGA_HeroBaseAbility::HasMeaningfulCost() const
+{
+    return !FMath::IsNearlyZero(CostMagnitude);
 }
 
 void UGA_HeroBaseAbility::LogCommitFailureDiagnostics(
@@ -1169,6 +1189,13 @@ bool UGA_HeroBaseAbility::ServerValidateTargetData(
     if (!ExpectsPreparedTargetData())
     {
         return true;
+    }
+
+    if (bForcePredictionFailureForTests
+        && NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::LocalPredicted)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s: ServerValidate forced a prediction failure for testing."), *GetName());
+        return false;
     }
 
     const AActor* AvatarActor = ActorInfo->AvatarActor.Get();

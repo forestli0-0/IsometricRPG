@@ -16,6 +16,11 @@ UGA_ProjectileAbility::UGA_ProjectileAbility()
 {
     // 设置技能类型为投射物
     AbilityType = EHeroAbilityType::SkillShot;
+
+    InputPolicy.InputMode = EAbilityInputMode::Instant;
+    InputPolicy.bUpdateTargetWhileHeld = false;
+    InputPolicy.bAllowInputBuffer = true;
+    InputPolicy.MaxBufferWindow = 0.25f;
     
     // 默认直接消费已准备好的瞄准信息，不进入交互式选目标流程
     SetUsesInteractiveTargeting(false);
