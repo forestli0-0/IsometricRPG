@@ -10,13 +10,10 @@
 #include "GameFramework/Character.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h" 
 #include "Character/IsometricRPGAttributeSetBase.h"
-// Targeting helpers
 #include "IsometricAbilities/TargetTrace/GATA_CursorTrace.h"
 #include "FX/NA_NiagaraActorBase.h"
-#include "Abilities/GameplayAbilityTargetTypes.h"
-#include "IsometricAbilities/AbilityTasks/AbilityTask_WaitMoveToLocation.h"
-#include "Components/CapsuleComponent.h"
-#include "IsometricAbilities/GameplayAbilities/HeroAbilityTargetDataHelper.h"
+#include "IsometricAbilities/GameplayAbilities/HeroAbilityCommitHelper.h"
+#include "IsometricAbilities/GameplayAbilities/Targeted/HeroTargetedAbilityExecutionHelper.h"
 UGA_HeroMeleeAttackAbility::UGA_HeroMeleeAttackAbility()
 {
     NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
@@ -111,84 +108,21 @@ bool UGA_HeroMeleeAttackAbility::CheckCost(const FGameplayAbilitySpecHandle Hand
 
 void UGA_HeroMeleeAttackAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data)
 {
-    // 缓存一次目标数据（Actor 或 位置）
-    CachedTargetActor = nullptr;
-    CachedTargetLocation = FVector::ZeroVector;
-
-    if (const FGameplayAbilityTargetData* TargetData = FHeroAbilityTargetDataHelper::GetPrimaryTargetData(Data))
-    {
-        if (!FHeroAbilityTargetDataHelper::TryGetTargetLocation(*TargetData, CachedTargetLocation))
-        {
-            CachedTargetLocation = FVector::ZeroVector;
-        }
-
-        CachedTargetActor = FHeroAbilityTargetDataHelper::GetPrimaryActor(*TargetData);
-    }
+    FHeroTargetedAbilityExecutionHelper::CachePrimaryTargetData(Data, CachedTargetActor, CachedTargetLocation);
 
     Super::OnTargetDataReady(Data);
 }
 
-static float CalcEffectiveAcceptanceRadius_Melee(ACharacter* SelfChar, AActor* TargetActor, float SkillRange)
-{
-    float SelfCapsuleR = 0.f;
-    if (SelfChar && SelfChar->GetCapsuleComponent())
-    {
-        SelfCapsuleR = SelfChar->GetCapsuleComponent()->GetScaledCapsuleRadius();
-    }
-    float TargetCapsuleR = 0.f;
-    if (ACharacter* TargetChar = Cast<ACharacter>(TargetActor))
-    {
-        if (TargetChar->GetCapsuleComponent())
-        {
-            TargetCapsuleR = TargetChar->GetCapsuleComponent()->GetScaledCapsuleRadius();
-        }
-    }
-    const float Buffer = 10.f;
-    return SkillRange + SelfCapsuleR + TargetCapsuleR + Buffer;
-}
-
 bool UGA_HeroMeleeAttackAbility::OtherCheckBeforeCommit()
 {
-    // 解析当前数据（若缺失则尝试用缓存推断）
     AActor* TargetActor = nullptr;
     FVector TargetLocation = FVector::ZeroVector;
-
-    const FGameplayAbilityTargetData* Data = CurrentTargetDataHandle.Get(0);
-    if (Data)
-    {
-        if (const FGameplayAbilityTargetData_SingleTargetHit* HR = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(
-                Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()) ? Data : nullptr))
-        {
-            if (HR->GetHitResult())
-            {
-                TargetLocation = HR->GetHitResult()->Location;
-                TargetActor = HR->GetHitResult()->GetActor();
-            }
-        }
-        else if (const FGameplayAbilityTargetData_ActorArray* AA = static_cast<const FGameplayAbilityTargetData_ActorArray*>(
-                     Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_ActorArray::StaticStruct()) ? Data : nullptr))
-        {
-            if (AA->TargetActorArray.Num() > 0)
-            {
-                TargetActor = AA->TargetActorArray[0].Get();
-                if (TargetActor)
-                {
-                    TargetLocation = TargetActor->GetActorLocation();
-                }
-            }
-        }
-    }
-
-    if (!TargetActor && CachedTargetActor.IsValid())
-    {
-        TargetActor = CachedTargetActor.Get();
-    }
-    if (TargetLocation.IsNearlyZero() && !CachedTargetLocation.IsNearlyZero())
-    {
-        TargetLocation = CachedTargetLocation;
-    }
-
-    if (!TargetActor && TargetLocation.IsNearlyZero())
+    if (!FHeroTargetedAbilityExecutionHelper::TryResolveTargetOrCached(
+        CurrentTargetDataHandle,
+        CachedTargetActor,
+        CachedTargetLocation,
+        TargetActor,
+        TargetLocation))
     {
         UE_LOG(LogTemp, Warning, TEXT("%s: 没有有效目标可用于检查。"), *GetName());
         return false;
@@ -201,56 +135,10 @@ bool UGA_HeroMeleeAttackAbility::OtherCheckBeforeCommit()
     }
 
     const float Distance = FVector::Distance(SelfChar->GetActorLocation(), TargetLocation);
-    const float EffectiveAcceptance = CalcEffectiveAcceptanceRadius_Melee(SelfChar, TargetActor, RangeToApply);
+    const float EffectiveAcceptance = FHeroTargetedAbilityExecutionHelper::CalculateEffectiveAcceptanceRadius(SelfChar, TargetActor, RangeToApply);
     if (Distance > EffectiveAcceptance)
     {
-        const bool bIsServer = SelfChar->HasAuthority();
-        const bool bIsLocallyControlled = GetCurrentActorInfo() && GetCurrentActorInfo()->IsLocallyControlled();
-
-        auto ThisAbility = const_cast<UGameplayAbility*>(static_cast<const UGameplayAbility*>(this));
-        if (TargetActor)
-        {
-            if (bIsServer)
-            {
-                if (auto* MoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToActor(ThisAbility, TargetActor, EffectiveAcceptance))
-                {
-                    MoveTask->OnMoveFinished.AddDynamic(this, &UGA_HeroMeleeAttackAbility::OnReachedTarget);
-                    MoveTask->OnMoveFailed.AddDynamic(this, &UGA_HeroMeleeAttackAbility::OnFailedToTarget);
-                    MoveTask->ReadyForActivation();
-                }
-            }
-            if (!bIsServer && bIsLocallyControlled)
-            {
-                if (auto* ClientMoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToActor(ThisAbility, TargetActor, EffectiveAcceptance))
-                {
-                    ClientMoveTask->OnMoveFinished.AddDynamic(this, &UGA_HeroMeleeAttackAbility::OnReachedTarget);
-                    ClientMoveTask->OnMoveFailed.AddDynamic(this, &UGA_HeroMeleeAttackAbility::OnFailedToTarget);
-                    ClientMoveTask->ReadyForActivation();
-                }
-            }
-        }
-        else
-        {
-            if (bIsServer)
-            {
-                if (auto* MoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToLocation(ThisAbility, TargetLocation, EffectiveAcceptance))
-                {
-                    MoveTask->OnMoveFinished.AddDynamic(this, &UGA_HeroMeleeAttackAbility::OnReachedTarget);
-                    MoveTask->OnMoveFailed.AddDynamic(this, &UGA_HeroMeleeAttackAbility::OnFailedToTarget);
-                    MoveTask->ReadyForActivation();
-                }
-            }
-            if (!bIsServer && bIsLocallyControlled)
-            {
-                if (auto* ClientMoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToLocation(ThisAbility, TargetLocation, EffectiveAcceptance))
-                {
-                    ClientMoveTask->OnMoveFinished.AddDynamic(this, &UGA_HeroMeleeAttackAbility::OnReachedTarget);
-                    ClientMoveTask->OnMoveFailed.AddDynamic(this, &UGA_HeroMeleeAttackAbility::OnFailedToTarget);
-                    ClientMoveTask->ReadyForActivation();
-                }
-            }
-        }
-
+        FHeroTargetedAbilityExecutionHelper::StartMoveToActorOrLocation(*this, TargetActor, TargetLocation, EffectiveAcceptance);
         return false;
     }
 
@@ -259,35 +147,16 @@ bool UGA_HeroMeleeAttackAbility::OtherCheckBeforeCommit()
 
 void UGA_HeroMeleeAttackAbility::OnReachedTarget()
 {
-    if (!GetAvatarActorFromActorInfo() || !GetAvatarActorFromActorInfo()->HasAuthority()) return;
-    // 如果当前 TargetData 在移动过程中丢失，这里用缓存重建
-    if (!CurrentTargetDataHandle.IsValid(0))
+    if (!GetAvatarActorFromActorInfo() || !GetAvatarActorFromActorInfo()->HasAuthority())
     {
-        FGameplayAbilityTargetDataHandle Rebuilt;
-        if (CachedTargetActor.IsValid())
-        {
-            FGameplayAbilityTargetData_ActorArray* Arr = new FGameplayAbilityTargetData_ActorArray();
-            Arr->TargetActorArray.Add(CachedTargetActor);
-            Rebuilt.Add(Arr);
-        }
-        else if (!CachedTargetLocation.IsNearlyZero())
-        {
-            FHitResult HR;
-            HR.Location = CachedTargetLocation;
-            FGameplayAbilityTargetData_SingleTargetHit* HitData = new FGameplayAbilityTargetData_SingleTargetHit(HR);
-            Rebuilt.Add(HitData);
-        }
-        if (Rebuilt.Num() > 0)
-        {
-            CurrentTargetDataHandle = Rebuilt;
-        }
-    }
-
-    if (!CurrentTargetDataHandle.IsValid(0))
-    {
-        UGA_TargetedAbility::OnFailedToTarget();
         return;
     }
+
+    if (!EnsureCurrentTargetDataAvailable(CachedTargetActor, CachedTargetLocation))
+    {
+        return;
+    }
+
     Super::OnReachedTarget();
 }
 
@@ -301,27 +170,12 @@ void UGA_HeroMeleeAttackAbility::ApplyCooldown(
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo ActivationInfo) const
 {
-    // 应用冷却效果
-    if (CooldownGameplayEffectClass)
-    {
-        FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CooldownGameplayEffectClass, GetAbilityLevel());
-        if (SpecHandle.Data.IsValid())
-        {
-            FGameplayEffectSpec& GESpec = *SpecHandle.Data.Get();
-
-            // 获取你在 GE 中配置的 Data Tag
-            FGameplayTag CooldownDurationTag = FGameplayTag::RequestGameplayTag(TEXT("Data.Cooldown.Duration")); // !!! 确保这里的 Tag 字符串与 GE 中配置的一致 !!!
-            auto AttackSpeed = AttributeSet->GetAttackSpeed();
-            if (AttackSpeed <= 0.0f)
-            {
-                AttackSpeed = 1.0f; // 防止除以零
-            }
-            float ThisCooldownDuration = 1.0 / AttackSpeed; // 使用局部变量代替类成员变量
-            // 设置 Set by Caller 的值
-            GESpec.SetSetByCallerMagnitude(CooldownDurationTag, ThisCooldownDuration);
-
-            UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
-            ASC->ApplyGameplayEffectSpecToSelf(GESpec);
-        }
-    }
+    float AppliedCooldownDuration = 0.0f;
+    FHeroAbilityCommitHelper::ApplyAttackSpeedCooldown(
+        *this,
+        ActorInfo,
+        CooldownGameplayEffectClass,
+        AttributeSet,
+        GetAbilityLevel(Handle, ActorInfo),
+        AppliedCooldownDuration);
 }

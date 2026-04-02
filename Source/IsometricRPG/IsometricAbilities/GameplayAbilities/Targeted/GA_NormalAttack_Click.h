@@ -15,6 +15,8 @@ class ISOMETRICRPG_API UGA_NormalAttack_Click : public UGA_TargetedAbility
 	GENERATED_BODY()
 public:
 	UGA_NormalAttack_Click();
+	void OnReachedTarget();
+	void OnFailedToTarget();
 protected:
 	// 仅该技能内使用的缓存：跨越移动阶段后重建目标数据
 	UPROPERTY()
@@ -28,13 +30,6 @@ protected:
 
 	// 使用“扩展到达半径”与移动任务；不调用父类该检查
 	virtual bool OtherCheckBeforeCommit() override;
-
-	// 到达后若发现当前 TargetData 失效则用缓存重建，再交给父类提交/执行
-
-	void OnReachedTarget();
-
-
-	void OnFailedToTarget();
 
 	virtual void ApplyCooldown(
 		const FGameplayAbilitySpecHandle Handle,

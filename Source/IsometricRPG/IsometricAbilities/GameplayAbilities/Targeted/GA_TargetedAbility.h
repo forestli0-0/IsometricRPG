@@ -31,6 +31,9 @@ public:
 	void OnFailedToTarget();
 protected:
 	virtual bool OtherCheckBeforeCommit() override;
+	bool EnsureCurrentTargetDataAvailable(
+		const TWeakObjectPtr<AActor>& CachedTargetActor,
+		const FVector& CachedTargetLocation);
 
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,

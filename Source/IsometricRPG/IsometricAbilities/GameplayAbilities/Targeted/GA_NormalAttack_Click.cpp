@@ -4,12 +4,10 @@
 //#include "IsometricAbilities/GameplayAbilities/Targeted/GA_NormalAttack_Click.h"
 #include "GA_NormalAttack_Click.h"
 #include "IsometricAbilities/TargetTrace/GATA_CursorTrace.h"
-#include "Abilities/GameplayAbilityTargetTypes.h"
-#include "IsometricAbilities/AbilityTasks/AbilityTask_WaitMoveToLocation.h"
 #include "Character/IsometricRPGCharacter.h"
 #include "GameFramework/Character.h"
-#include "Components/CapsuleComponent.h"
-#include "IsometricAbilities/GameplayAbilities/HeroAbilityTargetDataHelper.h"
+#include "IsometricAbilities/GameplayAbilities/HeroAbilityCommitHelper.h"
+#include "IsometricAbilities/GameplayAbilities/Targeted/HeroTargetedAbilityExecutionHelper.h"
 
 UGA_NormalAttack_Click::UGA_NormalAttack_Click()
 {
@@ -80,48 +78,22 @@ void UGA_NormalAttack_Click::ApplyCooldown(
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo ActivationInfo) const
 {
-    // 应用冷却效果
-    if (CooldownGameplayEffectClass)
+    float AppliedCooldownDuration = 0.0f;
+    if (FHeroAbilityCommitHelper::ApplyAttackSpeedCooldown(
+        *this,
+        ActorInfo,
+        CooldownGameplayEffectClass,
+        AttributeSet,
+        GetAbilityLevel(Handle, ActorInfo),
+        AppliedCooldownDuration))
     {
-        FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CooldownGameplayEffectClass, GetAbilityLevel());
-        if (SpecHandle.Data.IsValid())
-        {
-            FGameplayEffectSpec& GESpec = *SpecHandle.Data.Get();
-
-            // 获取你在 GE 中配置的 Data Tag
-            FGameplayTag CooldownDurationTag = FGameplayTag::RequestGameplayTag(TEXT("Data.Cooldown.Duration")); // !!! 确保这里的 Tag 字符串与 GE 中配置的一致 !!!
-            auto AttackSpeed = AttributeSet->GetAttackSpeed();
-            if (AttackSpeed <= 0.0f)
-            {
-                AttackSpeed = 1.0f; // 防止除以零
-            }
-            float ThisCooldownDuration = 1.0 / AttackSpeed; // 使用局部变量代替类成员变量
-            // 设置 Set by Caller 的值
-            GESpec.SetSetByCallerMagnitude(CooldownDurationTag, ThisCooldownDuration);
-
-            UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
-            ASC->ApplyGameplayEffectSpecToSelf(GESpec);
-        }
+        FHeroAbilityCommitHelper::NotifyCooldownTriggered(Handle, ActorInfo, AppliedCooldownDuration);
     }
-    // 确保通知系统冷却已触发（UI刷新等依赖此通知）
-    NotifyCooldownTriggered(Handle, ActorInfo);
 }
 
 void UGA_NormalAttack_Click::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data)
 {
-    // 缓存一次目标数据（Actor 或 位置）
-    CachedTargetActor = nullptr;
-    CachedTargetLocation = FVector::ZeroVector;
-
-    if (const FGameplayAbilityTargetData* TargetData = FHeroAbilityTargetDataHelper::GetPrimaryTargetData(Data))
-    {
-        if (!FHeroAbilityTargetDataHelper::TryGetTargetLocation(*TargetData, CachedTargetLocation))
-        {
-            CachedTargetLocation = FVector::ZeroVector;
-        }
-
-        CachedTargetActor = FHeroAbilityTargetDataHelper::GetPrimaryActor(*TargetData);
-    }
+    FHeroTargetedAbilityExecutionHelper::CachePrimaryTargetData(Data, CachedTargetActor, CachedTargetLocation);
 
     if (AIsometricRPGCharacter* SourceCharacter = Cast<AIsometricRPGCharacter>(GetAvatarActorFromActorInfo()))
     {
@@ -132,28 +104,8 @@ void UGA_NormalAttack_Click::OnTargetDataReady(const FGameplayAbilityTargetDataH
     Super::OnTargetDataReady(Data);
 }
 
-static float CalcEffectiveAcceptanceRadius(ACharacter* SelfChar, AActor* TargetActor, float SkillRange)
-{
-    float SelfCapsuleR = 0.f;
-    if (SelfChar && SelfChar->GetCapsuleComponent())
-    {
-        SelfCapsuleR = SelfChar->GetCapsuleComponent()->GetScaledCapsuleRadius();
-    }
-    float TargetCapsuleR = 0.f;
-    if (ACharacter* TargetChar = Cast<ACharacter>(TargetActor))
-    {
-        if (TargetChar->GetCapsuleComponent())
-        {
-            TargetCapsuleR = TargetChar->GetCapsuleComponent()->GetScaledCapsuleRadius();
-        }
-    }
-    const float Buffer = 10.f;
-    return SkillRange + SelfCapsuleR + TargetCapsuleR + Buffer;
-}
-
 bool UGA_NormalAttack_Click::OtherCheckBeforeCommit()
 {
-    // 直接使用 OnTargetDataReady 中解析并缓存的数据，避免重复解析 CurrentTargetDataHandle
     AActor* TargetActor = CachedTargetActor.Get();
     FVector TargetLocation = CachedTargetLocation;
 
@@ -170,56 +122,10 @@ bool UGA_NormalAttack_Click::OtherCheckBeforeCommit()
     }
 
     const float Distance = FVector::Distance(SelfChar->GetActorLocation(), TargetLocation);
-    const float EffectiveAcceptance = CalcEffectiveAcceptanceRadius(SelfChar, TargetActor, RangeToApply);
+    const float EffectiveAcceptance = FHeroTargetedAbilityExecutionHelper::CalculateEffectiveAcceptanceRadius(SelfChar, TargetActor, RangeToApply);
     if (Distance > EffectiveAcceptance)
     {
-        const bool bIsServer = SelfChar->HasAuthority();
-        const bool bIsLocallyControlled = GetCurrentActorInfo() && GetCurrentActorInfo()->IsLocallyControlled();
-
-        auto ThisAbility = const_cast<UGameplayAbility*>(static_cast<const UGameplayAbility*>(this));
-        if (TargetActor)
-        {
-            if (bIsServer)
-            {
-                if (auto* MoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToActor(ThisAbility, TargetActor, EffectiveAcceptance))
-                {
-                    MoveTask->OnMoveFinished.AddDynamic(this, &UGA_NormalAttack_Click::OnReachedTarget);
-                    MoveTask->OnMoveFailed.AddDynamic(this, &UGA_NormalAttack_Click::OnFailedToTarget);
-                    MoveTask->ReadyForActivation();
-                }
-            }
-            if (!bIsServer && bIsLocallyControlled)
-            {
-                if (auto* ClientMoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToActor(ThisAbility, TargetActor, EffectiveAcceptance))
-                {
-                    ClientMoveTask->OnMoveFinished.AddDynamic(this, &UGA_NormalAttack_Click::OnReachedTarget);
-                    ClientMoveTask->OnMoveFailed.AddDynamic(this, &UGA_NormalAttack_Click::OnFailedToTarget);
-                    ClientMoveTask->ReadyForActivation();
-                }
-            }
-        }
-        else
-        {
-            if (bIsServer)
-            {
-                if (auto* MoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToLocation(ThisAbility, TargetLocation, EffectiveAcceptance))
-                {
-                    MoveTask->OnMoveFinished.AddDynamic(this, &UGA_NormalAttack_Click::OnReachedTarget);
-                    MoveTask->OnMoveFailed.AddDynamic(this, &UGA_NormalAttack_Click::OnFailedToTarget);
-                    MoveTask->ReadyForActivation();
-                }
-            }
-            if (!bIsServer && bIsLocallyControlled)
-            {
-                if (auto* ClientMoveTask = UAbilityTask_WaitMoveToLocation::WaitMoveToLocation(ThisAbility, TargetLocation, EffectiveAcceptance))
-                {
-                    ClientMoveTask->OnMoveFinished.AddDynamic(this, &UGA_NormalAttack_Click::OnReachedTarget);
-                    ClientMoveTask->OnMoveFailed.AddDynamic(this, &UGA_NormalAttack_Click::OnFailedToTarget);
-                    ClientMoveTask->ReadyForActivation();
-                }
-            }
-        }
-
+        FHeroTargetedAbilityExecutionHelper::StartMoveToActorOrLocation(*this, TargetActor, TargetLocation, EffectiveAcceptance);
         return false;
     }
 
@@ -228,37 +134,16 @@ bool UGA_NormalAttack_Click::OtherCheckBeforeCommit()
 
 void UGA_NormalAttack_Click::OnReachedTarget()
 {
-    if (!GetAvatarActorFromActorInfo() || !GetAvatarActorFromActorInfo()->HasAuthority()) return;
-    // 如果当前 TargetData 在移动过程中丢失，这里用缓存重建
-    if (!CurrentTargetDataHandle.IsValid(0))
+    if (!GetAvatarActorFromActorInfo() || !GetAvatarActorFromActorInfo()->HasAuthority())
     {
-        FGameplayAbilityTargetDataHandle Rebuilt;
-        if (CachedTargetActor.IsValid())
-        {
-            FGameplayAbilityTargetData_ActorArray* Arr = new FGameplayAbilityTargetData_ActorArray();
-            Arr->TargetActorArray.Add(CachedTargetActor);
-            Rebuilt.Add(Arr);
-        }
-        else if (!CachedTargetLocation.IsNearlyZero())
-        {
-            FHitResult HR;
-            HR.Location = CachedTargetLocation;
-            FGameplayAbilityTargetData_SingleTargetHit* HitData = new FGameplayAbilityTargetData_SingleTargetHit(HR);
-            Rebuilt.Add(HitData);
-        }
-        if (Rebuilt.Num() > 0)
-        {
-            CurrentTargetDataHandle = Rebuilt;
-        }
-    }
-
-    // 若仍无有效目标数据，则按失败处理
-    if (!CurrentTargetDataHandle.IsValid(0))
-    {
-        UGA_TargetedAbility::OnFailedToTarget();
         return;
     }
-    // 继续基类：提交与执行
+
+    if (!EnsureCurrentTargetDataAvailable(CachedTargetActor, CachedTargetLocation))
+    {
+        return;
+    }
+
     Super::OnReachedTarget();
 }
 
