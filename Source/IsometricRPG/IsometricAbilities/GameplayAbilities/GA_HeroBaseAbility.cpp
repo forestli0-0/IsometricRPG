@@ -12,6 +12,7 @@
 #include "AbilitySystemGlobals.h" 
 #include <Character/IsometricRPGCharacter.h>
 #include "Character/IsoPlayerState.h"
+#include "IsometricAbilities/GameplayAbilities/HeroAbilityTargetingHelper.h"
 
 namespace
 {
@@ -41,102 +42,6 @@ const FGameplayTag& GetCostMagnitudeTag()
     return CostMagnitudeTag;
 }
 
-bool HasActorTargetData(const FGameplayAbilityTargetData* Data)
-{
-    if (!Data)
-    {
-        return false;
-    }
-
-    if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_ActorArray::StaticStruct()))
-    {
-        const auto* ActorArrayData = static_cast<const FGameplayAbilityTargetData_ActorArray*>(Data);
-        return ActorArrayData && ActorArrayData->TargetActorArray.Num() > 0 && ActorArrayData->TargetActorArray[0].IsValid();
-    }
-
-    return false;
-}
-
-bool HasPawnHitTargetData(const FGameplayAbilityTargetData* Data)
-{
-    if (!Data || !Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
-    {
-        return false;
-    }
-
-    const auto* HitResultData = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(Data);
-    return HitResultData && HitResultData->GetHitResult() && Cast<APawn>(HitResultData->GetHitResult()->GetActor()) != nullptr;
-}
-
-bool HasLocationTargetData(const FGameplayAbilityTargetData* Data)
-{
-    if (!Data)
-    {
-        return false;
-    }
-
-    if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
-    {
-        const auto* HitResultData = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(Data);
-        return HitResultData && HitResultData->GetHitResult() != nullptr;
-    }
-
-    return HasActorTargetData(Data);
-}
-
-const TCHAR* DescribeAbilityType(const EHeroAbilityType AbilityType)
-{
-    switch (AbilityType)
-    {
-    case EHeroAbilityType::SelfCast:
-        return TEXT("SelfCast");
-    case EHeroAbilityType::Targeted:
-        return TEXT("Targeted");
-    case EHeroAbilityType::SkillShot:
-        return TEXT("SkillShot");
-    case EHeroAbilityType::AreaEffect:
-        return TEXT("AreaEffect");
-    case EHeroAbilityType::Passive:
-        return TEXT("Passive");
-    default:
-        return TEXT("Unknown");
-    }
-}
-
-FString DescribeTargetDataShape(const FGameplayAbilityTargetDataHandle& TargetDataHandle)
-{
-    if (!TargetDataHandle.IsValid(0))
-    {
-        return TEXT("None");
-    }
-
-    const FGameplayAbilityTargetData* Data = TargetDataHandle.Get(0);
-    if (!Data)
-    {
-        return TEXT("NullPayload");
-    }
-
-    if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_ActorArray::StaticStruct()))
-    {
-        const auto* ActorArrayData = static_cast<const FGameplayAbilityTargetData_ActorArray*>(Data);
-        const int32 NumActors = ActorArrayData ? ActorArrayData->TargetActorArray.Num() : 0;
-        const AActor* FirstActor = (ActorArrayData && NumActors > 0) ? ActorArrayData->TargetActorArray[0].Get() : nullptr;
-        return FString::Printf(TEXT("ActorArray(Num=%d First=%s)"), NumActors, *GetNameSafe(FirstActor));
-    }
-
-    if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
-    {
-        const auto* HitResultData = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(Data);
-        const FHitResult* HitResult = HitResultData ? HitResultData->GetHitResult() : nullptr;
-        return FString::Printf(
-            TEXT("SingleHit(Actor=%s Blocking=%s Location=%s)"),
-            *GetNameSafe(HitResult ? HitResult->GetActor() : nullptr),
-            (HitResult && HitResult->bBlockingHit) ? TEXT("true") : TEXT("false"),
-            HitResult ? *HitResult->Location.ToCompactString() : TEXT("None"));
-    }
-
-    return Data->GetScriptStruct() ? Data->GetScriptStruct()->GetName() : TEXT("UnknownStruct");
-}
 }
 
 UGA_HeroBaseAbility::UGA_HeroBaseAbility()
@@ -316,27 +221,15 @@ bool UGA_HeroBaseAbility::ShouldWaitForReplicatedTargetData(
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo& ActivationInfo) const
 {
-    if (!ExpectsPreparedTargetData() || !ActorInfo)
-    {
-        return false;
-    }
-
-    if (!ActorInfo->IsNetAuthority() || ActorInfo->IsLocallyControlled())
-    {
-        return false;
-    }
-
-    if (ExpectsLocationTargetData() && !GetCurrentAimDirection().IsNearlyZero())
-    {
-        return false;
-    }
-
-    if (NetExecutionPolicy != EGameplayAbilityNetExecutionPolicy::LocalPredicted)
-    {
-        return false;
-    }
-
-    return ActivationInfo.GetActivationPredictionKey().IsValidKey();
+    const FHeroAbilityTargetingPolicy Policy{
+        AbilityType,
+        ExpectsPreparedTargetData(),
+        ExpectsLocationTargetData(),
+        ExpectsActorTargetData(),
+        GetCurrentAimDirection(),
+        NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::LocalPredicted
+    };
+    return FHeroAbilityTargetingHelper::ShouldWaitForReplicatedTargetData(Policy, ActorInfo, ActivationInfo);
 }
 
 void UGA_HeroBaseAbility::SendInitialTargetDataToServer(
@@ -344,34 +237,15 @@ void UGA_HeroBaseAbility::SendInitialTargetDataToServer(
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo& ActivationInfo)
 {
-    if (!ExpectsPreparedTargetData() || !ActorInfo || ActorInfo->IsNetAuthority() || !ActorInfo->IsLocallyControlled())
-    {
-        return;
-    }
-
-    if (!Handle.IsValid() || !CurrentTargetDataHandle.IsValid(0))
-    {
-        return;
-    }
-
-    UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
-    if (!ASC)
-    {
-        return;
-    }
-
-    const FPredictionKey ActivationPredictionKey = ActivationInfo.GetActivationPredictionKey();
-    if (!ActivationPredictionKey.IsValidKey())
-    {
-        return;
-    }
-
-    ASC->CallServerSetReplicatedTargetData(
-        Handle,
-        ActivationPredictionKey,
-        CurrentTargetDataHandle,
-        FGameplayTag(),
-        ASC->ScopedPredictionKey);
+    const FHeroAbilityTargetingPolicy Policy{
+        AbilityType,
+        ExpectsPreparedTargetData(),
+        ExpectsLocationTargetData(),
+        ExpectsActorTargetData(),
+        GetCurrentAimDirection(),
+        NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::LocalPredicted
+    };
+    FHeroAbilityTargetingHelper::SendInitialTargetDataToServer(Policy, Handle, ActorInfo, ActivationInfo, CurrentTargetDataHandle);
 }
 
 void UGA_HeroBaseAbility::WaitForReplicatedTargetData(
@@ -402,22 +276,13 @@ void UGA_HeroBaseAbility::WaitForReplicatedTargetData(
 
 void UGA_HeroBaseAbility::CleanupReplicatedTargetDataDelegates()
 {
-    UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
-    if (ASC && CurrentSpecHandle.IsValid())
-    {
-        const FPredictionKey ActivationPredictionKey = CurrentActivationInfo.GetActivationPredictionKey();
-        if (ReplicatedTargetDataDelegateHandle.IsValid())
-        {
-            ASC->AbilityTargetDataSetDelegate(CurrentSpecHandle, ActivationPredictionKey).Remove(ReplicatedTargetDataDelegateHandle);
-        }
-        if (ReplicatedTargetDataCancelledDelegateHandle.IsValid())
-        {
-            ASC->AbilityTargetDataCancelledDelegate(CurrentSpecHandle, ActivationPredictionKey).Remove(ReplicatedTargetDataCancelledDelegateHandle);
-        }
-    }
-
-    ReplicatedTargetDataDelegateHandle.Reset();
-    ReplicatedTargetDataCancelledDelegateHandle.Reset();
+    UAbilitySystemComponent* AbilitySystemComponent = GetAbilitySystemComponentFromActorInfo();
+    FHeroAbilityTargetingHelper::CleanupReplicatedTargetDataDelegates(
+        AbilitySystemComponent,
+        CurrentSpecHandle,
+        CurrentActivationInfo,
+        ReplicatedTargetDataDelegateHandle,
+        ReplicatedTargetDataCancelledDelegateHandle);
 }
 
 void UGA_HeroBaseAbility::HandleReplicatedTargetDataReceived(const FGameplayAbilityTargetDataHandle& Data, FGameplayTag ActivationTag)
@@ -465,28 +330,15 @@ void UGA_HeroBaseAbility::HandleReplicatedTargetDataCancelled()
 
 bool UGA_HeroBaseAbility::HasRequiredExecutionTargetData(const FGameplayAbilityTargetDataHandle& TargetData) const
 {
-    if (!ExpectsPreparedTargetData())
-    {
-        return true;
-    }
-
-    const FGameplayAbilityTargetData* Data = TargetData.Get(0);
-    if (!Data)
-    {
-        return false;
-    }
-
-    if (ExpectsLocationTargetData())
-    {
-        return HasLocationTargetData(Data) || !GetCurrentAimDirection().IsNearlyZero();
-    }
-
-    if (ExpectsActorTargetData())
-    {
-        return HasActorTargetData(Data) || HasPawnHitTargetData(Data);
-    }
-
-    return true;
+    const FHeroAbilityTargetingPolicy Policy{
+        AbilityType,
+        ExpectsPreparedTargetData(),
+        ExpectsLocationTargetData(),
+        ExpectsActorTargetData(),
+        GetCurrentAimDirection(),
+        NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::LocalPredicted
+    };
+    return FHeroAbilityTargetingHelper::HasRequiredExecutionTargetData(Policy, TargetData);
 }
 
 bool UGA_HeroBaseAbility::ValidateAbilityConfiguration() const
@@ -516,7 +368,7 @@ bool UGA_HeroBaseAbility::ValidateAbilityConfiguration() const
             !bInteractiveTargetingEnabled,
             TEXT("%s: %s abilities must keep interactive targeting disabled."),
             *GetName(),
-            DescribeAbilityType(AbilityType));
+            FHeroAbilityTargetingHelper::DescribeAbilityType(AbilityType));
 
     default:
         return true;
@@ -525,26 +377,15 @@ bool UGA_HeroBaseAbility::ValidateAbilityConfiguration() const
 
 bool UGA_HeroBaseAbility::ValidateExecutionTargetData(const FGameplayAbilityTargetDataHandle& TargetData, const TCHAR* Phase) const
 {
-    if (!ExpectsPreparedTargetData())
-    {
-        return true;
-    }
-
-    if (HasRequiredExecutionTargetData(TargetData))
-    {
-        return true;
-    }
-
-    const TCHAR* ExpectedTargetShape = ExpectsLocationTargetData() ? TEXT("AimDirection-or-hit-result") : TEXT("actor-or-pawn-hit");
-    ensureAlwaysMsgf(
-        false,
-        TEXT("%s: %s attempted to execute a %s ability without the required %s target data. Received=%s"),
-        *GetName(),
-        Phase,
-        DescribeAbilityType(AbilityType),
-        ExpectedTargetShape,
-        *DescribeTargetDataShape(TargetData));
-    return false;
+    const FHeroAbilityTargetingPolicy Policy{
+        AbilityType,
+        ExpectsPreparedTargetData(),
+        ExpectsLocationTargetData(),
+        ExpectsActorTargetData(),
+        GetCurrentAimDirection(),
+        NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::LocalPredicted
+    };
+    return FHeroAbilityTargetingHelper::ValidateExecutionTargetData(*this, Policy, TargetData, Phase);
 }
 
 bool UGA_HeroBaseAbility::CheckCost(
@@ -762,26 +603,12 @@ void UGA_HeroBaseAbility::DirectExecuteAbility(
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo ActivationInfo)
 {
-    if (!OtherCheckBeforeCommit())
-    {
-        UE_LOG(LogTemp, Warning, TEXT("%s: 提交前的检查失败，与消耗和冷却无关。"), *GetName());
-        constexpr bool bReplicateEndAbility = true;
-        return;
-    }
-    if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
-    {
-        LogCommitFailureDiagnostics(Handle, ActorInfo, ActivationInfo, TEXT("DirectExecute"));
-        UE_LOG(LogTemp, Warning, TEXT("%s: 技能提交失败，可能是由于消耗或冷却问题。"), *GetName());
-        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
-        return;
-    }
-    UE_LOG(LogTemp, Verbose, TEXT("%s: CommitAbility OK (DirectExecute). Montage=%s"), *GetName(), MontageToPlay ? *MontageToPlay->GetName() : TEXT("None"));
-    
-    // 播放技能动画
-    PlayAbilityMontage(Handle, ActorInfo, ActivationInfo);
-    
-    // 执行技能逻辑
-    ExecuteSkill(Handle, ActorInfo, ActivationInfo);
+    TryCommitAndExecuteAbility(
+        Handle,
+        ActorInfo,
+        ActivationInfo,
+        TEXT("DirectExecute"),
+        TEXT("提交前的检查失败，与消耗和冷却无关。"));
 }
 
 bool UGA_HeroBaseAbility::OtherCheckBeforeCommit()
@@ -899,6 +726,36 @@ void UGA_HeroBaseAbility::PlayAbilityMontage(
 // Callbacks
 // =================================================================================================================
 
+bool UGA_HeroBaseAbility::TryCommitAndExecuteAbility(
+    const FGameplayAbilitySpecHandle Handle,
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo ActivationInfo,
+    const TCHAR* Phase,
+    const TCHAR* OtherCheckFailureReason)
+{
+    if (!OtherCheckBeforeCommit())
+    {
+        if (OtherCheckFailureReason)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("%s: %s"), *GetName(), OtherCheckFailureReason);
+        }
+        return false;
+    }
+
+    if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
+    {
+        LogCommitFailureDiagnostics(Handle, ActorInfo, ActivationInfo, Phase);
+        UE_LOG(LogTemp, Warning, TEXT("%s: 技能提交失败，可能是由于消耗或冷却问题。"), *GetName());
+        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+        return false;
+    }
+
+    UE_LOG(LogTemp, Verbose, TEXT("%s: CommitAbility OK (%s). Montage=%s"), *GetName(), Phase, MontageToPlay ? *MontageToPlay->GetName() : TEXT("None"));
+    PlayAbilityMontage(Handle, ActorInfo, ActivationInfo);
+    ExecuteSkill(Handle, ActorInfo, ActivationInfo);
+    return true;
+}
+
 void UGA_HeroBaseAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data)
 {
     // 保存目标数据
@@ -914,25 +771,12 @@ void UGA_HeroBaseAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHand
     FGameplayAbilitySpecHandle Handle = GetCurrentAbilitySpecHandle();
     FGameplayAbilityActivationInfo ActivationInfo = GetCurrentActivationInfo();
 
-    if (!OtherCheckBeforeCommit())
-    {
-        UE_LOG(LogTemp, Warning, TEXT("%s: 超出范围，向目标移动······"), *GetName());
-		return;
-    }
-    if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
-    {
-        LogCommitFailureDiagnostics(Handle, ActorInfo, ActivationInfo, TEXT("OnTargetDataReady"));
-        UE_LOG(LogTemp, Warning, TEXT("%s: 技能提交失败，可能是由于消耗或冷却问题。"), *GetName());
-        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
-        return;
-	}
-
-    UE_LOG(LogTemp, Verbose, TEXT("%s: CommitAbility OK (OnTargetDataReady). Montage=%s"), *GetName(), MontageToPlay ? *MontageToPlay->GetName() : TEXT("None"));
-	// 播放技能动画
-	PlayAbilityMontage(Handle, ActorInfo, ActivationInfo);
-	// 执行技能逻辑
-	ExecuteSkill(Handle, ActorInfo, ActivationInfo);
-    return;
+    TryCommitAndExecuteAbility(
+        Handle,
+        ActorInfo,
+        ActivationInfo,
+        TEXT("OnTargetDataReady"),
+        TEXT("超出范围，向目标移动······"));
 }
 
 void UGA_HeroBaseAbility::OnTargetingCancelled(const FGameplayAbilityTargetDataHandle& Data)

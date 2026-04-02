@@ -265,6 +265,12 @@ protected:
     // 动画播放任务引用
     UPROPERTY()
     class UAbilityTask_PlayMontageAndWait* MontageTask;
+    bool TryCommitAndExecuteAbility(
+        const FGameplayAbilitySpecHandle Handle,
+        const FGameplayAbilityActorInfo* ActorInfo,
+        const FGameplayAbilityActivationInfo ActivationInfo,
+        const TCHAR* Phase,
+        const TCHAR* OtherCheckFailureReason);
     void OnMontageEnded(UAnimMontage* Montage, bool bInterrupted);
     void ContinueAbilityActivation(
         const FGameplayAbilitySpecHandle Handle,
