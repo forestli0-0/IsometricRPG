@@ -11,6 +11,7 @@
 #include "GameFramework/Character.h" // Add this include to define PlayAnimMontage
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h" 
 #include "Character/IsometricRPGCharacter.h"
+#include "IsometricAbilities/GameplayAbilities/HeroAbilityTargetDataHelper.h"
 URPGGameplayAbility_Attack::URPGGameplayAbility_Attack()
 {
 	// 设定为立即生效的技能
@@ -78,18 +79,7 @@ void URPGGameplayAbility_Attack::ActivateAbility(
                 Attacker = RPGChar; // 默认施法者为自身
             }
             const FGameplayAbilityTargetDataHandle DataHandle = RPGChar->GetAbilityTargetData();
-            if (DataHandle.Num() > 0 && DataHandle.Data[0].IsValid())
-            {
-                const TSharedPtr<FGameplayAbilityTargetData> DataPtr = DataHandle.Data[0];
-                if (DataPtr->HasHitResult() && DataPtr->GetHitResult())
-                {
-                    AttackTarget = DataPtr->GetHitResult()->GetActor();
-                }
-                if (!AttackTarget && DataPtr->GetActors().Num() > 0 && DataPtr->GetActors()[0].IsValid())
-                {
-                    AttackTarget = DataPtr->GetActors()[0].Get();
-                }
-            }
+            AttackTarget = FHeroAbilityTargetDataHelper::GetPrimaryActor(DataHandle);
         }
     }
 

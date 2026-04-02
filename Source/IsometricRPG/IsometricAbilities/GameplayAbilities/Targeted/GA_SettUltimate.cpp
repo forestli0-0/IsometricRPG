@@ -17,6 +17,7 @@
 #include "Math/UnrealMathUtility.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "IsometricAbilities/TargetTrace/GATA_CursorTrace.h"
+#include "IsometricAbilities/GameplayAbilities/HeroAbilityTargetDataHelper.h"
 
 namespace
 {
@@ -25,12 +26,7 @@ bool ResolveSettUltimateTarget(const FGameplayAbilityTargetDataHandle& TargetDat
 	OutTargetActor = nullptr;
 	OutTargetLocation = FVector::ZeroVector;
 
-	if (!TargetDataHandle.IsValid(0))
-	{
-		return false;
-	}
-
-	const FGameplayAbilityTargetData* TargetData = TargetDataHandle.Get(0);
+	const FGameplayAbilityTargetData* TargetData = FHeroAbilityTargetDataHelper::GetPrimaryTargetData(TargetDataHandle);
 	if (!TargetData)
 	{
 		return false;
@@ -216,21 +212,17 @@ void UGA_SettUltimate::ExecuteSkill(const FGameplayAbilitySpecHandle Handle,
 	}
 	PrimaryTarget = nullptr;
 
-	if (CurrentTargetDataHandle.IsValid(0))
+	if (const FGameplayAbilityTargetData* TargetData = FHeroAbilityTargetDataHelper::GetPrimaryTargetData(CurrentTargetDataHandle))
 	{
-		const FGameplayAbilityTargetData* TargetData = CurrentTargetDataHandle.Get(0);
-		if (TargetData)
+		const TArray<TWeakObjectPtr<AActor>> Actors = TargetData->GetActors();
+		if (Actors.Num() > 0)
 		{
-			// 优先从 ActorArray 读取
-			if (!TargetData->GetActors().IsEmpty())
-			{
-			PrimaryTarget = TargetData->GetActors()[0].Get();
+			PrimaryTarget = Actors[0].Get();
 		}
-			// 兼容从 HitResult 读取
-			if (!PrimaryTarget && TargetData->HasHitResult() && TargetData->GetHitResult())
-			{
-				PrimaryTarget = TargetData->GetHitResult()->GetActor();
-	}
+
+		if (!PrimaryTarget)
+		{
+			PrimaryTarget = FHeroAbilityTargetDataHelper::GetPrimaryActor(*TargetData);
 		}
 	}
 

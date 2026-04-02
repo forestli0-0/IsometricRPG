@@ -5,6 +5,7 @@
 #include "Character/IsometricRPGAttributeSetBase.h"
 #include "Abilities/Tasks/AbilityTask_WaitTargetData.h"
 #include "GameplayTagContainer.h"
+#include "IsometricAbilities/GameplayAbilities/HeroAbilityTargetingHelper.h"
 #include "Input/IsometricInputTypes.h"
 #include "GA_HeroBaseAbility.generated.h"
 
@@ -262,16 +263,24 @@ public:
     virtual void HandleMontageInterruptedOrCancelled();
 
 protected:
+    FHeroAbilityTargetingPolicy BuildTargetingPolicy() const;
+    bool InitializeActivationRuntimeState(
+        const FGameplayAbilitySpecHandle Handle,
+        const FGameplayAbilityActorInfo* ActorInfo,
+        const FGameplayAbilityActivationInfo ActivationInfo);
     // 动画播放任务引用
     UPROPERTY()
     class UAbilityTask_PlayMontageAndWait* MontageTask;
+    void ResetRuntimeAbilityState();
+    void EndTargetDataTask();
+    void EndMontageTask();
+    void BindMontageTaskCallbacks(UAbilityTask_PlayMontageAndWait& InMontageTask);
     bool TryCommitAndExecuteAbility(
         const FGameplayAbilitySpecHandle Handle,
         const FGameplayAbilityActorInfo* ActorInfo,
         const FGameplayAbilityActivationInfo ActivationInfo,
         const TCHAR* Phase,
         const TCHAR* OtherCheckFailureReason);
-    void OnMontageEnded(UAnimMontage* Montage, bool bInterrupted);
     void ContinueAbilityActivation(
         const FGameplayAbilitySpecHandle Handle,
         const FGameplayAbilityActorInfo* ActorInfo,

@@ -9,6 +9,7 @@
 #include "Character/IsometricRPGCharacter.h"
 #include "GameFramework/Character.h"
 #include "Components/CapsuleComponent.h"
+#include "IsometricAbilities/GameplayAbilities/HeroAbilityTargetDataHelper.h"
 
 UGA_NormalAttack_Click::UGA_NormalAttack_Click()
 {
@@ -112,25 +113,14 @@ void UGA_NormalAttack_Click::OnTargetDataReady(const FGameplayAbilityTargetDataH
     CachedTargetActor = nullptr;
     CachedTargetLocation = FVector::ZeroVector;
 
-    if (Data.Num() > 0 && Data.Data[0].IsValid())
+    if (const FGameplayAbilityTargetData* TargetData = FHeroAbilityTargetDataHelper::GetPrimaryTargetData(Data))
     {
-        const TSharedPtr<FGameplayAbilityTargetData> D = Data.Data[0];
-        if (D->HasHitResult() && D->GetHitResult())
+        if (!FHeroAbilityTargetDataHelper::TryGetTargetLocation(*TargetData, CachedTargetLocation))
         {
-            CachedTargetLocation = D->GetHitResult()->Location;
-            if (AActor* HRActor = D->GetHitResult()->GetActor())
-            {
-                CachedTargetActor = HRActor;
-            }
+            CachedTargetLocation = FVector::ZeroVector;
         }
-        else if (D->GetActors().Num() > 0 && D->GetActors()[0].IsValid())
-        {
-            CachedTargetActor = D->GetActors()[0].Get();
-            if (CachedTargetActor.IsValid())
-            {
-                CachedTargetLocation = CachedTargetActor->GetActorLocation();
-            }
-        }
+
+        CachedTargetActor = FHeroAbilityTargetDataHelper::GetPrimaryActor(*TargetData);
     }
 
     if (AIsometricRPGCharacter* SourceCharacter = Cast<AIsometricRPGCharacter>(GetAvatarActorFromActorInfo()))

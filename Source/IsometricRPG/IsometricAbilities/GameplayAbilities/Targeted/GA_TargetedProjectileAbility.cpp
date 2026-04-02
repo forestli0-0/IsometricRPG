@@ -6,37 +6,13 @@
 #include "GameFramework/Actor.h"
 #include "Engine/World.h"
 #include "IsometricAbilities/Projectiles/AProjectileBase.h"
+#include "IsometricAbilities/GameplayAbilities/HeroAbilityTargetDataHelper.h"
 
 namespace
 {
 AActor* ResolvePrimaryTargetActorFromTargetData(const FGameplayAbilityTargetDataHandle& TargetDataHandle)
 {
-	if (!TargetDataHandle.IsValid(0))
-	{
-		return nullptr;
-	}
-
-	const FGameplayAbilityTargetData* TargetData = TargetDataHandle.Get(0);
-	if (!TargetData)
-	{
-		return nullptr;
-	}
-
-	if (const FHitResult* HitResult = TargetData->GetHitResult())
-	{
-		if (AActor* HitActor = HitResult->GetActor())
-		{
-			return HitActor;
-		}
-	}
-
-	const TArray<TWeakObjectPtr<AActor>> Actors = TargetData->GetActors();
-	if (Actors.Num() > 0)
-	{
-		return Actors[0].Get();
-	}
-
-	return nullptr;
+	return FHeroAbilityTargetDataHelper::GetPrimaryActor(TargetDataHandle);
 }
 }
 
@@ -147,11 +123,10 @@ void UGA_TargetedProjectileAbility::GetLaunchTransform(const FGameplayAbilityTar
 	// 确定旋转方向（朝向目标）
 	FVector TargetLocation = FVector::ZeroVector;
 	bool bTargetFound = false;
-	if (inCurrentTargetDataHandle.IsValid(0))
+	if (const FGameplayAbilityTargetData* TargetData = FHeroAbilityTargetDataHelper::GetPrimaryTargetData(inCurrentTargetDataHandle))
 	{
 		// 优先使用命中点/指向点，其次再用目标Actor
-		const FGameplayAbilityTargetData* TargetData = inCurrentTargetDataHandle.Get(0);
-		const FHitResult* HitResult = TargetData ? TargetData->GetHitResult() : nullptr;
+		const FHitResult* HitResult = TargetData->GetHitResult();
 		if (HitResult)
 		{
 			if (HitResult->bBlockingHit)
@@ -174,9 +149,7 @@ void UGA_TargetedProjectileAbility::GetLaunchTransform(const FGameplayAbilityTar
 
 		if (!bTargetFound)
 		{
-			auto TargetActor = TargetData && TargetData->GetActors().Num() > 0
-				? TargetData->GetActors()[0].Get()
-				: nullptr;
+			AActor* TargetActor = FHeroAbilityTargetDataHelper::GetPrimaryActor(*TargetData);
 			if (TargetActor)
 			{
 				TargetLocation = TargetActor->GetActorLocation();

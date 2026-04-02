@@ -11,6 +11,7 @@
 #include "Components/CapsuleComponent.h" // 添加此行以解决不完整类型错误
 #include "NiagaraComponent.h" // Add this include to resolve the incomplete type error for UNiagaraComponent
 #include "UObject/ConstructorHelpers.h"
+#include "IsometricAbilities/GameplayAbilities/HeroAbilityTargetDataHelper.h"
 
 UGA_TargetedAbility::UGA_TargetedAbility()
 {
@@ -30,57 +31,18 @@ UGA_TargetedAbility::UGA_TargetedAbility()
 
 bool UGA_TargetedAbility::OtherCheckBeforeCommit()
 {
-    // 1. 检查目标数据有效性，使用卫语句提前退出
-    if (!CurrentTargetDataHandle.IsValid(0))
-    {
-        UE_LOG(LogTemp, Warning, TEXT("检查范围：目标数据无效或为空。"));
-        return false;
-    }
-
-    // 2. 声明变量并解析目标数据
     AActor* TargetActor = nullptr;
     FVector TargetLocation = FVector::ZeroVector;
-    bool bSuccessfullyFoundTarget = false;
-
-    const FGameplayAbilityTargetData* Data = CurrentTargetDataHandle.Get(0);
-    // 情况一：目标是 Actor
-    if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_ActorArray::StaticStruct()))
-    {
-        const auto* ActorArrayData = static_cast<const FGameplayAbilityTargetData_ActorArray*>(Data);
-        if (ActorArrayData && ActorArrayData->TargetActorArray.Num() > 0)
-        {
-            TargetActor = ActorArrayData->TargetActorArray[0].Get();
-            if (TargetActor)
-            {
-                TargetLocation = TargetActor->GetActorLocation();
-                bSuccessfullyFoundTarget = true;
-                UE_LOG(LogTemp, Log, TEXT("TargetData is an Actor. Location: %s"), *TargetLocation.ToString());
-            }
-        }
-    }
-    // 情况二：目标是射线检测点
-    else if (Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
-    {
-        const auto* HitResultData = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(Data);
-        if (HitResultData && HitResultData->GetHitResult())
-        {
-            TargetLocation = HitResultData->GetHitResult()->Location;
-            TargetActor = Cast<APawn>(HitResultData->GetHitResult()->GetActor()); // 尝试获取被击中的Actor
-            
-            if (!TargetActor)
-            {
-                CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
-                return false;
-            }
-            bSuccessfullyFoundTarget = true;
-            UE_LOG(LogTemp, Log, TEXT("TargetData is a HitResult. Location: %s"), *TargetLocation.ToString());
-        }
-    }
-
-    // 如果未能从任何已知类型中解析出目标，则检查失败
-    if (!bSuccessfullyFoundTarget)
+    if (!FHeroAbilityTargetDataHelper::TryGetTargetLocation(CurrentTargetDataHandle, TargetLocation))
     {
         UE_LOG(LogTemp, Warning, TEXT("技能提交前检查：无法从TargetData中提取有效的目标。"));
+        return false;
+    }
+    TargetActor = Cast<APawn>(FHeroAbilityTargetDataHelper::GetPrimaryActor(CurrentTargetDataHandle));
+
+    if (!TargetActor)
+    {
+        CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
         return false;
     }
 
@@ -282,19 +244,17 @@ void UGA_TargetedAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHand
     if (MyCharacter)
     {
         MyCharacter->CurrentAbilityTargets.Empty(); // Clear previous
-        for (const TSharedPtr<FGameplayAbilityTargetData>& TargetData : Data.Data)
+        for (int32 TargetDataIndex = 0; TargetDataIndex < Data.Num(); ++TargetDataIndex)
         {
-            if (TargetData.IsValid())
+            const FGameplayAbilityTargetData* TargetData = Data.Get(TargetDataIndex);
+            if (TargetData)
             {
-                if (TargetData->HasHitResult() && TargetData->GetHitResult())
+                if (AActor* Actor = FHeroAbilityTargetDataHelper::GetPrimaryActor(*TargetData))
                 {
-                    if (AActor* Actor = TargetData->GetHitResult()->GetActor())
-                    {
-                        MyCharacter->CurrentAbilityTargets.AddUnique(Actor);
-                    }
+                    MyCharacter->CurrentAbilityTargets.AddUnique(Actor);
                 }
 
-                for (TWeakObjectPtr<AActor> WeakActor : TargetData->GetActors())
+                for (const TWeakObjectPtr<AActor>& WeakActor : TargetData->GetActors())
                 {
                     if (AActor* Actor = WeakActor.Get())
                     {

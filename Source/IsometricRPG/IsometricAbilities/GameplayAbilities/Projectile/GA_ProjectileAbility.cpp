@@ -11,6 +11,7 @@
 #include "IsometricAbilities/Projectiles/AProjectileBase.h" // 引用新的投射物基类
 #include "Abilities/GameplayAbilityTypes.h" // Added for FGameplayAbilityTargetDataHandle
 #include "Engine/World.h" // Added for GetWorld()
+#include "IsometricAbilities/GameplayAbilities/HeroAbilityTargetDataHelper.h"
 
 UGA_ProjectileAbility::UGA_ProjectileAbility()
 {
@@ -126,16 +127,7 @@ void UGA_ProjectileAbility::GetLaunchTransform(
     FVector TargetLocation = FVector::ZeroVector;
     bool bTargetFound = false;
 
-    if (CurrentTargetDataHandle.IsValid(0))
-    {
-        const FGameplayAbilityTargetData* TargetData = CurrentTargetDataHandle.Get(0);
-        const FHitResult* HitResult = TargetData ? TargetData->GetHitResult() : nullptr;
-        if (HitResult)
-        {
-            TargetLocation = HitResult->Location;
-            bTargetFound = true;
-        }
-    }
+    bTargetFound = FHeroAbilityTargetDataHelper::TryGetTargetLocation(CurrentTargetDataHandle, TargetLocation);
 
     if (!bTargetFound)
     {
