@@ -13,7 +13,7 @@
 #include "IsometricAbilities/TargetTrace/GATA_CursorTrace.h"
 #include "FX/NA_NiagaraActorBase.h"
 #include "IsometricAbilities/GameplayAbilities/HeroAbilityCommitHelper.h"
-#include "IsometricAbilities/GameplayAbilities/Targeted/HeroTargetedAbilityExecutionHelper.h"
+#include "IsometricAbilities/GameplayAbilities/Targeted/HeroAbilityApproachHelper.h"
 UGA_HeroMeleeAttackAbility::UGA_HeroMeleeAttackAbility()
 {
     NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
@@ -108,7 +108,7 @@ bool UGA_HeroMeleeAttackAbility::CheckCost(const FGameplayAbilitySpecHandle Hand
 
 void UGA_HeroMeleeAttackAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data)
 {
-    FHeroTargetedAbilityExecutionHelper::CachePrimaryTargetData(Data, CachedTargetActor, CachedTargetLocation);
+    FHeroAbilityApproachHelper::CachePrimaryTargetData(Data, CachedTargetActor, CachedTargetLocation);
 
     Super::OnTargetDataReady(Data);
 }
@@ -117,7 +117,7 @@ bool UGA_HeroMeleeAttackAbility::OtherCheckBeforeCommit()
 {
     AActor* TargetActor = nullptr;
     FVector TargetLocation = FVector::ZeroVector;
-    if (!FHeroTargetedAbilityExecutionHelper::TryResolveTargetOrCached(
+    if (!FHeroAbilityApproachHelper::TryResolveTargetOrCached(
         CurrentTargetDataHandle,
         CachedTargetActor,
         CachedTargetLocation,
@@ -135,10 +135,10 @@ bool UGA_HeroMeleeAttackAbility::OtherCheckBeforeCommit()
     }
 
     const float Distance = FVector::Distance(SelfChar->GetActorLocation(), TargetLocation);
-    const float EffectiveAcceptance = FHeroTargetedAbilityExecutionHelper::CalculateEffectiveAcceptanceRadius(SelfChar, TargetActor, RangeToApply);
+    const float EffectiveAcceptance = FHeroAbilityApproachHelper::CalculateEffectiveAcceptanceRadius(SelfChar, TargetActor, RangeToApply);
     if (Distance > EffectiveAcceptance)
     {
-        FHeroTargetedAbilityExecutionHelper::StartMoveToActorOrLocation(*this, TargetActor, TargetLocation, EffectiveAcceptance);
+        FHeroAbilityApproachHelper::StartMoveToActorOrLocation(*this, TargetActor, TargetLocation, EffectiveAcceptance);
         return false;
     }
 

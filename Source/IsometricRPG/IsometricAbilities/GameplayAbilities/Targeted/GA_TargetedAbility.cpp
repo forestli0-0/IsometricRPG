@@ -3,7 +3,7 @@
 #include "Abilities/GameplayAbilityTargetActor_SingleLineTrace.h"
 #include "IsometricAbilities/TargetTrace/GATA_CursorTrace.h"
 #include "UObject/ConstructorHelpers.h"
-#include "IsometricAbilities/GameplayAbilities/Targeted/HeroTargetedAbilityExecutionHelper.h"
+#include "IsometricAbilities/GameplayAbilities/Targeted/HeroAbilityApproachHelper.h"
 #include "IsometricAbilities/GameplayAbilities/Targeted/HeroTargetedAbilityPresentationHelper.h"
 
 UGA_TargetedAbility::UGA_TargetedAbility()
@@ -26,7 +26,7 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit()
 {
     APawn* TargetActor = nullptr;
     FVector TargetLocation = FVector::ZeroVector;
-    if (!FHeroTargetedAbilityExecutionHelper::TryResolveCommitTarget(CurrentTargetDataHandle, TargetActor, TargetLocation))
+    if (!FHeroAbilityApproachHelper::TryResolveCommitTarget(CurrentTargetDataHandle, TargetActor, TargetLocation))
     {
         UE_LOG(LogTemp, Warning, TEXT("技能提交前检查：无法从TargetData中提取有效的目标。"));
         return false;
@@ -39,11 +39,11 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit()
     }
 
     float Distance = 0.0f;
-    if (!FHeroTargetedAbilityExecutionHelper::IsTargetWithinRange(GetCurrentActorInfo(), TargetLocation, RangeToApply, Distance))
+    if (!FHeroAbilityApproachHelper::IsTargetWithinRange(GetCurrentActorInfo(), TargetLocation, RangeToApply, Distance))
     {
         UE_LOG(LogTemp, Warning, TEXT("指向性技能 %s 的目标超出施法范围！"), *GetName());
         GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Black, TEXT("目标距离太远----来自技能内部"));
-        FHeroTargetedAbilityExecutionHelper::StartMoveToTarget(*this, *TargetActor, RangeToApply);
+        FHeroAbilityApproachHelper::StartMoveToTarget(*this, *TargetActor, RangeToApply);
         return false;
     }
 
@@ -54,7 +54,7 @@ bool UGA_TargetedAbility::EnsureCurrentTargetDataAvailable(
     const TWeakObjectPtr<AActor>& CachedTargetActor,
     const FVector& CachedTargetLocation)
 {
-    if (FHeroTargetedAbilityExecutionHelper::TryRestoreTargetDataFromCache(
+    if (FHeroAbilityApproachHelper::TryRestoreTargetDataFromCache(
         CurrentTargetDataHandle,
         CachedTargetActor,
         CachedTargetLocation))

@@ -1,4 +1,4 @@
-#include "IsometricAbilities/GameplayAbilities/Targeted/HeroTargetedAbilityExecutionHelper.h"
+#include "IsometricAbilities/GameplayAbilities/Targeted/HeroAbilityApproachHelper.h"
 
 #include "Abilities/GameplayAbilityTargetTypes.h"
 #include "GameFramework/Actor.h"
@@ -8,7 +8,7 @@
 #include "IsometricAbilities/GameplayAbilities/HeroAbilityTargetDataHelper.h"
 #include "IsometricAbilities/GameplayAbilities/Targeted/GA_TargetedAbility.h"
 
-void FHeroTargetedAbilityExecutionHelper::CachePrimaryTargetData(
+void FHeroAbilityApproachHelper::CachePrimaryTargetData(
     const FGameplayAbilityTargetDataHandle& TargetDataHandle,
     TWeakObjectPtr<AActor>& OutTargetActor,
     FVector& OutTargetLocation)
@@ -27,7 +27,7 @@ void FHeroTargetedAbilityExecutionHelper::CachePrimaryTargetData(
     }
 }
 
-bool FHeroTargetedAbilityExecutionHelper::TryResolveTargetOrCached(
+bool FHeroAbilityApproachHelper::TryResolveTargetOrCached(
     const FGameplayAbilityTargetDataHandle& TargetDataHandle,
     const TWeakObjectPtr<AActor>& CachedTargetActor,
     const FVector& CachedTargetLocation,
@@ -60,7 +60,7 @@ bool FHeroTargetedAbilityExecutionHelper::TryResolveTargetOrCached(
     return OutTargetActor != nullptr || !OutTargetLocation.IsNearlyZero();
 }
 
-bool FHeroTargetedAbilityExecutionHelper::TryResolveCommitTarget(
+bool FHeroAbilityApproachHelper::TryResolveCommitTarget(
     const FGameplayAbilityTargetDataHandle& TargetDataHandle,
     APawn*& OutTargetActor,
     FVector& OutTargetLocation)
@@ -77,7 +77,7 @@ bool FHeroTargetedAbilityExecutionHelper::TryResolveCommitTarget(
     return true;
 }
 
-bool FHeroTargetedAbilityExecutionHelper::IsTargetWithinRange(
+bool FHeroAbilityApproachHelper::IsTargetWithinRange(
     const FGameplayAbilityActorInfo* ActorInfo,
     const FVector& TargetLocation,
     const float RangeToApply,
@@ -95,7 +95,7 @@ bool FHeroTargetedAbilityExecutionHelper::IsTargetWithinRange(
     return OutDistance <= RangeToApply;
 }
 
-float FHeroTargetedAbilityExecutionHelper::CalculateEffectiveAcceptanceRadius(
+float FHeroAbilityApproachHelper::CalculateEffectiveAcceptanceRadius(
     const ACharacter* SelfCharacter,
     const AActor* TargetActor,
     const float SkillRange,
@@ -119,7 +119,7 @@ float FHeroTargetedAbilityExecutionHelper::CalculateEffectiveAcceptanceRadius(
     return SkillRange + SelfCapsuleRadius + TargetCapsuleRadius + Buffer;
 }
 
-bool FHeroTargetedAbilityExecutionHelper::TryRestoreTargetDataFromCache(
+bool FHeroAbilityApproachHelper::TryRestoreTargetDataFromCache(
     FGameplayAbilityTargetDataHandle& InOutTargetDataHandle,
     const TWeakObjectPtr<AActor>& CachedTargetActor,
     const FVector& CachedTargetLocation)
@@ -153,7 +153,7 @@ bool FHeroTargetedAbilityExecutionHelper::TryRestoreTargetDataFromCache(
     return true;
 }
 
-void FHeroTargetedAbilityExecutionHelper::StartMoveToTarget(
+void FHeroAbilityApproachHelper::StartMoveToTarget(
     UGA_TargetedAbility& Ability,
     APawn& TargetActor,
     const float AcceptanceRadius)

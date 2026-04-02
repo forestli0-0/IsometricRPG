@@ -7,7 +7,7 @@
 #include "Character/IsometricRPGCharacter.h"
 #include "GameFramework/Character.h"
 #include "IsometricAbilities/GameplayAbilities/HeroAbilityCommitHelper.h"
-#include "IsometricAbilities/GameplayAbilities/Targeted/HeroTargetedAbilityExecutionHelper.h"
+#include "IsometricAbilities/GameplayAbilities/Targeted/HeroAbilityApproachHelper.h"
 
 UGA_NormalAttack_Click::UGA_NormalAttack_Click()
 {
@@ -93,7 +93,7 @@ void UGA_NormalAttack_Click::ApplyCooldown(
 
 void UGA_NormalAttack_Click::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data)
 {
-    FHeroTargetedAbilityExecutionHelper::CachePrimaryTargetData(Data, CachedTargetActor, CachedTargetLocation);
+    FHeroAbilityApproachHelper::CachePrimaryTargetData(Data, CachedTargetActor, CachedTargetLocation);
 
     if (AIsometricRPGCharacter* SourceCharacter = Cast<AIsometricRPGCharacter>(GetAvatarActorFromActorInfo()))
     {
@@ -122,10 +122,10 @@ bool UGA_NormalAttack_Click::OtherCheckBeforeCommit()
     }
 
     const float Distance = FVector::Distance(SelfChar->GetActorLocation(), TargetLocation);
-    const float EffectiveAcceptance = FHeroTargetedAbilityExecutionHelper::CalculateEffectiveAcceptanceRadius(SelfChar, TargetActor, RangeToApply);
+    const float EffectiveAcceptance = FHeroAbilityApproachHelper::CalculateEffectiveAcceptanceRadius(SelfChar, TargetActor, RangeToApply);
     if (Distance > EffectiveAcceptance)
     {
-        FHeroTargetedAbilityExecutionHelper::StartMoveToActorOrLocation(*this, TargetActor, TargetLocation, EffectiveAcceptance);
+        FHeroAbilityApproachHelper::StartMoveToActorOrLocation(*this, TargetActor, TargetLocation, EffectiveAcceptance);
         return false;
     }
 

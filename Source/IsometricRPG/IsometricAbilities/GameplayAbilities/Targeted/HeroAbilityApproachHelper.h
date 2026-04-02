@@ -11,7 +11,7 @@ class ACharacter;
 class UGA_TargetedAbility;
 struct FGameplayAbilityActorInfo;
 
-class ISOMETRICRPG_API FHeroTargetedAbilityExecutionHelper
+class ISOMETRICRPG_API FHeroAbilityApproachHelper
 {
 public:
     static void CachePrimaryTargetData(
