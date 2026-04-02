@@ -5,9 +5,11 @@
 #include "IsometricCameraManager.h"
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
+#include "Abilities/GameplayAbility.h"
 #include "Character/IsometricRPGCharacter.h"
 #include "Character/IsoPlayerState.h"
 #include "IsometricComponents/IsometricInputComponent.h"
+#include "UI/HUD/HUDPresentationBuilder.h"
 #include "UI/HUD/HUDRootWidget.h"
 
 namespace
@@ -58,21 +60,192 @@ void AIsometricPlayerController::BeginPlay()
 	bEnableClickEvents = true;
 	bEnableMouseOverEvents = true;
 
-	if (IsLocalController() && PlayerHUDClass)
-	{
-		UE_LOG(LogTemp, Log, TEXT("[PC] Creating PlayerHUD on %s"), *GetName());
-		PlayerHUDInstance = CreateWidget<UHUDRootWidget>(this, PlayerHUDClass);
-		if (PlayerHUDInstance)
-		{
-			PlayerHUDInstance->AddToViewport();
-			
-			// 通知PlayerState UI已经初始化完成
-			if (AIsoPlayerState* IsoPlayerState = GetPlayerState<AIsoPlayerState>())
-			{
-				IsoPlayerState->OnUIInitialized();
-			}
-		}
-	}
+    EnsureHUDCreated();
+    BindHUDRefreshSource(GetPlayerState<AIsoPlayerState>());
+}
+
+void AIsometricPlayerController::OnRep_PlayerState()
+{
+    Super::OnRep_PlayerState();
+    BindHUDRefreshSource(GetPlayerState<AIsoPlayerState>());
+}
+
+void AIsometricPlayerController::NotifyAbilityCooldownTriggered_Implementation(
+    const FGameplayAbilitySpecHandle& SpecHandle,
+    float DurationSeconds)
+{
+    if (!SpecHandle.IsValid() || DurationSeconds <= 0.f)
+    {
+        return;
+    }
+
+    FHeroHUDRefreshRequest Request;
+    Request.Kind = EHeroHUDRefreshKind::Cooldown;
+    Request.SpecHandle = SpecHandle;
+    Request.DurationSeconds = DurationSeconds;
+    RefreshHUD(Request);
+}
+
+void AIsometricPlayerController::EnsureHUDCreated()
+{
+    if (!IsLocalController() || PlayerHUDInstance || !PlayerHUDClass)
+    {
+        return;
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("[PC] Creating PlayerHUD on %s"), *GetName());
+    PlayerHUDInstance = CreateWidget<UHUDRootWidget>(this, PlayerHUDClass);
+    if (PlayerHUDInstance)
+    {
+        PlayerHUDInstance->AddToViewport();
+    }
+}
+
+void AIsometricPlayerController::BindHUDRefreshSource(AIsoPlayerState* InPlayerState)
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    EnsureHUDCreated();
+
+    if (BoundHUDRefreshSource.Get() == InPlayerState && HUDRefreshRequestedHandle.IsValid())
+    {
+        RefreshHUD(FHeroHUDRefreshRequest{ EHeroHUDRefreshKind::Full });
+        return;
+    }
+
+    UnbindHUDRefreshSource();
+    if (!InPlayerState)
+    {
+        return;
+    }
+
+    BoundHUDRefreshSource = InPlayerState;
+    HUDRefreshRequestedHandle = InPlayerState->OnHUDRefreshRequested().AddUObject(this, &AIsometricPlayerController::HandleHUDRefreshRequested);
+    RefreshHUD(FHeroHUDRefreshRequest{ EHeroHUDRefreshKind::Full });
+}
+
+void AIsometricPlayerController::UnbindHUDRefreshSource()
+{
+    if (AIsoPlayerState* CurrentSource = BoundHUDRefreshSource.Get())
+    {
+        if (HUDRefreshRequestedHandle.IsValid())
+        {
+            CurrentSource->OnHUDRefreshRequested().Remove(HUDRefreshRequestedHandle);
+        }
+    }
+
+    HUDRefreshRequestedHandle.Reset();
+    BoundHUDRefreshSource.Reset();
+}
+
+void AIsometricPlayerController::HandleHUDRefreshRequested(const FHeroHUDRefreshRequest& Request)
+{
+    RefreshHUD(Request);
+}
+
+void AIsometricPlayerController::RefreshHUD(const FHeroHUDRefreshRequest& Request)
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    EnsureHUDCreated();
+    if (!PlayerHUDInstance)
+    {
+        return;
+    }
+
+    AIsoPlayerState* IsoPlayerState = BoundHUDRefreshSource.Get();
+    if (!IsoPlayerState)
+    {
+        IsoPlayerState = GetPlayerState<AIsoPlayerState>();
+        if (!IsoPlayerState)
+        {
+            return;
+        }
+    }
+
+    const FHUDPresentationContext Context = IsoPlayerState->MakeHUDPresentationContext();
+
+    switch (Request.Kind)
+    {
+    case EHeroHUDRefreshKind::Full:
+        FHUDPresentationBuilder::RefreshEntireHUD(
+            *PlayerHUDInstance,
+            Context,
+            [IsoPlayerState](const UGameplayAbility* AbilityCDO, float& OutDuration, float& OutRemaining)
+            {
+                return IsoPlayerState->QueryCooldownState(AbilityCDO, OutDuration, OutRemaining);
+            });
+        return;
+
+    case EHeroHUDRefreshKind::Vitals:
+        FHUDPresentationBuilder::RefreshVitals(*PlayerHUDInstance, Context.AttributeSet);
+        return;
+
+    case EHeroHUDRefreshKind::Experience:
+        FHUDPresentationBuilder::RefreshExperience(*PlayerHUDInstance, Context.AttributeSet);
+        return;
+
+    case EHeroHUDRefreshKind::ChampionStats:
+        FHUDPresentationBuilder::RefreshChampionStats(*PlayerHUDInstance, Context.AttributeSet);
+        return;
+
+    case EHeroHUDRefreshKind::GameplayPresentation:
+        FHUDPresentationBuilder::RefreshGameplayTagPresentation(*PlayerHUDInstance, Context);
+        return;
+
+    case EHeroHUDRefreshKind::ActionBar:
+        if (Context.EquippedAbilities)
+        {
+            FHUDPresentationBuilder::RefreshActionBar(
+                *PlayerHUDInstance,
+                *Context.EquippedAbilities,
+                [IsoPlayerState](const UGameplayAbility* AbilityCDO, float& OutDuration, float& OutRemaining)
+                {
+                    return IsoPlayerState->QueryCooldownState(AbilityCDO, OutDuration, OutRemaining);
+                });
+        }
+        return;
+
+    case EHeroHUDRefreshKind::Cooldown:
+        {
+            FEquippedAbilityInfo EquippedInfo;
+            if (!Request.SpecHandle.IsValid() || !IsoPlayerState->TryGetEquippedAbilityInfoByHandle(Request.SpecHandle, EquippedInfo))
+            {
+                return;
+            }
+
+            if (EquippedInfo.Slot == ESkillSlot::Invalid || EquippedInfo.Slot == ESkillSlot::MAX)
+            {
+                return;
+            }
+
+            float CooldownDuration = Request.DurationSeconds;
+            float CooldownRemaining = Request.DurationSeconds;
+
+            UClass* AbilityClass = EquippedInfo.AbilityClass.Get();
+            if (!AbilityClass && !EquippedInfo.AbilityClass.ToSoftObjectPath().IsNull())
+            {
+                AbilityClass = EquippedInfo.AbilityClass.LoadSynchronous();
+            }
+
+            if (AbilityClass)
+            {
+                if (const UGameplayAbility* AbilityCDO = AbilityClass->GetDefaultObject<UGameplayAbility>())
+                {
+                    IsoPlayerState->QueryCooldownState(AbilityCDO, CooldownDuration, CooldownRemaining);
+                }
+            }
+
+            PlayerHUDInstance->UpdateAbilityCooldown(EquippedInfo.Slot, CooldownDuration, CooldownRemaining);
+        }
+        return;
+    }
 }
 
 // 【新增】实现PlayerTick函数

@@ -3,7 +3,6 @@
 #include "IsoPlayerState.h"
 #include "AbilitySystemComponent.h"
 #include "IsometricRPG/Character/IsometricRPGAttributeSetBase.h"
-#include "IsometricRPG/Player/IsometricPlayerController.h"
 #include "IsometricAbilities/Types/EquippedAbilityInfo.h"
 #include "GameplayTagContainer.h"
 #include "GameplayAbilitySpec.h"
@@ -14,8 +13,6 @@
 #include "Engine/AssetManager.h"
 #include "Engine/Texture2D.h"
 #include "IsometricRPGCharacter.h"
-#include "UI/HUD/HUDPresentationBuilder.h"
-#include "UI/HUD/HUDRootWidget.h"
 #include "GameFramework/PlayerController.h"
 
 AIsoPlayerState::AIsoPlayerState()
@@ -385,70 +382,10 @@ void AIsoPlayerState::LogActivatableAbilities() const
 
 void AIsoPlayerState::OnAssetsLoadedForUI()
 {
-    AIsometricPlayerController* PC = Cast<AIsometricPlayerController>(GetPlayerController());
-    if (!PC)
-    {
-        return;
-    }
-
     EnsureAttributeDelegatesBound();
     EnsureGameplayTagDelegatesBound();
     EnsureGameplayEffectDelegatesBound();
-
-    if (!bUIInitialized)
-    {
-        bPendingUIUpdate = true;
-        return;
-    }
-
-    if (UHUDRootWidget* HUD = PC->PlayerHUDInstance)
-    {
-        const FHUDPresentationContext Context = BuildHUDPresentationContext();
-        FHUDPresentationBuilder::RefreshEntireHUD(*HUD, Context, [this](const UGameplayAbility* AbilityCDO, float& OutDuration, float& OutRemaining)
-        {
-            return QueryCooldownState(AbilityCDO, OutDuration, OutRemaining);
-        });
-        bPendingUIUpdate = false;
-    }
-    else
-    {
-        bPendingUIUpdate = true;
-    }
-}
-
-void AIsoPlayerState::OnUIInitialized()
-{
-    bUIInitialized = true;
-    UE_LOG(LogTemp, Log, TEXT("UI initialized in PlayerState"));
-    EnsureAttributeDelegatesBound();
-    EnsureGameplayTagDelegatesBound();
-    EnsureGameplayEffectDelegatesBound();
-    UpdateUIWhenReady();
-}
-
-void AIsoPlayerState::UpdateUIWhenReady()
-{
-    EnsureAttributeDelegatesBound();
-    EnsureGameplayTagDelegatesBound();
-    EnsureGameplayEffectDelegatesBound();
-
-    AIsometricPlayerController* PC = Cast<AIsometricPlayerController>(GetPlayerController());
-    if (!PC) return;
-
-    if (UHUDRootWidget* HUD = PC->PlayerHUDInstance)
-    {
-        const FHUDPresentationContext Context = BuildHUDPresentationContext();
-        FHUDPresentationBuilder::RefreshEntireHUD(*HUD, Context, [this](const UGameplayAbility* AbilityCDO, float& OutDuration, float& OutRemaining)
-        {
-            return QueryCooldownState(AbilityCDO, OutDuration, OutRemaining);
-        });
-        bPendingUIUpdate = false;
-    }
-    else
-    {
-        UE_LOG(LogTemp, Verbose, TEXT("UI still not ready in UpdateUIWhenReady"));
-        bPendingUIUpdate = true;
-    }
+    RequestHUDRefresh(EHeroHUDRefreshKind::ActionBar);
 }
 
 void AIsoPlayerState::EnsureAttributeDelegatesBound()
@@ -537,21 +474,6 @@ void AIsoPlayerState::EnsureGameplayEffectDelegatesBound()
     bGameplayEffectDelegatesBound = true;
 }
 
-UHUDRootWidget* AIsoPlayerState::ResolveHUDWidget() const
-{
-    if (AIsometricPlayerController* PC = Cast<AIsometricPlayerController>(GetPlayerController()))
-    {
-        if (!PC->IsLocalController())
-        {
-            return nullptr;
-        }
-
-        return PC->PlayerHUDInstance;
-    }
-
-    return nullptr;
-}
-
 void AIsoPlayerState::HandleHealthChanged(UIsometricRPGAttributeSetBase* AttributeSetChanged, float NewHealth)
 {
     if (!AttributeSet || AttributeSetChanged != AttributeSet)
@@ -559,14 +481,7 @@ void AIsoPlayerState::HandleHealthChanged(UIsometricRPGAttributeSetBase* Attribu
         return;
     }
 
-    if (UHUDRootWidget* HUD = ResolveHUDWidget())
-    {
-        FHUDPresentationBuilder::RefreshVitals(*HUD, AttributeSet);
-    }
-    else
-    {
-        bPendingUIUpdate = true;
-    }
+    RequestHUDRefresh(EHeroHUDRefreshKind::Vitals);
 }
 
 void AIsoPlayerState::HandleManaChanged(UIsometricRPGAttributeSetBase* AttributeSetChanged, float NewMana)
@@ -576,14 +491,7 @@ void AIsoPlayerState::HandleManaChanged(UIsometricRPGAttributeSetBase* Attribute
         return;
     }
 
-    if (UHUDRootWidget* HUD = ResolveHUDWidget())
-    {
-        FHUDPresentationBuilder::RefreshVitals(*HUD, AttributeSet);
-    }
-    else
-    {
-        bPendingUIUpdate = true;
-    }
+    RequestHUDRefresh(EHeroHUDRefreshKind::Vitals);
 }
 
 void AIsoPlayerState::HandleExperienceChanged(UIsometricRPGAttributeSetBase* AttributeSetChanged, float NewExperience, float NewMaxExperience)
@@ -593,14 +501,7 @@ void AIsoPlayerState::HandleExperienceChanged(UIsometricRPGAttributeSetBase* Att
         return;
     }
 
-    if (UHUDRootWidget* HUD = ResolveHUDWidget())
-    {
-        FHUDPresentationBuilder::RefreshExperience(*HUD, AttributeSet);
-    }
-    else
-    {
-        bPendingUIUpdate = true;
-    }
+    RequestHUDRefresh(EHeroHUDRefreshKind::Experience);
 }
 
 void AIsoPlayerState::HandleLevelChanged(UIsometricRPGAttributeSetBase* AttributeSetChanged, float NewLevel)
@@ -610,30 +511,12 @@ void AIsoPlayerState::HandleLevelChanged(UIsometricRPGAttributeSetBase* Attribut
         return;
     }
 
-    if (UHUDRootWidget* HUD = ResolveHUDWidget())
-    {
-        const FHUDPresentationContext Context = BuildHUDPresentationContext();
-        FHUDPresentationBuilder::RefreshVitals(*HUD, AttributeSet);
-        FHUDPresentationBuilder::RefreshChampionStats(*HUD, AttributeSet);
-        FHUDPresentationBuilder::RefreshExperience(*HUD, AttributeSet);
-        FHUDPresentationBuilder::RefreshGameplayTagPresentation(*HUD, Context);
-    }
-    else
-    {
-        bPendingUIUpdate = true;
-    }
+    RequestHUDRefresh(EHeroHUDRefreshKind::Full);
 }
 
 void AIsoPlayerState::HandleObservedGameplayTagChanged(const FGameplayTag ChangedTag, int32 NewCount)
 {
-    if (UHUDRootWidget* HUD = ResolveHUDWidget())
-    {
-        const FHUDPresentationContext Context = BuildHUDPresentationContext();
-        FHUDPresentationBuilder::RefreshGameplayTagPresentation(*HUD, Context);
-        return;
-    }
-
-    bPendingUIUpdate = true;
+    RequestHUDRefresh(EHeroHUDRefreshKind::GameplayPresentation);
 }
 
 void AIsoPlayerState::HandleVitalAttributeValueChanged(const FOnAttributeChangeData& ChangeData)
@@ -643,17 +526,10 @@ void AIsoPlayerState::HandleVitalAttributeValueChanged(const FOnAttributeChangeD
         return;
     }
 
-    if (UHUDRootWidget* HUD = ResolveHUDWidget())
-    {
-        FHUDPresentationBuilder::RefreshVitals(*HUD, AttributeSet);
-    }
-    else
-    {
-        bPendingUIUpdate = true;
-    }
+    RequestHUDRefresh(EHeroHUDRefreshKind::Vitals);
 }
 
-FHUDPresentationContext AIsoPlayerState::BuildHUDPresentationContext() const
+FHUDPresentationContext AIsoPlayerState::MakeHUDPresentationContext() const
 {
     FHUDPresentationContext Context;
     Context.AttributeSet = GetAttributeSet();
@@ -672,14 +548,7 @@ void AIsoPlayerState::HandleChampionStatAttributeValueChanged(const FOnAttribute
         return;
     }
 
-    if (UHUDRootWidget* HUD = ResolveHUDWidget())
-    {
-        FHUDPresentationBuilder::RefreshChampionStats(*HUD, AttributeSet);
-    }
-    else
-    {
-        bPendingUIUpdate = true;
-    }
+    RequestHUDRefresh(EHeroHUDRefreshKind::ChampionStats);
 }
 
 void AIsoPlayerState::HandleSkillPointAttributeValueChanged(const FOnAttributeChangeData& ChangeData)
@@ -689,15 +558,7 @@ void AIsoPlayerState::HandleSkillPointAttributeValueChanged(const FOnAttributeCh
         return;
     }
 
-    if (UHUDRootWidget* HUD = ResolveHUDWidget())
-    {
-        const FHUDPresentationContext Context = BuildHUDPresentationContext();
-        FHUDPresentationBuilder::RefreshGameplayTagPresentation(*HUD, Context);
-    }
-    else
-    {
-        bPendingUIUpdate = true;
-    }
+    RequestHUDRefresh(EHeroHUDRefreshKind::GameplayPresentation);
 }
 
 void AIsoPlayerState::HandleActiveGameplayEffectAdded(UAbilitySystemComponent* TargetASC, const FGameplayEffectSpec& SpecApplied, FActiveGameplayEffectHandle ActiveHandle)
@@ -744,15 +605,7 @@ void AIsoPlayerState::HandleTrackedGameplayEffectTimeChanged(FActiveGameplayEffe
 
 void AIsoPlayerState::RefreshBuffPresentationIfReady()
 {
-    if (UHUDRootWidget* HUD = ResolveHUDWidget())
-    {
-        const FHUDPresentationContext Context = BuildHUDPresentationContext();
-        FHUDPresentationBuilder::RefreshGameplayTagPresentation(*HUD, Context);
-    }
-    else
-    {
-        bPendingUIUpdate = true;
-    }
+    RequestHUDRefresh(EHeroHUDRefreshKind::GameplayPresentation);
 }
 
 bool AIsoPlayerState::ShouldTrackBuffEffect(const FGameplayEffectSpec& EffectSpec) const
@@ -805,38 +658,16 @@ void AIsoPlayerState::BindBuffEffectDelegates(FActiveGameplayEffectHandle Active
     TrackedBuffEffectHandles.Add(ActiveHandle);
 }
 
-void AIsoPlayerState::NotifyAbilityCooldownTriggered_Implementation(const FGameplayAbilitySpecHandle& SpecHandle, float DurationSeconds)
+void AIsoPlayerState::RequestHUDRefresh(
+    EHeroHUDRefreshKind Kind,
+    const FGameplayAbilitySpecHandle& SpecHandle,
+    float DurationSeconds)
 {
-    if (!SpecHandle.IsValid() || DurationSeconds <= 0.f)
-    {
-        return;
-    }
-
-    const FEquippedAbilityInfo* FoundInfo = FindEquippedInfoByHandle(SpecHandle);
-    if (!FoundInfo || FoundInfo->Slot == ESkillSlot::Invalid || FoundInfo->Slot == ESkillSlot::MAX)
-    {
-        return;
-    }
-
-    if (UHUDRootWidget* HUD = ResolveHUDWidget())
-    {
-        float CooldownDuration = DurationSeconds;
-        float CooldownRemaining = DurationSeconds;
-
-        if (UClass* AbilityClass = FoundInfo->AbilityClass.Get())
-        {
-            if (const UGameplayAbility* AbilityCDO = AbilityClass->GetDefaultObject<UGameplayAbility>())
-            {
-                QueryCooldownState(AbilityCDO, CooldownDuration, CooldownRemaining);
-            }
-        }
-
-        HUD->UpdateAbilityCooldown(FoundInfo->Slot, CooldownDuration, CooldownRemaining);
-    }
-    else
-    {
-        bPendingUIUpdate = true;
-    }
+    FHeroHUDRefreshRequest Request;
+    Request.Kind = Kind;
+    Request.SpecHandle = SpecHandle;
+    Request.DurationSeconds = DurationSeconds;
+    HUDRefreshRequested.Broadcast(Request);
 }
 
 
@@ -851,6 +682,17 @@ const FEquippedAbilityInfo* AIsoPlayerState::FindEquippedInfoByHandle(const FGam
     }
 
     return nullptr;
+}
+
+bool AIsoPlayerState::TryGetEquippedAbilityInfoByHandle(const FGameplayAbilitySpecHandle& Handle, FEquippedAbilityInfo& OutInfo) const
+{
+    if (const FEquippedAbilityInfo* FoundInfo = FindEquippedInfoByHandle(Handle))
+    {
+        OutInfo = *FoundInfo;
+        return true;
+    }
+
+    return false;
 }
 
 bool AIsoPlayerState::QueryCooldownState(const UGameplayAbility* AbilityCDO, float& OutDuration, float& OutRemaining) const

@@ -6,7 +6,6 @@
 #include "Character/IsometricRPGAttributeSetBase.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
-#include "GameFramework/PlayerState.h"
 #include "Interfaces/HeroAbilityNotificationReceiver.h"
 
 namespace
@@ -354,16 +353,16 @@ void FHeroAbilityCommitHelper::NotifyCooldownTriggered(
 
     UObject* NotificationReceiver = nullptr;
 
-    if (const APawn* Pawn = Cast<APawn>(ActorInfo->AvatarActor.Get()))
+    if (AController* Controller = Cast<AController>(ActorInfo->PlayerController.Get()))
     {
-        NotificationReceiver = Cast<UObject>(Pawn->GetPlayerState());
+        NotificationReceiver = Cast<UObject>(Controller);
     }
 
-    if (!NotificationReceiver)
+    if (const APawn* Pawn = Cast<APawn>(ActorInfo->AvatarActor.Get()))
     {
-        if (const AController* Controller = Cast<AController>(ActorInfo->PlayerController.Get()))
+        if (!NotificationReceiver)
         {
-            NotificationReceiver = Cast<UObject>(Controller->GetPlayerState<APlayerState>());
+            NotificationReceiver = Cast<UObject>(Pawn->GetController());
         }
     }
 

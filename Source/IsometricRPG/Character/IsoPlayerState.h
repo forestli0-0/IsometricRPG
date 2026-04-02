@@ -6,23 +6,24 @@
 #include "GameFramework/PlayerState.h"
 #include "AbilitySystemInterface.h"
 #include "GameplayEffectTypes.h"
-#include "Interfaces/HeroAbilityNotificationReceiver.h"
 #include "IsometricAbilities/Types/EquippedAbilityInfo.h"
 #include "GameplayTagContainer.h"
 #include "UI/HUD/HUDPresentationBuilder.h"
+#include "UI/HUD/HUDRefreshTypes.h"
 #include "IsoPlayerState.generated.h"
 
 class UAbilitySystemComponent;
 class UIsometricRPGAttributeSetBase;
 class UGameplayAbility;
-class UHUDRootWidget;
 struct FOnAttributeChangeData;
 struct FGameplayEffectSpec;
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnHeroHUDRefreshRequested, const FHeroHUDRefreshRequest&);
 /**
  * 
  */
 UCLASS()
-class ISOMETRICRPG_API AIsoPlayerState : public APlayerState, public IAbilitySystemInterface, public IHeroAbilityNotificationReceiver
+class ISOMETRICRPG_API AIsoPlayerState : public APlayerState, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 public:
@@ -77,16 +78,7 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Attributes")
     TSubclassOf<class UGameplayEffect> DefaultAttributesEffect;
     void InitializeAttributes();
-    
-    // UI初始化相关
-    bool bUIInitialized = false;
-    bool bPendingUIUpdate = false;
-    void OnUIInitialized();
-    void UpdateUIWhenReady();
     void NotifyAbilityActorInfoReady();
-
-    /** Called by gameplay abilities to kick off HUD cooldown visuals. */
-    virtual void NotifyAbilityCooldownTriggered_Implementation(const FGameplayAbilitySpecHandle& Handle, float DurationSeconds) override;
 
     // UI Debug: whether to show all owned gameplay tags as text badges on HUD
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Debug")
@@ -95,14 +87,18 @@ public:
     // Whitelist of gameplay tags to surface on the HUD buff strip, mapping to icon assets
     UPROPERTY(EditDefaultsOnly, Category = "UI|Buffs")
     TMap<FGameplayTag, TSoftObjectPtr<class UTexture2D>> BuffIconMap;
+
+    FHUDPresentationContext MakeHUDPresentationContext() const;
+    bool QueryCooldownState(const UGameplayAbility* AbilityCDO, float& OutDuration, float& OutRemaining) const;
+    bool TryGetEquippedAbilityInfoByHandle(const FGameplayAbilitySpecHandle& Handle, FEquippedAbilityInfo& OutInfo) const;
+    FOnHeroHUDRefreshRequested& OnHUDRefreshRequested() { return HUDRefreshRequested; }
 private:
 	int SlotIndex = 0; // 用于跟踪当前技能槽的索引
-    FHUDPresentationContext BuildHUDPresentationContext() const;
     void OnAssetsLoadedForUI();
     void EnsureAttributeDelegatesBound();
     void EnsureGameplayTagDelegatesBound();
     void EnsureGameplayEffectDelegatesBound();
-    UHUDRootWidget* ResolveHUDWidget() const;
+    void RequestHUDRefresh(EHeroHUDRefreshKind Kind, const FGameplayAbilitySpecHandle& SpecHandle = FGameplayAbilitySpecHandle(), float DurationSeconds = 0.f);
     void HandleObservedGameplayTagChanged(const FGameplayTag ChangedTag, int32 NewCount);
     void HandleVitalAttributeValueChanged(const FOnAttributeChangeData& ChangeData);
     void HandleChampionStatAttributeValueChanged(const FOnAttributeChangeData& ChangeData);
@@ -142,5 +138,5 @@ private:
     int32 IndexFromSlot(ESkillSlot Slot) const;            // 将枚举槽转换为0基索引；非栏位返回 INDEX_NONE
 
     const FEquippedAbilityInfo* FindEquippedInfoByHandle(const FGameplayAbilitySpecHandle& Handle) const;
-    bool QueryCooldownState(const UGameplayAbility* AbilityCDO, float& OutDuration, float& OutRemaining) const;
+    FOnHeroHUDRefreshRequested HUDRefreshRequested;
 };

@@ -4,24 +4,29 @@
 #include "GameFramework/PlayerController.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
+#include "Interfaces/HeroAbilityNotificationReceiver.h"
 #include "Input/IsometricInputTypes.h"
 #include "IsometricRPG/IsometricAbilities/Types/HeroAbilityTypes.h"
 #include "IsometricRPG/UI/HUD/HUDRootWidget.h"
+#include "IsometricRPG/UI/HUD/HUDRefreshTypes.h"
 #include "IsometricPlayerController.generated.h"
 
 
 class UInputMappingContext;
 class UInputAction;
 class UIsometricInputComponent;
+class AIsoPlayerState;
 UCLASS()
-class ISOMETRICRPG_API AIsometricPlayerController : public APlayerController
+class ISOMETRICRPG_API AIsometricPlayerController : public APlayerController, public IHeroAbilityNotificationReceiver
 {
 	GENERATED_BODY()
 public:
 	AIsometricPlayerController();
+    virtual void NotifyAbilityCooldownTriggered_Implementation(const FGameplayAbilitySpecHandle& SpecHandle, float DurationSeconds) override;
 
 protected:
 	virtual void BeginPlay() override;
+    virtual void OnRep_PlayerState() override;
 	virtual void SetupInputComponent() override;
     // 添加Tick函数来处理按住右键的逻辑
 	virtual void PlayerTick(float DeltaTime) override;
@@ -93,6 +98,12 @@ public:
 	UPROPERTY()
 	TObjectPtr<UHUDRootWidget> PlayerHUDInstance;
 private:
+    void EnsureHUDCreated();
+    void BindHUDRefreshSource(AIsoPlayerState* InPlayerState);
+    void UnbindHUDRefreshSource();
+    void HandleHUDRefreshRequested(const FHeroHUDRefreshRequest& Request);
+    void RefreshHUD(const FHeroHUDRefreshRequest& Request);
+
     // 【新增】用于追踪右键是否被按下的状态
     bool bIsRightMouseDown = false;
     // 【新增】用于缓存上一帧的目标Actor，以判断目标是否变化
@@ -102,6 +113,8 @@ private:
     float NextHeldAttackCommandTime = 0.0f;
     bool bHasLastHeldMoveLocation = false;
 	TMap<EAbilityInputID, float> AbilityPressedAtTime;
+    TWeakObjectPtr<AIsoPlayerState> BoundHUDRefreshSource;
+    FDelegateHandle HUDRefreshRequestedHandle;
 
     bool GetHitResultUnderCursorSafe(ECollisionChannel TraceChannel, bool bTraceComplex, FHitResult& HitResult) const;
 };
