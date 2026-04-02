@@ -805,7 +805,7 @@ void AIsoPlayerState::BindBuffEffectDelegates(FActiveGameplayEffectHandle Active
     TrackedBuffEffectHandles.Add(ActiveHandle);
 }
 
-void AIsoPlayerState::HandleAbilityCooldownTriggered(const FGameplayAbilitySpecHandle& SpecHandle, float DurationSeconds)
+void AIsoPlayerState::NotifyAbilityCooldownTriggered_Implementation(const FGameplayAbilitySpecHandle& SpecHandle, float DurationSeconds)
 {
     if (!SpecHandle.IsValid() || DurationSeconds <= 0.f)
     {

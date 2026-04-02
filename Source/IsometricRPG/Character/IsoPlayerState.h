@@ -6,6 +6,7 @@
 #include "GameFramework/PlayerState.h"
 #include "AbilitySystemInterface.h"
 #include "GameplayEffectTypes.h"
+#include "Interfaces/HeroAbilityNotificationReceiver.h"
 #include "IsometricAbilities/Types/EquippedAbilityInfo.h"
 #include "GameplayTagContainer.h"
 #include "UI/HUD/HUDPresentationBuilder.h"
@@ -21,7 +22,7 @@ struct FGameplayEffectSpec;
  * 
  */
 UCLASS()
-class ISOMETRICRPG_API AIsoPlayerState : public APlayerState, public IAbilitySystemInterface
+class ISOMETRICRPG_API AIsoPlayerState : public APlayerState, public IAbilitySystemInterface, public IHeroAbilityNotificationReceiver
 {
 	GENERATED_BODY()
 public:
@@ -85,7 +86,7 @@ public:
     void NotifyAbilityActorInfoReady();
 
     /** Called by gameplay abilities to kick off HUD cooldown visuals. */
-    void HandleAbilityCooldownTriggered(const FGameplayAbilitySpecHandle& Handle, float DurationSeconds);
+    virtual void NotifyAbilityCooldownTriggered_Implementation(const FGameplayAbilitySpecHandle& Handle, float DurationSeconds) override;
 
     // UI Debug: whether to show all owned gameplay tags as text badges on HUD
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Debug")

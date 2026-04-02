@@ -3,10 +3,11 @@
 #include "Abilities/GameplayAbility.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
-#include "Character/IsoPlayerState.h"
 #include "Character/IsometricRPGAttributeSetBase.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerState.h"
+#include "Interfaces/HeroAbilityNotificationReceiver.h"
 
 namespace
 {
@@ -351,23 +352,23 @@ void FHeroAbilityCommitHelper::NotifyCooldownTriggered(
         return;
     }
 
-    AIsoPlayerState* IsoPlayerState = nullptr;
+    UObject* NotificationReceiver = nullptr;
 
     if (const APawn* Pawn = Cast<APawn>(ActorInfo->AvatarActor.Get()))
     {
-        IsoPlayerState = Pawn->GetPlayerState<AIsoPlayerState>();
+        NotificationReceiver = Cast<UObject>(Pawn->GetPlayerState());
     }
 
-    if (!IsoPlayerState)
+    if (!NotificationReceiver)
     {
         if (const AController* Controller = Cast<AController>(ActorInfo->PlayerController.Get()))
         {
-            IsoPlayerState = Controller->GetPlayerState<AIsoPlayerState>();
+            NotificationReceiver = Cast<UObject>(Controller->GetPlayerState<APlayerState>());
         }
     }
 
-    if (IsoPlayerState)
+    if (NotificationReceiver && NotificationReceiver->GetClass()->ImplementsInterface(UHeroAbilityNotificationReceiver::StaticClass()))
     {
-        IsoPlayerState->HandleAbilityCooldownTriggered(Handle, CooldownDuration);
+        IHeroAbilityNotificationReceiver::Execute_NotifyAbilityCooldownTriggered(NotificationReceiver, Handle, CooldownDuration);
     }
 }

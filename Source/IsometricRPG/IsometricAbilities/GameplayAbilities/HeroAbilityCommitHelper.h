@@ -4,7 +4,6 @@
 #include "GameplayTagContainer.h"
 #include "Templates/SubclassOf.h"
 
-class AIsoPlayerState;
 class UAbilitySystemComponent;
 class UGameplayAbility;
 class UGameplayEffect;
