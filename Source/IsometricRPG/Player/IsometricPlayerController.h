@@ -6,9 +6,10 @@
 #include "InputActionValue.h"
 #include "Interfaces/HeroAbilityNotificationReceiver.h"
 #include "Input/IsometricInputTypes.h"
+#include "Player/HeroCursorInputRouter.h"
+#include "Player/HeroHUDCoordinator.h"
 #include "IsometricRPG/IsometricAbilities/Types/HeroAbilityTypes.h"
 #include "IsometricRPG/UI/HUD/HUDRootWidget.h"
-#include "IsometricRPG/UI/HUD/HUDRefreshTypes.h"
 #include "IsometricPlayerController.generated.h"
 
 
@@ -26,6 +27,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void OnRep_PlayerState() override;
 	virtual void SetupInputComponent() override;
     // 添加Tick函数来处理按住右键的逻辑
@@ -77,8 +79,9 @@ protected:
 		EAbilityInputID InputID = EAbilityInputID::None,
 		float HeldDuration = 0.0f) const;
 	void DispatchInputSnapshot(const FCursorInputSnapshot& Snapshot);
-	float GetAbilityHeldDuration(EAbilityInputID InputID) const;
+	float GetAbilityHeldDuration(const TMap<EAbilityInputID, float>& PressedTimes, EAbilityInputID InputID) const;
 	UIsometricInputComponent* ResolveInputComponent() const;
+    FHeroCursorInputRouterConfig MakeCursorInputRouterConfig() const;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input|RightClick")
 	float HeldMoveRepathInterval = 0.1f;
@@ -98,23 +101,11 @@ public:
 	UPROPERTY()
 	TObjectPtr<UHUDRootWidget> PlayerHUDInstance;
 private:
-    void EnsureHUDCreated();
-    void BindHUDRefreshSource(AIsoPlayerState* InPlayerState);
-    void UnbindHUDRefreshSource();
-    void HandleHUDRefreshRequested(const FHeroHUDRefreshRequest& Request);
-    void RefreshHUD(const FHeroHUDRefreshRequest& Request);
+    friend class FHeroHUDCoordinator;
+    friend class FHeroCursorInputRouter;
 
-    // 【新增】用于追踪右键是否被按下的状态
-    bool bIsRightMouseDown = false;
-    // 【新增】用于缓存上一帧的目标Actor，以判断目标是否变化
-    TWeakObjectPtr<AActor> LastHitActor;
-    FVector LastHeldMoveLocation = FVector::ZeroVector;
-    float NextHeldMoveCommandTime = 0.0f;
-    float NextHeldAttackCommandTime = 0.0f;
-    bool bHasLastHeldMoveLocation = false;
-	TMap<EAbilityInputID, float> AbilityPressedAtTime;
-    TWeakObjectPtr<AIsoPlayerState> BoundHUDRefreshSource;
-    FDelegateHandle HUDRefreshRequestedHandle;
+    FHeroHUDCoordinator HUDCoordinator;
+    FHeroCursorInputRouter CursorInputRouter;
 
     bool GetHitResultUnderCursorSafe(ECollisionChannel TraceChannel, bool bTraceComplex, FHitResult& HitResult) const;
 };

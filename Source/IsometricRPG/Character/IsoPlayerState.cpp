@@ -3,6 +3,7 @@
 #include "IsoPlayerState.h"
 #include "AbilitySystemComponent.h"
 #include "IsometricRPG/Character/IsometricRPGAttributeSetBase.h"
+#include "IsometricAbilities/GameplayAbilities/HeroAbilityLoadoutService.h"
 #include "IsometricAbilities/Types/EquippedAbilityInfo.h"
 #include "GameplayTagContainer.h"
 #include "GameplayAbilitySpec.h"
@@ -83,60 +84,26 @@ UAbilitySystemComponent* AIsoPlayerState::GetAbilitySystemComponent() const
     return AbilitySystemComponent;
 }
 
-int32 AIsoPlayerState::GetSkillBarSlotCount() const
-{
-    // 显示在技能栏的真实槽位：Passive, Q, W, E, R, D, F -> 7 个
-    return 7;
-}
-
-int32 AIsoPlayerState::IndexFromSlot(ESkillSlot Slot) const
-{
-    // 将枚举槽位转换为 0 基索引，仅对真实技能栏槽位有效
-    switch (Slot)
-    {
-    case ESkillSlot::Skill_Passive: return 0;
-    case ESkillSlot::Skill_Q:       return 1;
-    case ESkillSlot::Skill_W:       return 2;
-    case ESkillSlot::Skill_E:       return 3;
-    case ESkillSlot::Skill_R:       return 4;
-    case ESkillSlot::Skill_D:       return 5;
-    case ESkillSlot::Skill_F:       return 6;
-    default:                        return INDEX_NONE; // Invalid 或 MAX
-    }
-}
-
 FEquippedAbilityInfo AIsoPlayerState::GetEquippedAbilityInfo(ESkillSlot Slot) const
 {
-    const int32 Index = IndexFromSlot(Slot);
+    const int32 Index = FHeroAbilityLoadoutService::IndexFromSlot(Slot);
     if (EquippedAbilities.IsValidIndex(Index))
+    {
         return EquippedAbilities[Index];
+    }
+
     return FEquippedAbilityInfo();
 }
 
 void AIsoPlayerState::Server_EquipAbilityToSlot_Implementation(TSubclassOf<UGameplayAbility> NewAbilityClass, ESkillSlot Slot)
 {
-    if (!NewAbilityClass || Slot == ESkillSlot::Invalid || Slot == ESkillSlot::MAX)
+    if (!AbilitySystemComponent || !NewAbilityClass || Slot == ESkillSlot::Invalid || Slot == ESkillSlot::MAX)
         return;
 
-    const int32 Index = IndexFromSlot(Slot);
-    if (Index == INDEX_NONE) return;
-
-    if (!EquippedAbilities.IsValidIndex(Index))
-        EquippedAbilities.SetNum(GetSkillBarSlotCount());
-
-    FEquippedAbilityInfo& Info = EquippedAbilities[Index];
-    
-    // 如果技能类没变且 Handle 有效，则不需要重新授予
-    // 修复：TSoftClassPtr 没有直接的 == 运算符重载，需用 ToSoftObjectPath() 比较路径
-   // 修复：TSubclassOf 没有 ToSoftObjectPath()，应先转为 TSoftClassPtr 再比较路径
-    if (TSoftClassPtr<UGameplayAbility>(Info.AbilityClass).ToSoftObjectPath() == TSoftClassPtr<UGameplayAbility>(NewAbilityClass).ToSoftObjectPath() && Info.AbilitySpecHandle.IsValid())
+    if (!FHeroAbilityLoadoutService::EquipAbilityToSlot(*AbilitySystemComponent, this, EquippedAbilities, NewAbilityClass, Slot))
     {
         return;
     }
-
-    Info.AbilityClass = NewAbilityClass;
-    Info.Slot = Slot;
-    GrantAbilityInternal(Info, true);
     
     // 强制触发同步回调以更新 UI（在 Listen Server/Standalone 下）
     if (GetNetMode() != NM_DedicatedServer)
@@ -147,16 +114,15 @@ void AIsoPlayerState::Server_EquipAbilityToSlot_Implementation(TSubclassOf<UGame
 
 void AIsoPlayerState::Server_UnequipAbilityFromSlot_Implementation(ESkillSlot Slot)
 {
-    const int32 Index = IndexFromSlot(Slot);
-    if (!EquippedAbilities.IsValidIndex(Index))
-        return;
-
-    FEquippedAbilityInfo& Info = EquippedAbilities[Index];
-    if (Info.AbilitySpecHandle.IsValid())
+    if (!AbilitySystemComponent)
     {
-        ClearAbilityInternal(Info);
+        return;
     }
-    Info = FEquippedAbilityInfo();
+
+    if (!FHeroAbilityLoadoutService::UnequipAbilityFromSlot(*AbilitySystemComponent, EquippedAbilities, Slot))
+    {
+        return;
+    }
     
     if (GetNetMode() != NM_DedicatedServer)
     {
@@ -207,81 +173,12 @@ void AIsoPlayerState::OnRep_EquippedAbilities()
 
 }
 
-void AIsoPlayerState::GrantAbilityInternal(FEquippedAbilityInfo& Info, bool bRemoveExistingFirst)
-{
-    if (!HasAuthority() || !AbilitySystemComponent)
-        return;
-
-    if (bRemoveExistingFirst && Info.AbilitySpecHandle.IsValid())
-        ClearAbilityInternal(Info);
-
-    if (Info.AbilityClass.ToSoftObjectPath().IsNull())
-        return;
-
-    TSubclassOf<UGameplayAbility> LoadedAbilityClass = Info.AbilityClass.LoadSynchronous();
-    if (!LoadedAbilityClass) return;
-
-    if (!Info.AbilitySpecHandle.IsValid())
-    {
-        int32 InputID = -1;
-        switch (Info.Slot)
-        {
-        case ESkillSlot::Skill_Q: InputID = (int32)EAbilityInputID::Ability_Q; break;
-        case ESkillSlot::Skill_W: InputID = (int32)EAbilityInputID::Ability_W; break;
-        case ESkillSlot::Skill_E: InputID = (int32)EAbilityInputID::Ability_E; break;
-        case ESkillSlot::Skill_R: InputID = (int32)EAbilityInputID::Ability_R; break;
-        case ESkillSlot::Skill_D: InputID = (int32)EAbilityInputID::Ability_Summoner1; break;
-        case ESkillSlot::Skill_F: InputID = (int32)EAbilityInputID::Ability_Summoner2; break;
-        default: break;
-        }
-
-        FGameplayAbilitySpec Spec(LoadedAbilityClass, 1, InputID, this);
-        Info.AbilitySpecHandle = AbilitySystemComponent->GiveAbility(Spec);
-        UE_LOG(LogTemp, Log, TEXT("[AbilityGrant] Granted %s -> HandleValid=%d Slot=%d InputID=%d"),
-            *GetNameSafe(LoadedAbilityClass), Info.AbilitySpecHandle.IsValid(), static_cast<int32>(Info.Slot), InputID);
-    }
-}
-
-void AIsoPlayerState::ClearAbilityInternal(FEquippedAbilityInfo& Info)
-{
-    if (AbilitySystemComponent && Info.AbilitySpecHandle.IsValid())
-    {
-        AbilitySystemComponent->ClearAbility(Info.AbilitySpecHandle);
-        Info.AbilitySpecHandle = FGameplayAbilitySpecHandle();
-    }
-}
-
 void AIsoPlayerState::InitAbilities()
 {
     if (!HasAuthority() || !AbilitySystemComponent || DefaultAbilities.Num() == 0 || bAbilitiesInitialized)
         return;
 
-    EquippedAbilities.Empty();
-    EquippedAbilities.SetNum(GetSkillBarSlotCount());
-
-    for (const FEquippedAbilityInfo& AbilityInfo : DefaultAbilities)
-    {
-        if (AbilityInfo.AbilityClass.ToSoftObjectPath().IsNull())
-            continue;
-        if (AbilityInfo.Slot == ESkillSlot::MAX)
-            continue;
-
-        UE_LOG(LogTemp, Log, TEXT("[InitAbilities] Granting default ability %s to Slot %d"),
-            *AbilityInfo.AbilityClass.ToString(), static_cast<int32>(AbilityInfo.Slot));
-
-        const int32 Index = IndexFromSlot(AbilityInfo.Slot);
-        if (Index == INDEX_NONE)
-        {
-            FEquippedAbilityInfo TempInfo = AbilityInfo;
-            GrantAbilityInternal(TempInfo, true);
-        }
-        else
-        {
-            FEquippedAbilityInfo& NewEquippedInfo = EquippedAbilities[Index];
-            NewEquippedInfo = AbilityInfo;
-            GrantAbilityInternal(NewEquippedInfo, true);
-        }
-    }
+    FHeroAbilityLoadoutService::InitializeDefaultAbilities(*AbilitySystemComponent, this, DefaultAbilities, EquippedAbilities);
 
     bAbilitiesInitialized = true;
     bPendingPassiveActivation = true;
