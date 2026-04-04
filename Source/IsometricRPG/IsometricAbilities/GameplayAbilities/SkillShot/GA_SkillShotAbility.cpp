@@ -45,21 +45,8 @@ void UGA_SkillShotAbility::ExecuteSkill(const FGameplayAbilitySpecHandle Handle,
 	}
 }
 
-void UGA_SkillShotAbility::StartTargetSelection(
-	const FGameplayAbilitySpecHandle Handle,
-	const FGameplayAbilityActorInfo* ActorInfo,
-	const FGameplayAbilityActivationInfo ActivationInfo)
+void UGA_SkillShotAbility::BeginTargetSelectionPresentation()
 {
-	// For skill shots, we need a position/direction target, not an actor target
-	// This could use a line trace or cursor position target actor
-	if (!TargetActorClass)
-	{
-		UE_LOG(LogTemp, Error, TEXT("'%s': TargetActorClass is NOT SET! Cancelling."), *GetName());
-		CancelAbility(Handle, ActorInfo, ActivationInfo, true);
-		return;
-	}
-
-	// Show aim indicator if available
 	if (AimIndicatorClass)
 	{
 		AActor* Avatar = GetAvatarActorFromActorInfo();
@@ -73,9 +60,6 @@ void UGA_SkillShotAbility::StartTargetSelection(
 			);
 		}
 	}
-
-	// Start targeting for direction/position
-	Super::StartTargetSelection(Handle, ActorInfo, ActivationInfo);
 }
 
 

@@ -21,7 +21,7 @@ UGA_Death::UGA_Death()
         DeathMontage = AttackMontageObj.Object;
     }
     FAbilityTriggerData TriggerData;
-    TriggerData.TriggerTag = FGameplayTag::RequestGameplayTag(FName("Event.Character.Death")); // 监听我们在属性集中定义的Tag
+    TriggerData.TriggerTag = FGameplayTag::RequestGameplayTag(FName("Event.Character.Death"));
     TriggerData.TriggerSource = EGameplayAbilityTriggerSource::GameplayEvent;
     AbilityTriggers.Add(TriggerData);
 

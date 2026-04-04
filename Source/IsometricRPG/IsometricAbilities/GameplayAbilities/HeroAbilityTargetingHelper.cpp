@@ -1,6 +1,8 @@
 #include "IsometricAbilities/GameplayAbilities/HeroAbilityTargetingHelper.h"
 
+#include "Abilities/Tasks/AbilityTask_WaitTargetData.h"
 #include "AbilitySystemComponent.h"
+#include "Character/IsometricRPGCharacter.h"
 #include "IsometricAbilities/GameplayAbilities/GA_HeroBaseAbility.h"
 
 namespace
@@ -248,4 +250,93 @@ void FHeroAbilityTargetingHelper::CleanupReplicatedTargetDataDelegates(
 
     TargetDataDelegateHandle.Reset();
     CancelledDelegateHandle.Reset();
+}
+
+bool FHeroAbilityTargetingHelper::RegisterReplicatedTargetDataDelegates(
+    UGA_HeroBaseAbility& Ability,
+    UAbilitySystemComponent& AbilitySystemComponent,
+    const FGameplayAbilitySpecHandle& SpecHandle,
+    const FGameplayAbilityActivationInfo& ActivationInfo,
+    FDelegateHandle& TargetDataDelegateHandle,
+    FDelegateHandle& CancelledDelegateHandle)
+{
+    if (!SpecHandle.IsValid())
+    {
+        return false;
+    }
+
+    CleanupReplicatedTargetDataDelegates(
+        &AbilitySystemComponent,
+        SpecHandle,
+        ActivationInfo,
+        TargetDataDelegateHandle,
+        CancelledDelegateHandle);
+
+    const FPredictionKey ActivationPredictionKey = ActivationInfo.GetActivationPredictionKey();
+    TargetDataDelegateHandle = AbilitySystemComponent.AbilityTargetDataSetDelegate(SpecHandle, ActivationPredictionKey)
+        .AddUObject(&Ability, &UGA_HeroBaseAbility::HandleReplicatedTargetDataReceived);
+    CancelledDelegateHandle = AbilitySystemComponent.AbilityTargetDataCancelledDelegate(SpecHandle, ActivationPredictionKey)
+        .AddUObject(&Ability, &UGA_HeroBaseAbility::HandleReplicatedTargetDataCancelled);
+    return AbilitySystemComponent.CallReplicatedTargetDataDelegatesIfSet(SpecHandle, ActivationPredictionKey);
+}
+
+bool FHeroAbilityTargetingHelper::TryResolveActivationTargetingContext(
+    const AActor* AvatarActor,
+    FPendingAbilityActivationContext& OutInputContext,
+    FGameplayAbilityTargetDataHandle& OutTargetDataHandle)
+{
+    const AIsometricRPGCharacter* Character = Cast<AIsometricRPGCharacter>(AvatarActor);
+    if (!Character)
+    {
+        return false;
+    }
+
+    OutInputContext = Character->GetPendingAbilityActivationContext();
+    OutTargetDataHandle = Character->GetAbilityTargetData();
+    return true;
+}
+
+void FHeroAbilityTargetingHelper::ApplyReplicatedTargetDataToActivationContext(
+    AIsometricRPGCharacter& Character,
+    const FGameplayAbilityTargetDataHandle& Data,
+    FPendingAbilityActivationContext& OutInputContext)
+{
+    FPendingAbilityActivationContext Context = Character.GetPendingAbilityActivationContext();
+    Context.TargetData = Data;
+    Character.SetPendingAbilityActivationContext(Context);
+    OutInputContext = Character.GetPendingAbilityActivationContext();
+}
+
+UAbilityTask_WaitTargetData* FHeroAbilityTargetingHelper::CreateTargetSelectionTask(
+    UGA_HeroBaseAbility& Ability,
+    TSubclassOf<AGameplayAbilityTargetActor> TargetActorClass)
+{
+    if (!TargetActorClass)
+    {
+        return nullptr;
+    }
+
+    UAbilityTask_WaitTargetData* TargetDataTask = UAbilityTask_WaitTargetData::WaitTargetData(
+        &Ability,
+        FName("TargetData"),
+        EGameplayTargetingConfirmation::UserConfirmed,
+        TargetActorClass);
+    if (!TargetDataTask)
+    {
+        return nullptr;
+    }
+
+    TargetDataTask->ValidData.AddDynamic(&Ability, &UGA_HeroBaseAbility::OnTargetDataReady);
+    TargetDataTask->Cancelled.AddDynamic(&Ability, &UGA_HeroBaseAbility::OnTargetingCancelled);
+
+    AGameplayAbilityTargetActor* SpawnedActor = nullptr;
+    TargetDataTask->BeginSpawningActor(&Ability, TargetActorClass, SpawnedActor);
+    if (SpawnedActor)
+    {
+        Ability.ConfigureTargetSelectionActor(*SpawnedActor);
+    }
+    TargetDataTask->FinishSpawningActor(&Ability, SpawnedActor);
+    Ability.BeginTargetSelectionPresentation();
+    TargetDataTask->ReadyForActivation();
+    return TargetDataTask;
 }

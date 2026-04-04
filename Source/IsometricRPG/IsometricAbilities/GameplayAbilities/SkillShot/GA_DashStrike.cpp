@@ -40,14 +40,11 @@ UGA_DashStrike::UGA_DashStrike()
 	InputPolicy.bUpdateTargetWhileHeld = false;
 	InputPolicy.bAllowInputBuffer = true;
 
-	// 设置标签
-	FGameplayTagContainer AssetTagContainer = GetAssetTags();
-	AssetTagContainer.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Player.DashStrike")));
-	SetAssetTags(AssetTagContainer);
-	ActivationOwnedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Dashing")));
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Dead")));
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Stunned")));
-	ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Cooldown.Ability.DashStrike")));
+	ConfigureAbilityIdentityTag(FGameplayTag::RequestGameplayTag(FName("Ability.Player.DashStrike")), false, false);
+	AddOwnedTagIfMissing(FGameplayTag::RequestGameplayTag(FName("State.Dashing")));
+	AddBlockedTagIfMissing(FGameplayTag::RequestGameplayTag(FName("State.Dead")));
+	AddBlockedTagIfMissing(FGameplayTag::RequestGameplayTag(FName("State.Stunned")));
+	AddBlockedTagIfMissing(FGameplayTag::RequestGameplayTag(FName("Cooldown.Ability.DashStrike")));
 }
 
 void UGA_DashStrike::ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo)

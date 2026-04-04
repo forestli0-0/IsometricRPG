@@ -20,20 +20,25 @@ class ISOMETRICRPG_API UGA_TargetedAbility : public UGA_HeroBaseAbility
 public:
 	UGA_TargetedAbility();
 
-	virtual void StartTargetSelection(
-		const FGameplayAbilitySpecHandle Handle,
-		const FGameplayAbilityActorInfo* ActorInfo,
-		const FGameplayAbilityActivationInfo ActivationInfo) override;
-
 	UFUNCTION()
 	void OnReachedTarget();
 	UFUNCTION()
 	void OnFailedToTarget();
 protected:
 	virtual bool OtherCheckBeforeCommit() override;
+	virtual void ConfigureTargetSelectionActor(AGameplayAbilityTargetActor& TargetActor) override;
+	virtual void BeginTargetSelectionPresentation() override;
+	void CacheCurrentTargetDataForApproach(const FGameplayAbilityTargetDataHandle& Data);
+	bool CheckCachedTargetInRangeOrStartApproach(float AcceptanceRadius);
 	bool EnsureCurrentTargetDataAvailable(
-		const TWeakObjectPtr<AActor>& CachedTargetActor,
-		const FVector& CachedTargetLocation);
+		const TWeakObjectPtr<AActor>& CachedTargetActorOverride,
+		const FVector& CachedTargetLocationOverride);
+
+	UPROPERTY()
+	TWeakObjectPtr<AActor> CachedTargetActor;
+
+	UPROPERTY()
+	FVector CachedTargetLocation = FVector::ZeroVector;
 
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,

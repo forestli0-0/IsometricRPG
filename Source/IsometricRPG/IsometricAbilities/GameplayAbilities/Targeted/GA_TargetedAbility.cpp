@@ -1,4 +1,5 @@
 #include "GA_TargetedAbility.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/Pawn.h"
 #include "Abilities/GameplayAbilityTargetActor_SingleLineTrace.h"
 #include "IsometricAbilities/TargetTrace/GATA_CursorTrace.h"
@@ -51,19 +52,55 @@ bool UGA_TargetedAbility::OtherCheckBeforeCommit()
 }
 
 bool UGA_TargetedAbility::EnsureCurrentTargetDataAvailable(
-    const TWeakObjectPtr<AActor>& CachedTargetActor,
-    const FVector& CachedTargetLocation)
+    const TWeakObjectPtr<AActor>& CachedTargetActorOverride,
+    const FVector& CachedTargetLocationOverride)
 {
     if (FHeroAbilityApproachHelper::TryRestoreTargetDataFromCache(
         CurrentTargetDataHandle,
-        CachedTargetActor,
-        CachedTargetLocation))
+        CachedTargetActorOverride,
+        CachedTargetLocationOverride))
     {
         return true;
     }
 
     OnFailedToTarget();
     return false;
+}
+
+void UGA_TargetedAbility::CacheCurrentTargetDataForApproach(const FGameplayAbilityTargetDataHandle& Data)
+{
+    FHeroAbilityApproachHelper::CachePrimaryTargetData(Data, CachedTargetActor, CachedTargetLocation);
+}
+
+bool UGA_TargetedAbility::CheckCachedTargetInRangeOrStartApproach(const float AcceptanceRadius)
+{
+    AActor* TargetActor = nullptr;
+    FVector TargetLocation = FVector::ZeroVector;
+    if (!FHeroAbilityApproachHelper::TryResolveTargetOrCached(
+        CurrentTargetDataHandle,
+        CachedTargetActor,
+        CachedTargetLocation,
+        TargetActor,
+        TargetLocation))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s: 没有有效目标可用于检查。"), *GetName());
+        return false;
+    }
+
+    ACharacter* SelfCharacter = Cast<ACharacter>(GetAvatarActorFromActorInfo());
+    if (!SelfCharacter)
+    {
+        return false;
+    }
+
+    const float Distance = FVector::Distance(SelfCharacter->GetActorLocation(), TargetLocation);
+    if (Distance > AcceptanceRadius)
+    {
+        FHeroAbilityApproachHelper::StartMoveToActorOrLocation(*this, TargetActor, TargetLocation, AcceptanceRadius);
+        return false;
+    }
+
+    return true;
 }
 
 void UGA_TargetedAbility::OnReachedTarget()
@@ -74,6 +111,11 @@ void UGA_TargetedAbility::OnReachedTarget()
      
     if (bIsServer)
     {
+        if (!EnsureCurrentTargetDataAvailable(CachedTargetActor, CachedTargetLocation))
+        {
+            return;
+        }
+
         if (!TryCommitAndExecuteAbility(
             CurrentSpecHandle,
             CurrentActorInfo,
@@ -96,63 +138,31 @@ void UGA_TargetedAbility::OnFailedToTarget()
     constexpr bool bWasCancelled = true;
     EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
-void UGA_TargetedAbility::StartTargetSelection(
-    const FGameplayAbilitySpecHandle Handle,
-    const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo)
+
+void UGA_TargetedAbility::ConfigureTargetSelectionActor(AGameplayAbilityTargetActor& TargetActor)
 {
-    if (!TargetActorClass)
+    AGATA_CursorTrace* CursorTraceTargetActor = Cast<AGATA_CursorTrace>(&TargetActor);
+    if (!CursorTraceTargetActor)
     {
-        UE_LOG(LogTemp, Error, TEXT("'%s': TargetActorClass is NOT SET! Cancelling."), *GetName());
-        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
         return;
     }
 
-    if (!GetAvatarActorFromActorInfo())
-    {
-        UE_LOG(LogTemp, Error, TEXT("'%s': Avatar actor is null. Cancelling."), *GetName());
-        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
-        return;
-    }
-
-    FHeroTargetedAbilityPresentationHelper::SpawnRangeIndicator(*this, RangeToApply);
-
-    TargetDataTask = UAbilityTask_WaitTargetData::WaitTargetData(
-        this,
-        FName("TargetData"),
-        EGameplayTargetingConfirmation::UserConfirmed,
-        TargetActorClass
-    );
-
-    if (TargetDataTask)
-    {
-        TargetDataTask->ValidData.AddDynamic(this, &UGA_TargetedAbility::OnTargetDataReady);
-        TargetDataTask->Cancelled.AddDynamic(this, &UGA_HeroBaseAbility::OnTargetingCancelled);
-
-        // 如果需要在 GATA 实例上设置属性 (比如 TraceChannel)
-        AGameplayAbilityTargetActor* TempSpawnedTargetActorRaw = nullptr;
-        TargetDataTask->BeginSpawningActor(this, TargetActorClass, TempSpawnedTargetActorRaw);
-        AGATA_CursorTrace* SpawnedTargetActor = Cast<AGATA_CursorTrace>(TempSpawnedTargetActorRaw);
-        if (SpawnedTargetActor)
-        {
-            const ECollisionChannel TraceChannel =
-                (AbilityType == EHeroAbilityType::SkillShot || AbilityType == EHeroAbilityType::AreaEffect)
-                ? ECC_Visibility
-                : ECC_Pawn;
-            SpawnedTargetActor->TraceChannel = UEngineTypes::ConvertToTraceType(TraceChannel);
-            SpawnedTargetActor->bTraceComplex = false; // 根据需要设置
-        }
-        TargetDataTask->FinishSpawningActor(this, TempSpawnedTargetActorRaw);
-        TargetDataTask->ReadyForActivation();
-    }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("'%s': FAILED to create TargetDataTask!"), *GetName());
-        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
-    }
+    const ECollisionChannel TraceChannel =
+        (AbilityType == EHeroAbilityType::SkillShot || AbilityType == EHeroAbilityType::AreaEffect)
+        ? ECC_Visibility
+        : ECC_Pawn;
+    CursorTraceTargetActor->TraceChannel = UEngineTypes::ConvertToTraceType(TraceChannel);
+    CursorTraceTargetActor->bTraceComplex = false;
 }
+
+void UGA_TargetedAbility::BeginTargetSelectionPresentation()
+{
+    FHeroTargetedAbilityPresentationHelper::SpawnRangeIndicator(*this, RangeToApply);
+}
+
 void UGA_TargetedAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data)
 {
+    CacheCurrentTargetDataForApproach(Data);
     FHeroTargetedAbilityPresentationHelper::SyncCurrentAbilityTargets(GetAvatarActorFromActorInfo(), Data);
     FHeroTargetedAbilityPresentationHelper::DestroyRangeIndicator(ActiveRangeIndicatorNiagaraActor);
     Super::OnTargetDataReady(Data);

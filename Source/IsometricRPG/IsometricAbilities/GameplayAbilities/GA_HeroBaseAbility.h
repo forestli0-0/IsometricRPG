@@ -28,6 +28,8 @@ UCLASS(Abstract) // 标记为抽象类
 class ISOMETRICRPG_API UGA_HeroBaseAbility : public UGameplayAbility
 {
     GENERATED_BODY()
+    friend class FHeroAbilityTargetingHelper;
+    friend class FHeroAbilityFlowHelper;
 
 public:
     UGA_HeroBaseAbility();
@@ -205,6 +207,8 @@ protected:
         const FGameplayAbilitySpecHandle Handle,
         const FGameplayAbilityActorInfo* ActorInfo,
         const FGameplayAbilityActivationInfo ActivationInfo);
+    virtual void ConfigureTargetSelectionActor(AGameplayAbilityTargetActor& TargetActor);
+    virtual void BeginTargetSelectionPresentation();
       // 直接执行技能（跳过目标选择）
     virtual void DirectExecuteAbility(
         const FGameplayAbilitySpecHandle Handle,
@@ -303,6 +307,14 @@ protected:
     bool ValidateAbilityConfiguration() const;
     bool ValidateExecutionTargetData(const FGameplayAbilityTargetDataHandle& TargetData, const TCHAR* Phase) const;
     void SetUsesInteractiveTargeting(bool bEnabled);
+    void AddAssetTagIfMissing(const FGameplayTag& Tag);
+    void AddOwnedTagIfMissing(const FGameplayTag& Tag);
+    void AddBlockedTagIfMissing(const FGameplayTag& Tag);
+    void SetGameplayEventTriggerTag(const FGameplayTag& Tag);
+    void ConfigureAbilityIdentityTag(
+        const FGameplayTag& AbilityTag,
+        bool bAddOwnedTag = true,
+        bool bUseAsGameplayEventTrigger = true);
 
     FGameplayAbilityActivationInfo CurrentActivationInfo;
     FPendingAbilityActivationContext CurrentInputContext;

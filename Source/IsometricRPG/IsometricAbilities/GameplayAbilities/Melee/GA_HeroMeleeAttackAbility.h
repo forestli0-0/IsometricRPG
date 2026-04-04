@@ -18,19 +18,7 @@ class ISOMETRICRPG_API UGA_HeroMeleeAttackAbility : public UGA_TargetedAbility
 public:
 	UGA_HeroMeleeAttackAbility();
 	bool hello() const{ return true; }
-	void OnReachedTarget();
-	void OnFailedToTarget();
 protected:
-	// 仅该技能内使用的缓存：跨越移动阶段后重建目标数据
-	UPROPERTY()
-	TWeakObjectPtr<AActor> CachedTargetActor;
-	UPROPERTY()
-	FVector CachedTargetLocation = FVector::ZeroVector;
-
-	// 缓存目标数据并交给父类继续推进
-
-	virtual void OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data) override;
-
 	// 使用“扩展到达半径”与移动任务；不调用父类该检查
 	virtual bool OtherCheckBeforeCommit() override;
 

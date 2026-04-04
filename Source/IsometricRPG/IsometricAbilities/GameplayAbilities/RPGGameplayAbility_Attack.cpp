@@ -29,14 +29,12 @@ URPGGameplayAbility_Attack::URPGGameplayAbility_Attack()
 	{
 		AttackMontage = AttackMontageObj.Object;
 	}
-	// 设置触发条件为接收 GameplayEvent，监听 Tag 为 Ability.MeleeAttack
 	FGameplayTagContainer AssetTagContainer = GetAssetTags();
 	AssetTagContainer.AddTag(FGameplayTag::RequestGameplayTag("Ability.MeleeAttack"));
 	SetAssetTags(AssetTagContainer);
 
 	ActivationOwnedTags.AddTag(FGameplayTag::RequestGameplayTag("Ability.MeleeAttack"));
 
-	// 设置触发事件
 	FAbilityTriggerData TriggerData;
 	TriggerData.TriggerTag = FGameplayTag::RequestGameplayTag("Ability.MeleeAttack");
 	TriggerData.TriggerSource = EGameplayAbilityTriggerSource::GameplayEvent;

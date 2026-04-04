@@ -38,11 +38,7 @@ protected:
 	TObjectPtr<class ANiagaraActor> ActiveAimIndicator;
 
 	virtual void ExecuteSkill(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) override;
-
-	virtual void StartTargetSelection(
-		const FGameplayAbilitySpecHandle Handle,
-		const FGameplayAbilityActorInfo* ActorInfo,
-		const FGameplayAbilityActivationInfo ActivationInfo) override;
+	virtual void BeginTargetSelectionPresentation() override;
 
 	// Get the direction from cursor/input
 	virtual FVector GetSkillShotDirection() const;

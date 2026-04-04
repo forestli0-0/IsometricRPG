@@ -15,15 +15,7 @@ class ISOMETRICRPG_API UGA_NormalAttack_Click : public UGA_TargetedAbility
 	GENERATED_BODY()
 public:
 	UGA_NormalAttack_Click();
-	void OnReachedTarget();
-	void OnFailedToTarget();
 protected:
-	// 仅该技能内使用的缓存：跨越移动阶段后重建目标数据
-	UPROPERTY()
-	TWeakObjectPtr<AActor> CachedTargetActor;
-	UPROPERTY()
-	FVector CachedTargetLocation = FVector::ZeroVector;
-
 	// 缓存目标数据并进入基类流程
 
 	virtual void OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data) override;

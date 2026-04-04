@@ -12,6 +12,7 @@
 #include "AbilitySystemGlobals.h" 
 #include <Character/IsometricRPGCharacter.h>
 #include "IsometricAbilities/GameplayAbilities/HeroAbilityCommitHelper.h"
+#include "IsometricAbilities/GameplayAbilities/HeroAbilityFlowHelper.h"
 #include "IsometricAbilities/GameplayAbilities/HeroAbilityMontageHelper.h"
 #include "IsometricAbilities/GameplayAbilities/HeroAbilityTargetingHelper.h"
 
@@ -109,6 +110,63 @@ void UGA_HeroBaseAbility::SetUsesInteractiveTargeting(const bool bEnabled)
     bUseInteractiveTargeting = bEnabled;
 }
 
+void UGA_HeroBaseAbility::AddAssetTagIfMissing(const FGameplayTag& Tag)
+{
+    if (!Tag.IsValid())
+    {
+        return;
+    }
+
+    FGameplayTagContainer AssetTagContainer = GetAssetTags();
+    if (!AssetTagContainer.HasTagExact(Tag))
+    {
+        AssetTagContainer.AddTag(Tag);
+        SetAssetTags(AssetTagContainer);
+    }
+}
+
+void UGA_HeroBaseAbility::AddOwnedTagIfMissing(const FGameplayTag& Tag)
+{
+    if (Tag.IsValid() && !ActivationOwnedTags.HasTagExact(Tag))
+    {
+        ActivationOwnedTags.AddTag(Tag);
+    }
+}
+
+void UGA_HeroBaseAbility::AddBlockedTagIfMissing(const FGameplayTag& Tag)
+{
+    if (Tag.IsValid() && !ActivationBlockedTags.HasTagExact(Tag))
+    {
+        ActivationBlockedTags.AddTag(Tag);
+    }
+}
+
+void UGA_HeroBaseAbility::SetGameplayEventTriggerTag(const FGameplayTag& Tag)
+{
+    if (Tag.IsValid())
+    {
+        TriggerTag = Tag;
+    }
+}
+
+void UGA_HeroBaseAbility::ConfigureAbilityIdentityTag(
+    const FGameplayTag& AbilityTag,
+    const bool bAddOwnedTag,
+    const bool bUseAsGameplayEventTrigger)
+{
+    AddAssetTagIfMissing(AbilityTag);
+
+    if (bAddOwnedTag)
+    {
+        AddOwnedTagIfMissing(AbilityTag);
+    }
+
+    if (bUseAsGameplayEventTrigger)
+    {
+        SetGameplayEventTriggerTag(AbilityTag);
+    }
+}
+
 FHeroAbilityTargetingPolicy UGA_HeroBaseAbility::BuildTargetingPolicy() const
 {
     return FHeroAbilityTargetingPolicy{
@@ -129,14 +187,6 @@ bool UGA_HeroBaseAbility::InitializeActivationRuntimeState(
     CurrentSpecHandle = Handle;
     CurrentActorInfo = ActorInfo;
     CurrentActivationInfo = ActivationInfo;
-
-    AIsometricRPGCharacter* RPGCharacter = Cast<AIsometricRPGCharacter>(GetAvatarActorFromActorInfo());
-    if (!RPGCharacter)
-    {
-        UE_LOG(LogTemp, Error, TEXT("%s: AvatarActor is not an AIsometricRPGCharacter. Cannot get target data."), *GetName());
-        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
-        return false;
-    }
 
     AActor* SelfActor = GetAvatarActorFromActorInfo();
     if (!SelfActor)
@@ -162,8 +212,13 @@ bool UGA_HeroBaseAbility::InitializeActivationRuntimeState(
         return false;
     }
 
-    CurrentInputContext = RPGCharacter->GetPendingAbilityActivationContext();
-    CurrentTargetDataHandle = RPGCharacter->GetAbilityTargetData();
+    if (!FHeroAbilityTargetingHelper::TryResolveActivationTargetingContext(SelfActor, CurrentInputContext, CurrentTargetDataHandle))
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: AvatarActor is not an AIsometricRPGCharacter. Cannot get target data."), *GetName());
+        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+        return false;
+    }
+
     return true;
 }
 
@@ -257,15 +312,13 @@ void UGA_HeroBaseAbility::WaitForReplicatedTargetData(
         return;
     }
 
-    CleanupReplicatedTargetDataDelegates();
-
-    const FPredictionKey ActivationPredictionKey = ActivationInfo.GetActivationPredictionKey();
-    ReplicatedTargetDataDelegateHandle = ASC->AbilityTargetDataSetDelegate(Handle, ActivationPredictionKey)
-        .AddUObject(this, &UGA_HeroBaseAbility::HandleReplicatedTargetDataReceived);
-    ReplicatedTargetDataCancelledDelegateHandle = ASC->AbilityTargetDataCancelledDelegate(Handle, ActivationPredictionKey)
-        .AddUObject(this, &UGA_HeroBaseAbility::HandleReplicatedTargetDataCancelled);
-
-    if (!ASC->CallReplicatedTargetDataDelegatesIfSet(Handle, ActivationPredictionKey))
+    if (!FHeroAbilityTargetingHelper::RegisterReplicatedTargetDataDelegates(
+        *this,
+        *ASC,
+        Handle,
+        ActivationInfo,
+        ReplicatedTargetDataDelegateHandle,
+        ReplicatedTargetDataCancelledDelegateHandle))
     {
         UE_LOG(LogTemp, Verbose, TEXT("%s: Waiting for replicated target data."), *GetName());
     }
@@ -295,10 +348,7 @@ void UGA_HeroBaseAbility::HandleReplicatedTargetDataReceived(const FGameplayAbil
 
     if (AIsometricRPGCharacter* RPGCharacter = Cast<AIsometricRPGCharacter>(GetAvatarActorFromActorInfo()))
     {
-        FPendingAbilityActivationContext Context = RPGCharacter->GetPendingAbilityActivationContext();
-        Context.TargetData = Data;
-        RPGCharacter->SetPendingAbilityActivationContext(Context);
-        CurrentInputContext = RPGCharacter->GetPendingAbilityActivationContext();
+        FHeroAbilityTargetingHelper::ApplyReplicatedTargetDataToActivationContext(*RPGCharacter, Data, CurrentInputContext);
     }
 
     const FGameplayAbilityActorInfo* ActorInfo = GetCurrentActorInfo();
@@ -441,41 +491,34 @@ void UGA_HeroBaseAbility::StartTargetSelection(
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo ActivationInfo)
 {
-
     if (!TargetActorClass)
     {
-        UE_LOG(LogTemp, Error, TEXT("'%s': TargetActorClass is NOT SET! Cancelling."), *GetName()); // <-- 添加
+        UE_LOG(LogTemp, Error, TEXT("'%s': TargetActorClass is NOT SET! Cancelling."), *GetName());
         CancelAbility(Handle, ActorInfo, ActivationInfo, true);
         return;
     }
 
-
-    TargetDataTask = UAbilityTask_WaitTargetData::WaitTargetData(
-        this,
-        FName("TargetData"),
-        EGameplayTargetingConfirmation::UserConfirmed,
-        TargetActorClass
-    );
-
-    if (TargetDataTask)
+    if (!GetAvatarActorFromActorInfo())
     {
-
-        TargetDataTask->ValidData.AddDynamic(this, &UGA_HeroBaseAbility::OnTargetDataReady);
-        TargetDataTask->Cancelled.AddDynamic(this, &UGA_HeroBaseAbility::OnTargetingCancelled);
-
-        AGameplayAbilityTargetActor* SpawnedActor = nullptr;
-
-        TargetDataTask->BeginSpawningActor(this, TargetActorClass, SpawnedActor);
-        TargetDataTask->FinishSpawningActor(this, SpawnedActor);
-
-        TargetDataTask->ReadyForActivation();
-
+        UE_LOG(LogTemp, Error, TEXT("'%s': Avatar actor is null. Cancelling."), *GetName());
+        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
+        return;
     }
-    else
+
+    TargetDataTask = FHeroAbilityTargetingHelper::CreateTargetSelectionTask(*this, TargetActorClass);
+    if (!TargetDataTask)
     {
-        UE_LOG(LogTemp, Error, TEXT("'%s': FAILED to create TargetDataTask!"), *GetName()); // <-- 添加
+        UE_LOG(LogTemp, Error, TEXT("'%s': FAILED to create TargetDataTask!"), *GetName());
         CancelAbility(Handle, ActorInfo, ActivationInfo, true);
     }
+}
+
+void UGA_HeroBaseAbility::ConfigureTargetSelectionActor(AGameplayAbilityTargetActor& TargetActor)
+{
+}
+
+void UGA_HeroBaseAbility::BeginTargetSelectionPresentation()
+{
 }
 
 void UGA_HeroBaseAbility::DirectExecuteAbility(
@@ -519,46 +562,28 @@ void UGA_HeroBaseAbility::PlayAbilityMontage(
     const FGameplayAbilityActorInfo* ActorInfo,
     const FGameplayAbilityActivationInfo ActivationInfo)
 {
-    // 如果关闭了基类蒙太奇流程，则不做任何事（由子类自主管理动画与收尾）
     if (!bUseBaseMontageFlow)
     {
         UE_LOG(LogTemp, Verbose, TEXT("%s: Base montage flow disabled, skipping PlayAbilityMontage."), *GetName());
         return;
     }
-    UAnimInstance* AnimInstance = CurrentActorInfo->GetAnimInstance();
-    if (MontageToPlay && IsValid(AnimInstance))
-    {
-        const float PlayRate = FHeroAbilityMontageHelper::ResolvePlayRate(MontageToPlay, CooldownDuration);
 
-        if (bFaceTarget)
-        {
-            if (ACharacter* Character = Cast<ACharacter>(ActorInfo->AvatarActor.Get()))
-            {
-                if (!FHeroAbilityMontageHelper::TryFaceCharacterToCurrentTarget(*Character, GetCurrentAimDirection(), CurrentTargetDataHandle))
-                {
-                    UE_LOG(LogTemp, Verbose, TEXT("%s: No target data to face when playing montage."), *GetName());
-                }
-            }
-        }
-
-        // 创建并配置蒙太奇任务
-        MontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
-            this, NAME_None, MontageToPlay, PlayRate);
-        if (MontageTask)
-        {
-            UE_LOG(LogTemp, Verbose, TEXT("%s: PlayMontage %s at rate %.2f"), *GetName(), *MontageToPlay->GetName(), PlayRate);
-            BindMontageTaskCallbacks(*MontageTask);
-            MontageTask->ReadyForActivation();
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("%s: Failed to create MontageTask."), *GetName());
-        }
-    }
-    else
+    MontageTask = FHeroAbilityMontageHelper::PlayAbilityMontage(
+        *this,
+        ActorInfo,
+        CurrentTargetDataHandle,
+        GetCurrentAimDirection(),
+        MontageToPlay,
+        CooldownDuration,
+        bFaceTarget);
+    if (!MontageTask)
     {
-		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("No montage to play or invalid anim instance in %s."), *GetName()));
+        GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("No montage to play or invalid anim instance in %s."), *GetName()));
+        return;
     }
+
+    BindMontageTaskCallbacks(*MontageTask);
+    MontageTask->ReadyForActivation();
 }
 
 // =================================================================================================================
@@ -567,10 +592,7 @@ void UGA_HeroBaseAbility::PlayAbilityMontage(
 
 void UGA_HeroBaseAbility::ResetRuntimeAbilityState()
 {
-    CleanupReplicatedTargetDataDelegates();
-    EndMontageTask();
-    EndTargetDataTask();
-    CurrentInputContext = FPendingAbilityActivationContext();
+    FHeroAbilityFlowHelper::ResetRuntimeAbilityState(*this);
 }
 
 void UGA_HeroBaseAbility::EndTargetDataTask()
@@ -585,17 +607,11 @@ void UGA_HeroBaseAbility::EndMontageTask()
 
 void UGA_HeroBaseAbility::BindMontageTaskCallbacks(UAbilityTask_PlayMontageAndWait& InMontageTask)
 {
-    if (bEndAbilityWhenBaseMontageEnds)
-    {
-        InMontageTask.OnCompleted.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageCompleted);
-        InMontageTask.OnBlendOut.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageCompleted);
-    }
-
-    if (bCancelAbilityWhenBaseMontageInterrupted)
-    {
-        InMontageTask.OnInterrupted.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageInterruptedOrCancelled);
-        InMontageTask.OnCancelled.AddDynamic(this, &UGA_HeroBaseAbility::HandleMontageInterruptedOrCancelled);
-    }
+    FHeroAbilityMontageHelper::BindBaseMontageTaskCallbacks(
+        *this,
+        InMontageTask,
+        bEndAbilityWhenBaseMontageEnds,
+        bCancelAbilityWhenBaseMontageInterrupted);
 }
 
 bool UGA_HeroBaseAbility::TryCommitAndExecuteAbility(
@@ -605,76 +621,33 @@ bool UGA_HeroBaseAbility::TryCommitAndExecuteAbility(
     const TCHAR* Phase,
     const TCHAR* OtherCheckFailureReason)
 {
-    if (!OtherCheckBeforeCommit())
-    {
-        if (OtherCheckFailureReason)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("%s: %s"), *GetName(), OtherCheckFailureReason);
-        }
-        return false;
-    }
-
-    if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
-    {
-        LogCommitFailureDiagnostics(Handle, ActorInfo, ActivationInfo, Phase);
-        UE_LOG(LogTemp, Warning, TEXT("%s: 技能提交失败，可能是由于消耗或冷却问题。"), *GetName());
-        CancelAbility(Handle, ActorInfo, ActivationInfo, true);
-        return false;
-    }
-
-    UE_LOG(LogTemp, Verbose, TEXT("%s: CommitAbility OK (%s). Montage=%s"), *GetName(), Phase, MontageToPlay ? *MontageToPlay->GetName() : TEXT("None"));
-    PlayAbilityMontage(Handle, ActorInfo, ActivationInfo);
-    ExecuteSkill(Handle, ActorInfo, ActivationInfo);
-    return true;
+    return FHeroAbilityFlowHelper::TryCommitAndExecuteAbility(
+        *this,
+        Handle,
+        ActorInfo,
+        ActivationInfo,
+        Phase,
+        OtherCheckFailureReason);
 }
 
 void UGA_HeroBaseAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data)
 {
-    // 保存目标数据
-    CurrentTargetDataHandle = Data;
-
-    EndTargetDataTask();
-
-    const FGameplayAbilityActorInfo* ActorInfo = GetCurrentActorInfo();
-    FGameplayAbilitySpecHandle Handle = GetCurrentAbilitySpecHandle();
-    FGameplayAbilityActivationInfo ActivationInfo = GetCurrentActivationInfo();
-
-    TryCommitAndExecuteAbility(
-        Handle,
-        ActorInfo,
-        ActivationInfo,
-        TEXT("OnTargetDataReady"),
-        TEXT("超出范围，向目标移动······"));
+    FHeroAbilityFlowHelper::HandleTargetDataReady(*this, Data);
 }
 
 void UGA_HeroBaseAbility::OnTargetingCancelled(const FGameplayAbilityTargetDataHandle& Data)
 {
-    EndTargetDataTask();
-
-    UE_LOG(LogTemp, Display, TEXT("%s: Targeting cancelled."), *GetName());
-    CancelAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(), GetCurrentActivationInfo(), true);
+    FHeroAbilityFlowHelper::HandleTargetingCancelled(*this);
 }
 
 void UGA_HeroBaseAbility::HandleMontageCompleted()
 {
-    if (!bEndAbilityWhenBaseMontageEnds)
-    {
-        UE_LOG(LogTemp, Verbose, TEXT("%s: Montage completed, but auto-end disabled."), *GetName());
-        return;
-    }
-    UE_LOG(LogTemp, Display, TEXT("%s: Montage completed or blended out. Ending ability (base flow)."), *GetName());
-    EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(), GetCurrentActivationInfo(), true, false);
+    FHeroAbilityFlowHelper::HandleMontageCompleted(*this);
 }
 
 void UGA_HeroBaseAbility::HandleMontageInterruptedOrCancelled()
 {
-    if (!bCancelAbilityWhenBaseMontageInterrupted)
-    {
-        UE_LOG(LogTemp, Verbose, TEXT("%s: Montage interrupted/cancelled, but auto-cancel disabled."), *GetName());
-        return;
-    }
-    UE_LOG(LogTemp, Display, TEXT("%s: Montage interrupted or cancelled. Cancelling ability (base flow)."), *GetName());
-    CancelAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(), GetCurrentActivationInfo(), true);
+    FHeroAbilityFlowHelper::HandleMontageInterruptedOrCancelled(*this);
 }
 
 void UGA_HeroBaseAbility::CancelAbility(

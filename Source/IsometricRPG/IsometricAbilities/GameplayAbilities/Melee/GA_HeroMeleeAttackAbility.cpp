@@ -34,20 +34,8 @@ UGA_HeroMeleeAttackAbility::UGA_HeroMeleeAttackAbility()
         // 可考虑添加调试断言
         checkNoEntry();
     }
-    // 设置触发条件
-    FGameplayTagContainer AssetTagContainer = GetAssetTags();
-    AssetTagContainer.AddTag(FGameplayTag::RequestGameplayTag("Ability.Player.BasicAttack"));
-    SetAssetTags(AssetTagContainer);
-
-    ActivationOwnedTags.AddTag(FGameplayTag::RequestGameplayTag("Ability.Player.BasicAttack"));
-
-    // 设置触发事件
-    FAbilityTriggerData TriggerData;
-    TriggerData.TriggerTag = FGameplayTag::RequestGameplayTag("Ability.Player.BasicAttack");
-    TriggerData.TriggerSource = EGameplayAbilityTriggerSource::GameplayEvent;
-    AbilityTriggers.Add(TriggerData);
-    // 设定冷却阻断标签
-    ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag("Cooldown.Ability.MeleeAttack"));
+    ConfigureAbilityIdentityTag(FGameplayTag::RequestGameplayTag("Ability.Player.BasicAttack"));
+    AddBlockedTagIfMissing(FGameplayTag::RequestGameplayTag("Cooldown.Ability.MeleeAttack"));
 
     // 范围圈 Niagara 指示器（可在蓝图覆盖），提供一个合理默认
     RangeIndicatorNiagaraActorClass = ANA_NiagaraActorBase::StaticClass();
@@ -106,63 +94,17 @@ bool UGA_HeroMeleeAttackAbility::CheckCost(const FGameplayAbilitySpecHandle Hand
 	return Super::CheckCost(Handle, ActorInfo, OptionalRelevantTags);
 }
 
-void UGA_HeroMeleeAttackAbility::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data)
-{
-    FHeroAbilityApproachHelper::CachePrimaryTargetData(Data, CachedTargetActor, CachedTargetLocation);
-
-    Super::OnTargetDataReady(Data);
-}
-
 bool UGA_HeroMeleeAttackAbility::OtherCheckBeforeCommit()
 {
-    AActor* TargetActor = nullptr;
-    FVector TargetLocation = FVector::ZeroVector;
-    if (!FHeroAbilityApproachHelper::TryResolveTargetOrCached(
-        CurrentTargetDataHandle,
-        CachedTargetActor,
-        CachedTargetLocation,
-        TargetActor,
-        TargetLocation))
-    {
-        UE_LOG(LogTemp, Warning, TEXT("%s: 没有有效目标可用于检查。"), *GetName());
-        return false;
-    }
-
     ACharacter* SelfChar = Cast<ACharacter>(GetAvatarActorFromActorInfo());
     if (!SelfChar)
     {
         return false;
     }
 
-    const float Distance = FVector::Distance(SelfChar->GetActorLocation(), TargetLocation);
+    const AActor* TargetActor = CachedTargetActor.Get();
     const float EffectiveAcceptance = FHeroAbilityApproachHelper::CalculateEffectiveAcceptanceRadius(SelfChar, TargetActor, RangeToApply);
-    if (Distance > EffectiveAcceptance)
-    {
-        FHeroAbilityApproachHelper::StartMoveToActorOrLocation(*this, TargetActor, TargetLocation, EffectiveAcceptance);
-        return false;
-    }
-
-    return true;
-}
-
-void UGA_HeroMeleeAttackAbility::OnReachedTarget()
-{
-    if (!GetAvatarActorFromActorInfo() || !GetAvatarActorFromActorInfo()->HasAuthority())
-    {
-        return;
-    }
-
-    if (!EnsureCurrentTargetDataAvailable(CachedTargetActor, CachedTargetLocation))
-    {
-        return;
-    }
-
-    Super::OnReachedTarget();
-}
-
-void UGA_HeroMeleeAttackAbility::OnFailedToTarget()
-{
-    UGA_TargetedAbility::OnFailedToTarget();
+    return CheckCachedTargetInRangeOrStartApproach(EffectiveAcceptance);
 }
 
 void UGA_HeroMeleeAttackAbility::ApplyCooldown(
